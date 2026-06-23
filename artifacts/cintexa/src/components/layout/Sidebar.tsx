@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Link, useLocation } from "wouter";
 import { 
   LayoutDashboard, 
@@ -11,9 +12,12 @@ import {
   FormInput, 
   Search, 
   Wand2, 
-  Settings 
+  Settings,
+  MonitorPlay,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { AnimatePresence } from "framer-motion";
+import { SitePreview } from "@/components/site-preview";
 
 const navGroups = [
   {
@@ -62,6 +66,7 @@ const navGroups = [
 
 export function Sidebar() {
   const [location] = useLocation();
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   return (
     <aside className="w-64 h-screen border-r bg-card flex flex-col fixed left-0 top-0 z-40">
@@ -101,6 +106,24 @@ export function Sidebar() {
           </div>
         ))}
       </div>
+
+      {/* Preview Site button at the bottom */}
+      <div className="px-4 py-4 border-t border-border/50">
+        <button
+          onClick={() => setPreviewOpen(true)}
+          className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors group"
+        >
+          <MonitorPlay className="w-4 h-4 text-muted-foreground group-hover:text-foreground" />
+          <span className="text-sm">Preview Site</span>
+          <span className="ml-auto text-[9px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded font-semibold">LIVE</span>
+        </button>
+      </div>
+
+      <AnimatePresence>
+        {previewOpen && (
+          <SitePreview onClose={() => setPreviewOpen(false)} />
+        )}
+      </AnimatePresence>
     </aside>
   );
 }

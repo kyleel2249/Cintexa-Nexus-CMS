@@ -1,15 +1,20 @@
+import { useState } from "react";
 import { useGetPages } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, FileText, MoreHorizontal } from "lucide-react";
+import { Plus, Search, FileText, MoreHorizontal, MonitorPlay } from "lucide-react";
 import { Link } from "wouter";
 import { format } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
+import { AnimatePresence } from "framer-motion";
+import { SitePreview } from "@/components/site-preview";
 
 export default function Pages() {
   const { data: pages, isLoading } = useGetPages();
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [previewPageId, setPreviewPageId] = useState<number | undefined>(undefined);
 
   return (
     <div className="space-y-6">
@@ -18,10 +23,16 @@ export default function Pages() {
           <h2 className="text-3xl font-bold tracking-tight">Pages</h2>
           <p className="text-muted-foreground mt-1">Create and manage static pages.</p>
         </div>
-        <Link href="/pages/new" className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2">
-          <Plus className="mr-2 h-4 w-4" />
-          New Page
-        </Link>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" onClick={() => { setPreviewPageId(undefined); setPreviewOpen(true); }}>
+            <MonitorPlay className="mr-2 h-4 w-4" />
+            Preview Site
+          </Button>
+          <Link href="/pages/new" className="inline-flex items-center justify-center whitespace-nowrap rounded-md text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 bg-primary text-primary-foreground shadow hover:bg-primary/90 h-9 px-4 py-2">
+            <Plus className="mr-2 h-4 w-4" />
+            New Page
+          </Link>
+        </div>
       </div>
 
       <div className="flex items-center gap-4 py-4">
@@ -40,7 +51,7 @@ export default function Pages() {
               <TableHead>Status</TableHead>
               <TableHead>Template</TableHead>
               <TableHead>Last Edited</TableHead>
-              <TableHead className="w-[50px]"></TableHead>
+              <TableHead className="w-[80px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -64,20 +75,33 @@ export default function Pages() {
                       {page.title}
                     </Link>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">/{page.slug}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm font-mono">
+                    {page.slug?.startsWith("/") ? page.slug : `/${page.slug}`}
+                  </TableCell>
                   <TableCell>
-                    <Badge variant={page.status === 'Published' ? 'default' : page.status === 'Draft' ? 'secondary' : 'outline'}>
-                      {page.status}
+                    <Badge variant={page.status === "published" ? "default" : "secondary"}>
+                      {page.status ?? "draft"}
                     </Badge>
                   </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{page.template || 'Default'}</TableCell>
+                  <TableCell className="text-muted-foreground text-sm">{page.template || "Default"}</TableCell>
                   <TableCell className="text-muted-foreground text-sm">
-                    {format(new Date(page.updatedAt), "MMM d, yyyy")}
+                    {page.updatedAt ? format(new Date(page.updatedAt), "MMM d, yyyy") : "—"}
                   </TableCell>
                   <TableCell>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <MoreHorizontal className="h-4 w-4" />
-                    </Button>
+                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <Button
+                        variant="ghost"
+                        size="icon"
+                        className="h-7 w-7"
+                        title="Preview page"
+                        onClick={() => { setPreviewPageId(page.id); setPreviewOpen(true); }}
+                      >
+                        <MonitorPlay className="h-3.5 w-3.5" />
+                      </Button>
+                      <Button variant="ghost" size="icon" className="h-7 w-7">
+                        <MoreHorizontal className="h-4 w-4" />
+                      </Button>
+                    </div>
                   </TableCell>
                 </TableRow>
               ))
@@ -91,6 +115,15 @@ export default function Pages() {
           </TableBody>
         </Table>
       </div>
+
+      <AnimatePresence>
+        {previewOpen && (
+          <SitePreview
+            onClose={() => setPreviewOpen(false)}
+            initialPageId={previewPageId}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }

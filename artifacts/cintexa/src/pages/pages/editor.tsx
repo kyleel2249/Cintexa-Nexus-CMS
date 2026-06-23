@@ -8,10 +8,12 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save, Globe, Image as ImageIcon, Layers, Code2 } from "lucide-react";
+import { ArrowLeft, Save, Globe, Image as ImageIcon, Layers, Code2, MonitorPlay } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PageBuilder, blocksToHtml, htmlToBlocks } from "@/components/page-builder";
 import { Block } from "@/components/page-builder/types";
+import { AnimatePresence } from "framer-motion";
+import { SitePreview } from "@/components/site-preview";
 
 type EditorMode = "visual" | "html";
 
@@ -20,6 +22,7 @@ export default function PageEditor() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const isNew = !id || id === "new";
+  const [previewOpen, setPreviewOpen] = useState(false);
 
   const { data: page, isLoading } = useGetPage(Number(id), {
     query: { enabled: !isNew && !!id },
@@ -116,6 +119,9 @@ export default function PageEditor() {
           <h2 className="text-2xl font-bold">{isNew ? "Create Page" : "Edit Page"}</h2>
         </div>
         <div className="flex items-center gap-2">
+          <Button variant="ghost" onClick={() => setPreviewOpen(true)}>
+            <MonitorPlay className="mr-2 h-4 w-4" /> Preview Site
+          </Button>
           <Button
             variant="outline"
             onClick={() => handleSave("Draft")}
@@ -273,6 +279,15 @@ export default function PageEditor() {
           </Accordion>
         </div>
       </div>
+
+      <AnimatePresence>
+        {previewOpen && (
+          <SitePreview
+            onClose={() => setPreviewOpen(false)}
+            initialPageId={!isNew && id ? Number(id) : undefined}
+          />
+        )}
+      </AnimatePresence>
     </div>
   );
 }
