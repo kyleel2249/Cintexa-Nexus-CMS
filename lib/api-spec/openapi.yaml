@@ -1,22 +1,32 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: CINTEXA CMS API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
-    description: Health operations
+  - name: dashboard
+  - name: sites
+  - name: pages
+  - name: posts
+  - name: media
+  - name: users
+  - name: categories
+  - name: tags
+  - name: menus
+  - name: forms
+  - name: seo
+  - name: ai
+
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,6 +34,974 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  # ─── Dashboard ───────────────────────────────────────────────────────────────
+  /dashboard/summary:
+    get:
+      operationId: getDashboardSummary
+      tags: [dashboard]
+      summary: Get dashboard overview stats
+      responses:
+        "200":
+          description: Summary stats
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
+  /dashboard/activity:
+    get:
+      operationId: getDashboardActivity
+      tags: [dashboard]
+      summary: Recent content activity
+      responses:
+        "200":
+          description: Activity feed
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ActivityItem"
+
+  /dashboard/traffic:
+    get:
+      operationId: getDashboardTraffic
+      tags: [dashboard]
+      summary: Traffic chart data (last 30 days)
+      responses:
+        "200":
+          description: Traffic data
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/TrafficPoint"
+
+  # ─── Sites ───────────────────────────────────────────────────────────────────
+  /sites:
+    get:
+      operationId: getSites
+      tags: [sites]
+      summary: List all sites
+      responses:
+        "200":
+          description: Site list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Site"
+    post:
+      operationId: createSite
+      tags: [sites]
+      summary: Create a new site
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+
+  /sites/{id}:
+    get:
+      operationId: getSite
+      tags: [sites]
+      summary: Get a site by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Site
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+    patch:
+      operationId: updateSite
+      tags: [sites]
+      summary: Update a site
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SiteUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Site"
+    delete:
+      operationId: deleteSite
+      tags: [sites]
+      summary: Delete a site
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── Pages ───────────────────────────────────────────────────────────────────
+  /pages:
+    get:
+      operationId: getPages
+      tags: [pages]
+      summary: List all pages
+      parameters:
+        - name: siteId
+          in: query
+          schema:
+            type: integer
+        - name: status
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Pages list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Page"
+    post:
+      operationId: createPage
+      tags: [pages]
+      summary: Create a page
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+
+  /pages/{id}:
+    get:
+      operationId: getPage
+      tags: [pages]
+      summary: Get a page
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+    patch:
+      operationId: updatePage
+      tags: [pages]
+      summary: Update a page
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PageUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+    delete:
+      operationId: deletePage
+      tags: [pages]
+      summary: Delete a page
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /pages/{id}/publish:
+    post:
+      operationId: publishPage
+      tags: [pages]
+      summary: Publish a page
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+
+  # ─── Posts ───────────────────────────────────────────────────────────────────
+  /posts:
+    get:
+      operationId: getPosts
+      tags: [posts]
+      summary: List all posts
+      parameters:
+        - name: status
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Posts list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Post"
+    post:
+      operationId: createPost
+      tags: [posts]
+      summary: Create a post
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+
+  /posts/{id}:
+    get:
+      operationId: getPost
+      tags: [posts]
+      summary: Get a post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Post
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+    patch:
+      operationId: updatePost
+      tags: [posts]
+      summary: Update a post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/PostUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+    delete:
+      operationId: deletePost
+      tags: [posts]
+      summary: Delete a post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /posts/{id}/publish:
+    post:
+      operationId: publishPost
+      tags: [posts]
+      summary: Publish a post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+
+  # ─── Media ───────────────────────────────────────────────────────────────────
+  /media:
+    get:
+      operationId: getMedia
+      tags: [media]
+      summary: List all media
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+        - name: search
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Media list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/MediaItem"
+    post:
+      operationId: createMedia
+      tags: [media]
+      summary: Upload media (metadata)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaItem"
+
+  /media/{id}:
+    get:
+      operationId: getMediaItem
+      tags: [media]
+      summary: Get a media item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Media item
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaItem"
+    patch:
+      operationId: updateMedia
+      tags: [media]
+      summary: Update media metadata
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MediaUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MediaItem"
+    delete:
+      operationId: deleteMedia
+      tags: [media]
+      summary: Delete a media item
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── Users ───────────────────────────────────────────────────────────────────
+  /users:
+    get:
+      operationId: getUsers
+      tags: [users]
+      summary: List all users
+      responses:
+        "200":
+          description: Users list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/User"
+    post:
+      operationId: createUser
+      tags: [users]
+      summary: Create a user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+
+  /users/{id}:
+    get:
+      operationId: getUser
+      tags: [users]
+      summary: Get a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: User
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    patch:
+      operationId: updateUser
+      tags: [users]
+      summary: Update a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UserUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/User"
+    delete:
+      operationId: deleteUser
+      tags: [users]
+      summary: Delete a user
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── Categories ──────────────────────────────────────────────────────────────
+  /categories:
+    get:
+      operationId: getCategories
+      tags: [categories]
+      summary: List all categories
+      responses:
+        "200":
+          description: Categories list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Category"
+    post:
+      operationId: createCategory
+      tags: [categories]
+      summary: Create a category
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+
+  /categories/{id}:
+    patch:
+      operationId: updateCategory
+      tags: [categories]
+      summary: Update a category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CategoryUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Category"
+    delete:
+      operationId: deleteCategory
+      tags: [categories]
+      summary: Delete a category
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── Tags ────────────────────────────────────────────────────────────────────
+  /tags:
+    get:
+      operationId: getTags
+      tags: [tags]
+      summary: List all tags
+      responses:
+        "200":
+          description: Tags list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Tag"
+    post:
+      operationId: createTag
+      tags: [tags]
+      summary: Create a tag
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/TagInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Tag"
+
+  /tags/{id}:
+    delete:
+      operationId: deleteTag
+      tags: [tags]
+      summary: Delete a tag
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── Menus ───────────────────────────────────────────────────────────────────
+  /menus:
+    get:
+      operationId: getMenus
+      tags: [menus]
+      summary: List all menus
+      responses:
+        "200":
+          description: Menus list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Menu"
+    post:
+      operationId: createMenu
+      tags: [menus]
+      summary: Create a menu
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Menu"
+
+  /menus/{id}:
+    patch:
+      operationId: updateMenu
+      tags: [menus]
+      summary: Update a menu
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MenuUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Menu"
+    delete:
+      operationId: deleteMenu
+      tags: [menus]
+      summary: Delete a menu
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── Forms ───────────────────────────────────────────────────────────────────
+  /forms:
+    get:
+      operationId: getForms
+      tags: [forms]
+      summary: List all forms
+      responses:
+        "200":
+          description: Forms list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Form"
+    post:
+      operationId: createForm
+      tags: [forms]
+      summary: Create a form
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FormInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Form"
+
+  /forms/{id}:
+    patch:
+      operationId: updateForm
+      tags: [forms]
+      summary: Update a form
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/FormUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Form"
+    delete:
+      operationId: deleteForm
+      tags: [forms]
+      summary: Delete a form
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /forms/{id}/submissions:
+    get:
+      operationId: getFormSubmissions
+      tags: [forms]
+      summary: Get form submissions
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Submissions
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/FormSubmission"
+
+  # ─── SEO ─────────────────────────────────────────────────────────────────────
+  /seo/settings:
+    get:
+      operationId: getSeoSettings
+      tags: [seo]
+      summary: Get global SEO settings
+      responses:
+        "200":
+          description: SEO settings
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeoSettings"
+    patch:
+      operationId: updateSeoSettings
+      tags: [seo]
+      summary: Update global SEO settings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SeoSettingsUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/SeoSettings"
+
+  /seo/redirects:
+    get:
+      operationId: getSeoRedirects
+      tags: [seo]
+      summary: List all redirects
+      responses:
+        "200":
+          description: Redirects list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Redirect"
+    post:
+      operationId: createRedirect
+      tags: [seo]
+      summary: Create a redirect
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/RedirectInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Redirect"
+
+  /seo/redirects/{id}:
+    delete:
+      operationId: deleteRedirect
+      tags: [seo]
+      summary: Delete a redirect
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  # ─── AI ──────────────────────────────────────────────────────────────────────
+  /ai/generate-content:
+    post:
+      operationId: aiGenerateContent
+      tags: [ai]
+      summary: Generate content with AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiContentRequest"
+      responses:
+        "200":
+          description: Generated content
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiContentResponse"
+
+  /ai/generate-seo:
+    post:
+      operationId: aiGenerateSeo
+      tags: [ai]
+      summary: Generate SEO metadata with AI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiSeoRequest"
+      responses:
+        "200":
+          description: Generated SEO meta
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiSeoResponse"
+
+  /ai/suggest-titles:
+    post:
+      operationId: aiSuggestTitles
+      tags: [ai]
+      summary: Suggest title variations
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/AiTitleRequest"
+      responses:
+        "200":
+          description: Title suggestions
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/AiTitleResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -31,6 +1009,710 @@ components:
       properties:
         status:
           type: string
-      required:
-        - status
+      required: [status]
 
+    # ─── Dashboard ─────────────────────────────────────────────────────────────
+    DashboardSummary:
+      type: object
+      properties:
+        totalPages:
+          type: integer
+        publishedPages:
+          type: integer
+        draftPages:
+          type: integer
+        totalPosts:
+          type: integer
+        publishedPosts:
+          type: integer
+        totalMedia:
+          type: integer
+        totalUsers:
+          type: integer
+        totalSites:
+          type: integer
+        totalForms:
+          type: integer
+        pageViews:
+          type: integer
+        avgLoadTime:
+          type: number
+      required:
+        - totalPages
+        - publishedPages
+        - draftPages
+        - totalPosts
+        - publishedPosts
+        - totalMedia
+        - totalUsers
+        - totalSites
+        - totalForms
+        - pageViews
+        - avgLoadTime
+
+    ActivityItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        entityType:
+          type: string
+        entityTitle:
+          type: string
+        userName:
+          type: string
+        action:
+          type: string
+        createdAt:
+          type: string
+      required: [id, type, entityType, entityTitle, userName, action, createdAt]
+
+    TrafficPoint:
+      type: object
+      properties:
+        date:
+          type: string
+        views:
+          type: integer
+        visitors:
+          type: integer
+      required: [date, views, visitors]
+
+    # ─── Site ──────────────────────────────────────────────────────────────────
+    Site:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        domain:
+          type: string
+        description:
+          type: ["string", "null"]
+        favicon:
+          type: ["string", "null"]
+        logo:
+          type: ["string", "null"]
+        status:
+          type: string
+        primaryColor:
+          type: ["string", "null"]
+        language:
+          type: string
+        timezone:
+          type: string
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, name, domain, status, language, timezone, createdAt, updatedAt]
+
+    SiteInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        domain:
+          type: string
+        description:
+          type: string
+        favicon:
+          type: string
+        logo:
+          type: string
+        primaryColor:
+          type: string
+        language:
+          type: string
+        timezone:
+          type: string
+      required: [name, domain]
+
+    SiteUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        domain:
+          type: string
+        description:
+          type: string
+        favicon:
+          type: string
+        logo:
+          type: string
+        status:
+          type: string
+        primaryColor:
+          type: string
+        language:
+          type: string
+        timezone:
+          type: string
+
+    # ─── Page ──────────────────────────────────────────────────────────────────
+    Page:
+      type: object
+      properties:
+        id:
+          type: integer
+        siteId:
+          type: ["integer", "null"]
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        template:
+          type: ["string", "null"]
+        content:
+          type: ["string", "null"]
+        metaTitle:
+          type: ["string", "null"]
+        metaDescription:
+          type: ["string", "null"]
+        featuredImage:
+          type: ["string", "null"]
+        publishedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, title, slug, status, createdAt, updatedAt]
+
+    PageInput:
+      type: object
+      properties:
+        siteId:
+          type: integer
+        title:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+        template:
+          type: string
+        content:
+          type: string
+        metaTitle:
+          type: string
+        metaDescription:
+          type: string
+        featuredImage:
+          type: string
+      required: [title, slug]
+
+    PageUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        template:
+          type: string
+        content:
+          type: string
+        metaTitle:
+          type: string
+        metaDescription:
+          type: string
+        featuredImage:
+          type: string
+
+    # ─── Post ──────────────────────────────────────────────────────────────────
+    Post:
+      type: object
+      properties:
+        id:
+          type: integer
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        excerpt:
+          type: ["string", "null"]
+        content:
+          type: ["string", "null"]
+        authorId:
+          type: ["integer", "null"]
+        authorName:
+          type: ["string", "null"]
+        categoryId:
+          type: ["integer", "null"]
+        categoryName:
+          type: ["string", "null"]
+        featuredImage:
+          type: ["string", "null"]
+        metaTitle:
+          type: ["string", "null"]
+        metaDescription:
+          type: ["string", "null"]
+        readingTime:
+          type: ["integer", "null"]
+        publishedAt:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+        updatedAt:
+          type: string
+      required: [id, title, slug, status, createdAt, updatedAt]
+
+    PostInput:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+        excerpt:
+          type: string
+        content:
+          type: string
+        authorId:
+          type: integer
+        categoryId:
+          type: integer
+        featuredImage:
+          type: string
+        metaTitle:
+          type: string
+        metaDescription:
+          type: string
+      required: [title, slug]
+
+    PostUpdate:
+      type: object
+      properties:
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        excerpt:
+          type: string
+        content:
+          type: string
+        authorId:
+          type: integer
+        categoryId:
+          type: integer
+        featuredImage:
+          type: string
+        metaTitle:
+          type: string
+        metaDescription:
+          type: string
+
+    # ─── Media ─────────────────────────────────────────────────────────────────
+    MediaItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        filename:
+          type: string
+        originalName:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+        url:
+          type: string
+        altText:
+          type: ["string", "null"]
+        caption:
+          type: ["string", "null"]
+        width:
+          type: ["integer", "null"]
+        height:
+          type: ["integer", "null"]
+        createdAt:
+          type: string
+      required: [id, filename, originalName, mimeType, size, url, createdAt]
+
+    MediaInput:
+      type: object
+      properties:
+        filename:
+          type: string
+          minLength: 1
+        originalName:
+          type: string
+        mimeType:
+          type: string
+        size:
+          type: integer
+        url:
+          type: string
+        altText:
+          type: string
+        caption:
+          type: string
+        width:
+          type: integer
+        height:
+          type: integer
+      required: [filename, originalName, mimeType, size, url]
+
+    MediaUpdate:
+      type: object
+      properties:
+        altText:
+          type: string
+        caption:
+          type: string
+
+    # ─── User ──────────────────────────────────────────────────────────────────
+    User:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        avatar:
+          type: ["string", "null"]
+        bio:
+          type: ["string", "null"]
+        status:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, email, role, status, createdAt]
+
+    UserInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+        role:
+          type: string
+        avatar:
+          type: string
+        bio:
+          type: string
+      required: [name, email, role]
+
+    UserUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+        avatar:
+          type: string
+        bio:
+          type: string
+        status:
+          type: string
+
+    # ─── Category ──────────────────────────────────────────────────────────────
+    Category:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: ["string", "null"]
+        postCount:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, name, slug, postCount, createdAt]
+
+    CategoryInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+        description:
+          type: string
+      required: [name, slug]
+
+    CategoryUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        slug:
+          type: string
+        description:
+          type: string
+
+    # ─── Tag ───────────────────────────────────────────────────────────────────
+    Tag:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        slug:
+          type: string
+        postCount:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, name, slug, postCount, createdAt]
+
+    TagInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        slug:
+          type: string
+      required: [name, slug]
+
+    # ─── Menu ──────────────────────────────────────────────────────────────────
+    Menu:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        location:
+          type: string
+        items:
+          type: string
+        createdAt:
+          type: string
+      required: [id, name, location, items, createdAt]
+
+    MenuInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        location:
+          type: string
+        items:
+          type: string
+      required: [name, location, items]
+
+    MenuUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        location:
+          type: string
+        items:
+          type: string
+
+    # ─── Form ──────────────────────────────────────────────────────────────────
+    Form:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        fields:
+          type: string
+        submissionCount:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, name, fields, submissionCount, createdAt]
+
+    FormInput:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        fields:
+          type: string
+      required: [name, fields]
+
+    FormUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+        fields:
+          type: string
+
+    FormSubmission:
+      type: object
+      properties:
+        id:
+          type: integer
+        formId:
+          type: integer
+        data:
+          type: string
+        createdAt:
+          type: string
+      required: [id, formId, data, createdAt]
+
+    # ─── SEO ───────────────────────────────────────────────────────────────────
+    SeoSettings:
+      type: object
+      properties:
+        id:
+          type: integer
+        siteTitle:
+          type: string
+        siteDescription:
+          type: string
+        robots:
+          type: string
+        googleAnalyticsId:
+          type: ["string", "null"]
+        googleSearchConsoleId:
+          type: ["string", "null"]
+        ogImage:
+          type: ["string", "null"]
+        twitterHandle:
+          type: ["string", "null"]
+        updatedAt:
+          type: string
+      required: [id, siteTitle, siteDescription, robots, updatedAt]
+
+    SeoSettingsUpdate:
+      type: object
+      properties:
+        siteTitle:
+          type: string
+        siteDescription:
+          type: string
+        robots:
+          type: string
+        googleAnalyticsId:
+          type: string
+        googleSearchConsoleId:
+          type: string
+        ogImage:
+          type: string
+        twitterHandle:
+          type: string
+
+    Redirect:
+      type: object
+      properties:
+        id:
+          type: integer
+        from:
+          type: string
+        to:
+          type: string
+        type:
+          type: integer
+        createdAt:
+          type: string
+      required: [id, from, to, type, createdAt]
+
+    RedirectInput:
+      type: object
+      properties:
+        from:
+          type: string
+          minLength: 1
+        to:
+          type: string
+          minLength: 1
+        type:
+          type: integer
+      required: [from, to, type]
+
+    # ─── AI ────────────────────────────────────────────────────────────────────
+    AiContentRequest:
+      type: object
+      properties:
+        prompt:
+          type: string
+          minLength: 1
+        type:
+          type: string
+        tone:
+          type: string
+        length:
+          type: string
+      required: [prompt, type]
+
+    AiContentResponse:
+      type: object
+      properties:
+        content:
+          type: string
+        wordCount:
+          type: integer
+      required: [content, wordCount]
+
+    AiSeoRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+        content:
+          type: string
+      required: [title, content]
+
+    AiSeoResponse:
+      type: object
+      properties:
+        metaTitle:
+          type: string
+        metaDescription:
+          type: string
+        keywords:
+          type: array
+          items:
+            type: string
+      required: [metaTitle, metaDescription, keywords]
+
+    AiTitleRequest:
+      type: object
+      properties:
+        topic:
+          type: string
+          minLength: 1
+        count:
+          type: integer
+      required: [topic]
+
+    AiTitleResponse:
+      type: object
+      properties:
+        titles:
+          type: array
+          items:
+            type: string
+      required: [titles]

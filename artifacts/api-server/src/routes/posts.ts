@@ -1,0 +1,96 @@
+import { Router } from "express";
+import { db, postsTable, usersTable, categoriesTable, activityTable } from "@workspace/db";
+import { eq, and } from "drizzle-orm";
+
+const router = Router();
+
+async function enrichPost(post: typeof postsTable.$inferSelect) {
+  let authorName: string | null = null;
+  let categoryName: string | null = null;
+
+  if (post.authorId) {
+    const [u] = await db.select({ name: usersTable.name }).from(usersTable).where(eq(usersTable.id, post.authorId));
+    authorName = u?.name ?? null;
+  }
+  if (post.categoryId) {
+    const [c] = await db.select({ name: categoriesTable.name }).from(categoriesTable).where(eq(categoriesTable.id, post.categoryId));
+    categoryName = c?.name ?? null;
+  }
+  return {
+    ...post,
+    authorName,
+    categoryName,
+    createdAt: post.createdAt.toISOString(),
+    updatedAt: post.updatedAt.toISOString(),
+    publishedAt: post.publishedAt?.toISOString() ?? null,
+  };
+}
+
+router.get("/", async (req, res) => {
+  const { status, categoryId } = req.query;
+  let query = db.select().from(postsTable).$dynamic();
+  const conditions = [];
+  if (status) conditions.push(eq(postsTable.status, status as string));
+  if (categoryId) conditions.push(eq(postsTable.categoryId, parseInt(categoryId as string)));
+  if (conditions.length > 0) query = query.where(and(...conditions));
+
+  const posts = await query.orderBy(postsTable.updatedAt);
+  const enriched = await Promise.all(posts.map(enrichPost));
+  res.json(enriched);
+});
+
+router.post("/", async (req, res) => {
+  const { title, slug, excerpt, content, authorId, categoryId, featuredImage, metaTitle, metaDescription } = req.body;
+  if (!title || !slug) return res.status(400).json({ error: "title and slug required" });
+
+  const wordCount = content ? content.split(/\s+/).length : 0;
+  const readingTime = Math.ceil(wordCount / 200);
+
+  const [post] = await db.insert(postsTable).values({ title, slug, excerpt, content, authorId, categoryId, featuredImage, metaTitle, metaDescription, readingTime }).returning();
+  await db.insert(activityTable).values({ type: "create", entityType: "post", entityTitle: title, userName: "Admin", action: "created post" });
+  res.status(201).json(await enrichPost(post));
+});
+
+router.get("/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const [post] = await db.select().from(postsTable).where(eq(postsTable.id, id));
+  if (!post) return res.status(404).json({ error: "Not found" });
+  res.json(await enrichPost(post));
+});
+
+router.patch("/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const updates: Record<string, unknown> = { updated_at: new Date() };
+  const allowed = ["title", "slug", "status", "excerpt", "content", "authorId", "categoryId", "featuredImage", "metaTitle", "metaDescription"];
+  for (const k of allowed) {
+    if (req.body[k] !== undefined) {
+      const map: Record<string, string> = { authorId: "author_id", categoryId: "category_id", featuredImage: "featured_image", metaTitle: "meta_title", metaDescription: "meta_description" };
+      updates[map[k] ?? k] = req.body[k];
+    }
+  }
+  if (req.body.content) {
+    const wc = req.body.content.split(/\s+/).length;
+    updates["reading_time"] = Math.ceil(wc / 200);
+  }
+  const [post] = await db.update(postsTable).set(updates as any).where(eq(postsTable.id, id)).returning();
+  if (!post) return res.status(404).json({ error: "Not found" });
+  await db.insert(activityTable).values({ type: "update", entityType: "post", entityTitle: post.title, userName: "Admin", action: "updated post" });
+  res.json(await enrichPost(post));
+});
+
+router.delete("/:id", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const [post] = await db.delete(postsTable).where(eq(postsTable.id, id)).returning();
+  if (!post) return res.status(404).json({ error: "Not found" });
+  res.status(204).send();
+});
+
+router.post("/:id/publish", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const [post] = await db.update(postsTable).set({ status: "published", publishedAt: new Date(), updatedAt: new Date() }).where(eq(postsTable.id, id)).returning();
+  if (!post) return res.status(404).json({ error: "Not found" });
+  await db.insert(activityTable).values({ type: "publish", entityType: "post", entityTitle: post.title, userName: "Admin", action: "published post" });
+  res.json(await enrichPost(post));
+});
+
+export default router;
