@@ -283,6 +283,76 @@ paths:
               schema:
                 $ref: "#/components/schemas/Page"
 
+  # ─── Page Revisions ──────────────────────────────────────────────────────────
+  /pages/{id}/revisions:
+    get:
+      operationId: getPageRevisions
+      tags: [pages]
+      summary: List all revisions for a page
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Revisions list
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/PageRevision"
+
+  /pages/{id}/revisions/{revisionId}:
+    get:
+      operationId: getPageRevision
+      tags: [pages]
+      summary: Get a single revision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: revisionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Revision
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/PageRevision"
+
+  /pages/{id}/revisions/{revisionId}/restore:
+    post:
+      operationId: restorePageRevision
+      tags: [pages]
+      summary: Restore a page to a specific revision
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+        - name: revisionId
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Restored page
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+
   # ─── Posts ───────────────────────────────────────────────────────────────────
   /posts:
     get:
@@ -1227,6 +1297,37 @@ components:
           type: string
         featuredImage:
           type: string
+
+    PageRevision:
+      type: object
+      properties:
+        id:
+          type: integer
+        pageId:
+          type: integer
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        template:
+          type: ["string", "null"]
+        content:
+          type: ["string", "null"]
+        metaTitle:
+          type: ["string", "null"]
+        metaDescription:
+          type: ["string", "null"]
+        featuredImage:
+          type: ["string", "null"]
+        savedBy:
+          type: string
+        label:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+      required: [id, pageId, title, slug, status, savedBy, createdAt]
 
     # ─── Post ──────────────────────────────────────────────────────────────────
     Post:

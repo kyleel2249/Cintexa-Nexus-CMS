@@ -1,9 +1,44 @@
 import { Router } from "express";
-import { db, pagesTable, activityTable } from "@workspace/db";
-import { eq, and } from "drizzle-orm";
+import { db, pagesTable, pageRevisionsTable, activityTable } from "@workspace/db";
+import { eq, and, desc } from "drizzle-orm";
 
 const router = Router();
 
+function serializePage(p: typeof pagesTable.$inferSelect) {
+  return {
+    ...p,
+    createdAt: p.createdAt.toISOString(),
+    updatedAt: p.updatedAt.toISOString(),
+    publishedAt: p.publishedAt?.toISOString() ?? null,
+  };
+}
+
+function serializeRevision(r: typeof pageRevisionsTable.$inferSelect) {
+  return { ...r, createdAt: r.createdAt.toISOString() };
+}
+
+async function snapshotPage(
+  pageId: number,
+  page: typeof pagesTable.$inferSelect,
+  savedBy: string,
+  label?: string
+) {
+  await db.insert(pageRevisionsTable).values({
+    pageId,
+    title: page.title,
+    slug: page.slug,
+    status: page.status,
+    template: page.template ?? null,
+    content: page.content ?? null,
+    metaTitle: page.metaTitle ?? null,
+    metaDescription: page.metaDescription ?? null,
+    featuredImage: page.featuredImage ?? null,
+    savedBy,
+    label: label ?? null,
+  });
+}
+
+// ── List pages ───────────────────────────────────────────────────────────────
 router.get("/", async (req, res) => {
   const { siteId, status } = req.query;
   let query = db.select().from(pagesTable).$dynamic();
@@ -11,50 +46,68 @@ router.get("/", async (req, res) => {
   if (siteId) conditions.push(eq(pagesTable.siteId, parseInt(siteId as string)));
   if (status) conditions.push(eq(pagesTable.status, status as string));
   if (conditions.length > 0) query = query.where(and(...conditions));
-
   const pages = await query.orderBy(pagesTable.updatedAt);
-  res.json(
-    pages.map((p) => ({
-      ...p,
-      createdAt: p.createdAt.toISOString(),
-      updatedAt: p.updatedAt.toISOString(),
-      publishedAt: p.publishedAt?.toISOString() ?? null,
-    }))
-  );
+  res.json(pages.map(serializePage));
 });
 
+// ── Create page ──────────────────────────────────────────────────────────────
 router.post("/", async (req, res) => {
   const { siteId, title, slug, template, content, metaTitle, metaDescription, featuredImage } = req.body;
   if (!title || !slug) return res.status(400).json({ error: "title and slug required" });
-
-  const [page] = await db.insert(pagesTable).values({ siteId, title, slug, template, content, metaTitle, metaDescription, featuredImage }).returning();
-  await db.insert(activityTable).values({ type: "create", entityType: "page", entityTitle: title, userName: "Admin", action: "created page" });
-  res.status(201).json({ ...page, createdAt: page.createdAt.toISOString(), updatedAt: page.updatedAt.toISOString(), publishedAt: page.publishedAt?.toISOString() ?? null });
+  const [page] = await db
+    .insert(pagesTable)
+    .values({ siteId, title, slug, template, content, metaTitle, metaDescription, featuredImage })
+    .returning();
+  await Promise.all([
+    snapshotPage(page.id, page, "Admin", "Initial version"),
+    db.insert(activityTable).values({ type: "create", entityType: "page", entityTitle: title, userName: "Admin", action: "created page" }),
+  ]);
+  res.status(201).json(serializePage(page));
 });
 
+// ── Get page ─────────────────────────────────────────────────────────────────
 router.get("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
   const [page] = await db.select().from(pagesTable).where(eq(pagesTable.id, id));
   if (!page) return res.status(404).json({ error: "Not found" });
-  res.json({ ...page, createdAt: page.createdAt.toISOString(), updatedAt: page.updatedAt.toISOString(), publishedAt: page.publishedAt?.toISOString() ?? null });
+  res.json(serializePage(page));
 });
 
+// ── Update page (auto-snapshots every save) ───────────────────────────────────
 router.patch("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
-  const updates: Record<string, unknown> = { updated_at: new Date() };
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+
+  // Fetch current state before overwriting (needed for snapshot)
+  const [current] = await db.select().from(pagesTable).where(eq(pagesTable.id, id));
+  if (!current) return res.status(404).json({ error: "Not found" });
+
+  const updates: Record<string, unknown> = { updatedAt: new Date() };
+  const fieldMap: Record<string, string> = {
+    metaTitle: "metaTitle",
+    metaDescription: "metaDescription",
+    featuredImage: "featuredImage",
+  };
   const allowed = ["title", "slug", "status", "template", "content", "metaTitle", "metaDescription", "featuredImage"];
   for (const k of allowed) {
-    if (req.body[k] !== undefined) {
-      const dbKey = k === "metaTitle" ? "meta_title" : k === "metaDescription" ? "meta_description" : k === "featuredImage" ? "featured_image" : k;
-      updates[dbKey] = req.body[k];
-    }
+    if (req.body[k] !== undefined) updates[fieldMap[k] ?? k] = req.body[k];
   }
+
   const [page] = await db.update(pagesTable).set(updates as any).where(eq(pagesTable.id, id)).returning();
-  if (!page) return res.status(404).json({ error: "Not found" });
-  await db.insert(activityTable).values({ type: "update", entityType: "page", entityTitle: page.title, userName: "Admin", action: "updated page" });
-  res.json({ ...page, createdAt: page.createdAt.toISOString(), updatedAt: page.updatedAt.toISOString(), publishedAt: page.publishedAt?.toISOString() ?? null });
+
+  // Save snapshot of the NEW state after save
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+  const label = req.body.status === "published" ? "Published" : undefined;
+  await Promise.all([
+    snapshotPage(id, page, savedBy, label),
+    db.insert(activityTable).values({ type: "update", entityType: "page", entityTitle: page.title, userName: savedBy, action: "updated page" }),
+  ]);
+
+  res.json(serializePage(page));
 });
 
+// ── Delete page ───────────────────────────────────────────────────────────────
 router.delete("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   const [page] = await db.delete(pagesTable).where(eq(pagesTable.id, id)).returning();
@@ -62,6 +115,7 @@ router.delete("/:id", async (req, res) => {
   res.status(204).send();
 });
 
+// ── Publish page ──────────────────────────────────────────────────────────────
 router.post("/:id/publish", async (req, res) => {
   const id = parseInt(req.params.id);
   const [page] = await db
@@ -70,8 +124,87 @@ router.post("/:id/publish", async (req, res) => {
     .where(eq(pagesTable.id, id))
     .returning();
   if (!page) return res.status(404).json({ error: "Not found" });
-  await db.insert(activityTable).values({ type: "publish", entityType: "page", entityTitle: page.title, userName: "Admin", action: "published page" });
-  res.json({ ...page, createdAt: page.createdAt.toISOString(), updatedAt: page.updatedAt.toISOString(), publishedAt: page.publishedAt?.toISOString() ?? null });
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+  await Promise.all([
+    snapshotPage(id, page, savedBy, "Published"),
+    db.insert(activityTable).values({ type: "publish", entityType: "page", entityTitle: page.title, userName: savedBy, action: "published page" }),
+  ]);
+  res.json(serializePage(page));
+});
+
+// ── List revisions ────────────────────────────────────────────────────────────
+router.get("/:id/revisions", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const revisions = await db
+    .select()
+    .from(pageRevisionsTable)
+    .where(eq(pageRevisionsTable.pageId, id))
+    .orderBy(desc(pageRevisionsTable.createdAt));
+  res.json(revisions.map(serializeRevision));
+});
+
+// ── Get single revision ───────────────────────────────────────────────────────
+router.get("/:id/revisions/:revisionId", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const revisionId = parseInt(req.params.revisionId);
+  const [revision] = await db
+    .select()
+    .from(pageRevisionsTable)
+    .where(and(eq(pageRevisionsTable.id, revisionId), eq(pageRevisionsTable.pageId, id)));
+  if (!revision) return res.status(404).json({ error: "Revision not found" });
+  res.json(serializeRevision(revision));
+});
+
+// ── Restore revision ──────────────────────────────────────────────────────────
+router.post("/:id/revisions/:revisionId/restore", async (req, res) => {
+  const id = parseInt(req.params.id);
+  const revisionId = parseInt(req.params.revisionId);
+
+  // Fetch the target revision
+  const [revision] = await db
+    .select()
+    .from(pageRevisionsTable)
+    .where(and(eq(pageRevisionsTable.id, revisionId), eq(pageRevisionsTable.pageId, id)));
+  if (!revision) return res.status(404).json({ error: "Revision not found" });
+
+  // Snapshot the current state before restoring (so it's recoverable)
+  const [current] = await db.select().from(pagesTable).where(eq(pagesTable.id, id));
+  if (current) {
+    const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+    await snapshotPage(id, current, savedBy, "Auto-saved before restore");
+  }
+
+  // Apply the revision to the live page
+  const [restored] = await db
+    .update(pagesTable)
+    .set({
+      title: revision.title,
+      slug: revision.slug,
+      status: revision.status,
+      template: revision.template,
+      content: revision.content,
+      metaTitle: revision.metaTitle,
+      metaDescription: revision.metaDescription,
+      featuredImage: revision.featuredImage,
+      updatedAt: new Date(),
+    })
+    .where(eq(pagesTable.id, id))
+    .returning();
+
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+  await Promise.all([
+    snapshotPage(id, restored, savedBy, `Restored from revision #${revisionId}`),
+    db.insert(activityTable).values({
+      type: "update",
+      entityType: "page",
+      entityTitle: restored.title,
+      userName: savedBy,
+      action: `restored page to revision from ${revision.createdAt.toISOString()}`,
+    }),
+  ]);
+
+  res.json(serializePage(restored));
 });
 
 export default router;
