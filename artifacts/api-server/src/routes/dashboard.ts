@@ -1,53 +1,49 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
 import { pagesTable, postsTable, mediaTable, usersTable, sitesTable, formsTable, activityTable } from "@workspace/db";
-import { count, desc } from "drizzle-orm";
+import { count, desc, eq } from "drizzle-orm";
 
 const router = Router();
 
-router.get("/summary", async (req, res) => {
-  const [[pages], [publishedPages], [draftPages], [posts], [publishedPosts], [media], [users], [sites], [forms]] =
-    await Promise.all([
-      db.select({ count: count() }).from(pagesTable),
-      db.select({ count: count() }).from(pagesTable).where(db.$count !== undefined ? undefined : undefined).then(() =>
-        db.execute<{ count: string }>("SELECT COUNT(*) FROM pages WHERE status = 'published'")
-      ),
-      db.execute<{ count: string }>("SELECT COUNT(*) FROM pages WHERE status = 'draft'"),
-      db.select({ count: count() }).from(postsTable),
-      db.execute<{ count: string }>("SELECT COUNT(*) FROM posts WHERE status = 'published'"),
-      db.select({ count: count() }).from(mediaTable),
-      db.select({ count: count() }).from(usersTable),
-      db.select({ count: count() }).from(sitesTable),
-      db.select({ count: count() }).from(formsTable),
-    ]);
+router.get("/summary", async (_req, res) => {
+  const [
+    [{ totalPages }],
+    [{ totalPosts }],
+    [{ totalMedia }],
+    [{ totalUsers }],
+    [{ totalSites }],
+    [{ totalForms }],
+  ] = await Promise.all([
+    db.select({ totalPages: count() }).from(pagesTable),
+    db.select({ totalPosts: count() }).from(postsTable),
+    db.select({ totalMedia: count() }).from(mediaTable),
+    db.select({ totalUsers: count() }).from(usersTable),
+    db.select({ totalSites: count() }).from(sitesTable),
+    db.select({ totalForms: count() }).from(formsTable),
+  ]);
 
-  const totalPages = Number(pages.count);
-  const totalPosts = Number(posts.count);
-  const totalMedia = Number(media.count);
-  const totalUsers = Number(users.count);
-  const totalSites = Number(sites.count);
-  const totalForms = Number(forms.count);
-
-  const pubPagesRows = await db.execute("SELECT COUNT(*) as count FROM pages WHERE status = 'published'");
-  const draftPagesRows = await db.execute("SELECT COUNT(*) as count FROM pages WHERE status = 'draft'");
-  const pubPostsRows = await db.execute("SELECT COUNT(*) as count FROM posts WHERE status = 'published'");
+  const [pubPagesResult, draftPagesResult, pubPostsResult] = await Promise.all([
+    db.select({ c: count() }).from(pagesTable).where(eq(pagesTable.status, "published")),
+    db.select({ c: count() }).from(pagesTable).where(eq(pagesTable.status, "draft")),
+    db.select({ c: count() }).from(postsTable).where(eq(postsTable.status, "published")),
+  ]);
 
   res.json({
-    totalPages,
-    publishedPages: Number((pubPagesRows.rows[0] as any)?.count ?? 0),
-    draftPages: Number((draftPagesRows.rows[0] as any)?.count ?? 0),
-    totalPosts,
-    publishedPosts: Number((pubPostsRows.rows[0] as any)?.count ?? 0),
-    totalMedia,
-    totalUsers,
-    totalSites,
-    totalForms,
-    pageViews: Math.floor(Math.random() * 50000) + 10000,
-    avgLoadTime: parseFloat((Math.random() * 0.8 + 0.4).toFixed(2)),
+    totalPages: Number(totalPages),
+    publishedPages: Number(pubPagesResult[0].c),
+    draftPages: Number(draftPagesResult[0].c),
+    totalPosts: Number(totalPosts),
+    publishedPosts: Number(pubPostsResult[0].c),
+    totalMedia: Number(totalMedia),
+    totalUsers: Number(totalUsers),
+    totalSites: Number(totalSites),
+    totalForms: Number(totalForms),
+    pageViews: 34820,
+    avgLoadTime: 0.62,
   });
 });
 
-router.get("/activity", async (req, res) => {
+router.get("/activity", async (_req, res) => {
   const activities = await db
     .select()
     .from(activityTable)
@@ -71,14 +67,15 @@ router.get("/traffic", async (_req, res) => {
   const days = 30;
   const points = [];
   const now = new Date();
+  const seed = [820, 950, 710, 1100, 1340, 880, 670, 1200, 1450, 990, 1120, 860, 730, 1380, 1560, 1020, 890, 1240, 1670, 1410, 980, 840, 1190, 1520, 1300, 1080, 920, 1760, 1850, 2010];
   for (let i = days - 1; i >= 0; i--) {
     const d = new Date(now);
     d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().split("T")[0];
+    const views = seed[days - 1 - i] ?? 1000;
     points.push({
-      date: dateStr,
-      views: Math.floor(Math.random() * 2000) + 500,
-      visitors: Math.floor(Math.random() * 1200) + 300,
+      date: d.toISOString().split("T")[0],
+      views,
+      visitors: Math.floor(views * 0.65),
     });
   }
   res.json(points);
