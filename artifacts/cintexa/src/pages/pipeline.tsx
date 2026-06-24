@@ -1,9 +1,8 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useMemo } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   DndContext,
   DragEndEvent,
-  DragOverEvent,
   DragStartEvent,
   DragOverlay,
   PointerSensor,
@@ -18,6 +17,7 @@ import {
   startOfWeek,
   endOfWeek,
   addWeeks,
+  addMonths,
   format,
   parseISO,
   isBefore,
@@ -29,6 +29,13 @@ import {
 import { Button } from "@/components/ui/button";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import {
@@ -44,6 +51,8 @@ import {
   Clock,
   Check,
   X,
+  Repeat,
+  Copy,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -98,6 +107,27 @@ async function unscheduleItem(
   }
 }
 
+async function createRecurringSchedule(
+  type: "post" | "page",
+  id: number,
+  scheduledDates: string[]
+): Promise<{ created: number; ids: number[] }> {
+  const endpoint =
+    type === "page" ? `/api/pages/${id}/recurring` : `/api/posts/${id}/recurring`;
+  const res = await fetch(endpoint, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scheduledDates }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(
+      (err as { error?: string }).error || "Failed to create recurring schedule"
+    );
+  }
+  return res.json();
+}
+
 // ── Week utilities ─────────────────────────────────────────────────────────────
 
 function getWeekKey(date: Date): string {
@@ -119,6 +149,26 @@ function weekLabel(weekStart: Date, today: Date): string {
 function weekDateRange(weekStart: Date): string {
   const end = endOfWeek(weekStart, { weekStartsOn: 1 });
   return `${format(weekStart, "MMM d")} – ${format(end, "MMM d")}`;
+}
+
+// ── Recurring helpers ──────────────────────────────────────────────────────────
+
+type Cadence = "weekly" | "biweekly" | "monthly";
+
+function computeRecurringDates(
+  cadence: Cadence,
+  startDate: Date,
+  count: number
+): Date[] {
+  const dates: Date[] = [];
+  let current = startDate;
+  for (let i = 0; i < count; i++) {
+    dates.push(new Date(current));
+    if (cadence === "weekly") current = addWeeks(current, 1);
+    else if (cadence === "biweekly") current = addWeeks(current, 2);
+    else current = addMonths(current, 1);
+  }
+  return dates;
 }
 
 // ── Quick Schedule Picker ──────────────────────────────────────────────────────
@@ -193,7 +243,6 @@ function QuickSchedulePicker({
           className="[--cell-size:1.9rem]"
         />
 
-        {/* Time row */}
         <div className="flex items-center gap-2 px-3 py-2.5 border-t border-border/60 bg-muted/30">
           <Clock className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
           <div className="flex items-center gap-1">
@@ -241,6 +290,242 @@ function QuickSchedulePicker({
   );
 }
 
+// ── Recurring Schedule Dialog ──────────────────────────────────────────────────
+
+function RecurringScheduleDialog({
+  item,
+  open,
+  onOpenChange,
+  onCreated,
+}: {
+  item: PipelineItem;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  onCreated: (count: number) => void;
+}) {
+  const { toast } = useToast();
+  const [cadence, setCadence] = useState<Cadence>("weekly");
+  const [startDay, setStartDay] = useState<Date | undefined>(
+    addDays(new Date(), 7)
+  );
+  const [hour, setHour] = useState("09");
+  const [minute, setMinute] = useState("00");
+  const [count, setCount] = useState(4);
+  const [saving, setSaving] = useState(false);
+
+  const previewDates = useMemo(() => {
+    if (!startDay) return [];
+    const base = set(startDay, {
+      hours: parseInt(hour, 10) || 0,
+      minutes: parseInt(minute, 10) || 0,
+      seconds: 0,
+      milliseconds: 0,
+    });
+    return computeRecurringDates(cadence, base, count);
+  }, [cadence, startDay, hour, minute, count]);
+
+  async function handleConfirm() {
+    if (previewDates.length === 0) return;
+    setSaving(true);
+    try {
+      const result = await createRecurringSchedule(
+        item.type,
+        item.entityId,
+        previewDates.map((d) => d.toISOString())
+      );
+      toast({
+        title: "Recurring schedule created",
+        description: `${result.created} ${item.type} ${result.created === 1 ? "copy" : "copies"} added to the pipeline.`,
+      });
+      onCreated(result.created);
+      onOpenChange(false);
+    } catch (err: unknown) {
+      toast({
+        title: "Failed to create recurring schedule",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const cadenceLabels: Record<Cadence, string> = {
+    weekly: "Weekly",
+    biweekly: "Bi-weekly",
+    monthly: "Monthly",
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <Repeat className="h-4 w-4 text-primary" />
+            Recurring Schedule
+          </DialogTitle>
+          <div className="flex items-center gap-1.5 mt-0.5">
+            {item.type === "post" ? (
+              <PenTool className="h-3 w-3 text-amber-400 flex-shrink-0" />
+            ) : (
+              <FileText className="h-3 w-3 text-indigo-400 flex-shrink-0" />
+            )}
+            <p className="text-xs text-muted-foreground truncate">{item.title}</p>
+          </div>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          {/* Cadence picker */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Cadence
+            </p>
+            <div className="flex gap-1.5">
+              {(["weekly", "biweekly", "monthly"] as Cadence[]).map((c) => (
+                <button
+                  key={c}
+                  onClick={() => setCadence(c)}
+                  className={`flex-1 text-xs rounded-md border px-2 py-1.5 font-medium transition-colors ${
+                    cadence === c
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "border-border/60 text-muted-foreground hover:border-primary/40 hover:text-foreground"
+                  }`}
+                >
+                  {cadenceLabels[c]}
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Start date + time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Start Date
+              </p>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="w-full flex items-center gap-1.5 text-xs border border-border/60 rounded-md px-2 py-1.5 hover:border-primary/40 transition-colors text-left">
+                    <CalendarIcon className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                    <span className="truncate">
+                      {startDay ? format(startDay, "MMM d, yyyy") : "Pick date"}
+                    </span>
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={startDay}
+                    onSelect={setStartDay}
+                    disabled={(d) => isBefore(d, new Date())}
+                    initialFocus
+                    className="[--cell-size:1.9rem]"
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Time
+              </p>
+              <div className="flex items-center gap-1 border border-border/60 rounded-md px-2 py-1.5">
+                <Clock className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                <input
+                  type="number"
+                  min={0}
+                  max={23}
+                  value={hour}
+                  onChange={(e) => setHour(e.target.value.padStart(2, "0"))}
+                  className="w-7 text-center text-xs bg-transparent focus:outline-none"
+                />
+                <span className="text-muted-foreground text-xs font-bold">:</span>
+                <input
+                  type="number"
+                  min={0}
+                  max={59}
+                  value={minute}
+                  onChange={(e) => setMinute(e.target.value.padStart(2, "0"))}
+                  className="w-7 text-center text-xs bg-transparent focus:outline-none"
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Occurrences slider */}
+          <div className="space-y-1.5">
+            <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+              Occurrences — <span className="text-foreground">{count}</span>
+            </p>
+            <input
+              type="range"
+              min={1}
+              max={12}
+              value={count}
+              onChange={(e) => setCount(parseInt(e.target.value))}
+              className="w-full accent-primary h-1.5"
+            />
+            <div className="flex justify-between text-[10px] text-muted-foreground/40">
+              <span>1</span>
+              <span>12</span>
+            </div>
+          </div>
+
+          {/* Preview list */}
+          {previewDates.length > 0 && (
+            <div className="space-y-1.5">
+              <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">
+                Preview — {previewDates.length}{" "}
+                {previewDates.length === 1 ? "entry" : "entries"}
+              </p>
+              <div className="rounded-md border border-border/40 bg-secondary/20 divide-y divide-border/30 max-h-36 overflow-y-auto">
+                {previewDates.map((d, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-2 px-2.5 py-1.5"
+                  >
+                    <span className="text-[10px] font-medium text-muted-foreground/40 w-4 flex-shrink-0 text-right">
+                      {i + 1}
+                    </span>
+                    <span className="text-xs text-foreground/80">
+                      {format(d, "EEE, MMM d · h:mm a")}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <DialogFooter className="gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => onOpenChange(false)}
+            disabled={saving}
+          >
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            disabled={!startDay || previewDates.length === 0 || saving}
+            onClick={handleConfirm}
+            className="gap-1.5"
+          >
+            {saving ? (
+              <RefreshCw className="h-3 w-3 animate-spin" />
+            ) : (
+              <Repeat className="h-3 w-3" />
+            )}
+            Create {previewDates.length}{" "}
+            {previewDates.length === 1 ? "entry" : "entries"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 // ── Draggable Card ─────────────────────────────────────────────────────────────
 
 function PipelineCard({
@@ -248,14 +533,17 @@ function PipelineCard({
   isDragging = false,
   onReschedule,
   onUnschedule,
+  onRecurring,
 }: {
   item: PipelineItem;
   isDragging?: boolean;
   onReschedule?: (item: PipelineItem, date: Date) => Promise<void>;
   onUnschedule?: (item: PipelineItem) => Promise<void>;
+  onRecurring?: () => void;
 }) {
   const [, setLocation] = useLocation();
   const [unscheduling, setUnscheduling] = useState(false);
+  const [recurringOpen, setRecurringOpen] = useState(false);
   const scheduled = item.scheduledAt ? parseISO(item.scheduledAt) : null;
 
   async function handleUnschedule(e: React.MouseEvent) {
@@ -270,83 +558,119 @@ function PipelineCard({
   }
 
   return (
-    <div
-      className={`group relative bg-card border rounded-lg p-3 space-y-2 transition-all cursor-grab active:cursor-grabbing ${
-        isDragging
-          ? "opacity-50 border-violet-500/50 shadow-xl shadow-violet-500/10"
-          : "border-border/50 hover:border-border shadow-sm hover:shadow-md"
-      }`}
-    >
-      {/* Header */}
-      <div className="flex items-start justify-between gap-2">
-        <div className="flex items-center gap-1.5 min-w-0">
-          <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0 group-hover:text-muted-foreground transition-colors" />
-          {item.type === "post" ? (
-            <PenTool className="h-3 w-3 text-amber-400 flex-shrink-0" />
-          ) : (
-            <FileText className="h-3 w-3 text-indigo-400 flex-shrink-0" />
-          )}
-          <span className="text-xs font-medium leading-tight truncate">
-            {item.title}
-          </span>
+    <>
+      <div
+        className={`group relative bg-card border rounded-lg p-3 space-y-2 transition-all cursor-grab active:cursor-grabbing ${
+          isDragging
+            ? "opacity-50 border-violet-500/50 shadow-xl shadow-violet-500/10"
+            : "border-border/50 hover:border-border shadow-sm hover:shadow-md"
+        }`}
+      >
+        {/* Header */}
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-1.5 min-w-0">
+            <GripVertical className="h-3.5 w-3.5 text-muted-foreground/40 flex-shrink-0 group-hover:text-muted-foreground transition-colors" />
+            {item.type === "post" ? (
+              <PenTool className="h-3 w-3 text-amber-400 flex-shrink-0" />
+            ) : (
+              <FileText className="h-3 w-3 text-indigo-400 flex-shrink-0" />
+            )}
+            <span className="text-xs font-medium leading-tight truncate">
+              {item.title}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-1 flex-shrink-0">
+            {/* Recurring copy badge */}
+            {item.sourceId !== null && (
+              <span
+                title="Recurring copy"
+                className="flex items-center gap-0.5 text-[9px] font-semibold px-1 py-0.5 rounded-full bg-violet-500/10 text-violet-400"
+              >
+                <Copy className="h-2.5 w-2.5" />
+              </span>
+            )}
+
+            <span
+              className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+                item.status === "published"
+                  ? "bg-green-500/15 text-green-400"
+                  : item.status === "scheduled"
+                  ? "bg-violet-500/15 text-violet-400"
+                  : "bg-yellow-500/15 text-yellow-400"
+              }`}
+            >
+              {item.status}
+            </span>
+
+            {!isDragging && onUnschedule && item.status !== "published" && (
+              <button
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={handleUnschedule}
+                disabled={unscheduling}
+                title="Unschedule — move back to draft"
+                className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-4 w-4 rounded text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all"
+              >
+                {unscheduling ? (
+                  <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+                ) : (
+                  <X className="h-2.5 w-2.5" />
+                )}
+              </button>
+            )}
+          </div>
         </div>
 
-        <div className="flex items-center gap-1 flex-shrink-0">
-          <span
-            className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
-              item.status === "published"
-                ? "bg-green-500/15 text-green-400"
-                : item.status === "scheduled"
-                ? "bg-violet-500/15 text-violet-400"
-                : "bg-yellow-500/15 text-yellow-400"
-            }`}
-          >
-            {item.status}
+        {/* Date/time row with Quick Schedule + Recurring triggers */}
+        <div className="flex items-center gap-1 pl-5">
+          <Clock className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
+          <span className="text-[10px] text-muted-foreground flex-1 truncate">
+            {scheduled
+              ? format(scheduled, "EEE, MMM d · h:mm a")
+              : "Not scheduled"}
           </span>
-
-          {/* Unschedule button — only shown on hover, hidden while dragging */}
-          {!isDragging && onUnschedule && item.status !== "published" && (
+          {!isDragging && onReschedule && (
+            <QuickSchedulePicker item={item} onReschedule={onReschedule} />
+          )}
+          {!isDragging && onRecurring && (
             <button
               onPointerDown={(e) => e.stopPropagation()}
-              onClick={handleUnschedule}
-              disabled={unscheduling}
-              title="Unschedule — move back to draft"
-              className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-4 w-4 rounded text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all"
+              onClick={(e) => {
+                e.stopPropagation();
+                setRecurringOpen(true);
+              }}
+              title="Set recurring schedule"
+              className="flex items-center justify-center h-5 w-5 rounded hover:bg-violet-500/15 text-muted-foreground hover:text-violet-400 transition-colors flex-shrink-0"
             >
-              {unscheduling ? (
-                <RefreshCw className="h-2.5 w-2.5 animate-spin" />
-              ) : (
-                <X className="h-2.5 w-2.5" />
-              )}
+              <Repeat className="h-3 w-3" />
             </button>
           )}
         </div>
+
+        {/* Slug */}
+        <p className="text-[10px] text-muted-foreground/50 font-mono pl-5 truncate">
+          /{item.slug}
+        </p>
+
+        {/* Open editor on click (not drag) */}
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={() => setLocation(`/${item.type}s/${item.entityId}/edit`)}
+          className="absolute inset-0 rounded-lg opacity-0"
+          aria-label="Open editor"
+        />
       </div>
 
-      {/* Date/time row with Quick Schedule trigger */}
-      <div className="flex items-center gap-1 pl-5">
-        <Clock className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
-        <span className="text-[10px] text-muted-foreground flex-1 truncate">
-          {scheduled ? format(scheduled, "EEE, MMM d · h:mm a") : "Not scheduled"}
-        </span>
-        {!isDragging && onReschedule && (
-          <QuickSchedulePicker item={item} onReschedule={onReschedule} />
-        )}
-      </div>
-
-      {/* Slug */}
-      <p className="text-[10px] text-muted-foreground/50 font-mono pl-5 truncate">
-        /{item.slug}
-      </p>
-
-      {/* Open editor on click (not drag) */}
-      <button
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={() => setLocation(`/${item.type}s/${item.entityId}/edit`)}
-        className="absolute inset-0 rounded-lg opacity-0"
-        aria-label="Open editor"
-      />
-    </div>
+      {/* Recurring dialog (rendered outside the draggable so it isn't clipped) */}
+      {onRecurring && (
+        <RecurringScheduleDialog
+          item={item}
+          open={recurringOpen}
+          onOpenChange={setRecurringOpen}
+          onCreated={() => onRecurring()}
+        />
+      )}
+    </>
   );
 }
 
@@ -360,6 +684,7 @@ function WeekColumn({
   isOver,
   onReschedule,
   onUnschedule,
+  onRecurring,
 }: {
   weekKey: string;
   weekStart: Date;
@@ -368,6 +693,7 @@ function WeekColumn({
   isOver: boolean;
   onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
   onUnschedule: (item: PipelineItem) => Promise<void>;
+  onRecurring: () => void;
 }) {
   const label = weekLabel(weekStart, today);
   const range = weekDateRange(weekStart);
@@ -423,16 +749,20 @@ function WeekColumn({
       <div className="flex-1 p-2 space-y-2">
         <AnimatePresence>
           {items.map((item) => (
-            <DraggableCard key={item.id} item={item} onReschedule={onReschedule} onUnschedule={onUnschedule} />
+            <DraggableCard
+              key={item.id}
+              item={item}
+              onReschedule={onReschedule}
+              onUnschedule={onUnschedule}
+              onRecurring={onRecurring}
+            />
           ))}
         </AnimatePresence>
 
         {items.length === 0 && (
           <div
             className={`h-full flex flex-col items-center justify-center py-8 text-center transition-all ${
-              isOver
-                ? "text-violet-400"
-                : "text-muted-foreground/30"
+              isOver ? "text-violet-400" : "text-muted-foreground/30"
             }`}
           >
             <Inbox className="h-5 w-5 mb-1.5" />
@@ -450,10 +780,12 @@ function DraggableCard({
   item,
   onReschedule,
   onUnschedule,
+  onRecurring,
 }: {
   item: PipelineItem;
   onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
   onUnschedule: (item: PipelineItem) => Promise<void>;
+  onRecurring: () => void;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: item.id, data: item });
@@ -475,7 +807,13 @@ function DraggableCard({
       {...attributes}
       {...listeners}
     >
-      <PipelineCard item={item} isDragging={isDragging} onReschedule={onReschedule} onUnschedule={onUnschedule} />
+      <PipelineCard
+        item={item}
+        isDragging={isDragging}
+        onReschedule={onReschedule}
+        onUnschedule={onUnschedule}
+        onRecurring={onRecurring}
+      />
     </motion.div>
   );
 }
@@ -489,6 +827,7 @@ function DroppableWeekColumn({
   today,
   onReschedule,
   onUnschedule,
+  onRecurring,
 }: {
   weekKey: string;
   weekStart: Date;
@@ -496,6 +835,7 @@ function DroppableWeekColumn({
   today: Date;
   onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
   onUnschedule: (item: PipelineItem) => Promise<void>;
+  onRecurring: () => void;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: weekKey });
 
@@ -509,6 +849,7 @@ function DroppableWeekColumn({
         isOver={isOver}
         onReschedule={onReschedule}
         onUnschedule={onUnschedule}
+        onRecurring={onRecurring}
       />
     </div>
   );
@@ -521,55 +862,49 @@ export default function ContentPipeline() {
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // How many weeks forward to show
   const [weekOffset, setWeekOffset] = useState(0);
   const WEEKS_VISIBLE = 5;
 
-  const { data: items = [], isLoading, isFetching, refetch } = useQuery<PipelineItem[]>({
+  const {
+    data: items = [],
+    isLoading,
+    isFetching,
+    refetch,
+  } = useQuery<PipelineItem[]>({
     queryKey: ["/api/pipeline"],
     queryFn: fetchPipeline,
     refetchInterval: 60_000,
   });
 
-  // Active dragged item for overlay
   const [activeItem, setActiveItem] = useState<PipelineItem | null>(null);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } })
   );
 
-  // Build week columns
   const thisWeekStart = startOfWeek(today, { weekStartsOn: 1 });
-
   const weeks: { key: string; start: Date }[] = [];
-
-  // Always show 1 past week + WEEKS_VISIBLE future weeks, offset by weekOffset
   for (let i = -1; i < WEEKS_VISIBLE; i++) {
     const start = addWeeks(thisWeekStart, i + weekOffset);
     weeks.push({ key: getWeekKey(start), start });
   }
 
-  // Group items into columns
   const grouped = useCallback((): Record<string, PipelineItem[]> => {
     const map: Record<string, PipelineItem[]> = {};
     for (const w of weeks) map[w.key] = [];
-
     for (const item of items) {
       if (!item.scheduledAt) continue;
       const d = parseISO(item.scheduledAt);
       const key = getWeekKey(d);
-      if (map[key]) {
-        map[key].push(item);
-      }
+      if (map[key]) map[key].push(item);
     }
     return map;
   }, [items, weeks])();
 
-  // Items outside visible window
   const visibleIds = new Set(Object.values(grouped).flat().map((i) => i.id));
   const outsideItems = items.filter((i) => !visibleIds.has(i.id));
 
-  // ── Drag handlers ────────────────────────────────────────────────────────────
+  // ── Drag handlers ─────────────────────────────────────────────────────────
 
   function handleDragStart(event: DragStartEvent) {
     setActiveItem(event.active.data.current as PipelineItem);
@@ -583,39 +918,34 @@ export default function ContentPipeline() {
     const draggedItem = active.data.current as PipelineItem;
     const targetWeekKey = over.id as string;
 
-    // Don't do anything if dropped in same week
     if (draggedItem.scheduledAt) {
       const currentKey = getWeekKey(parseISO(draggedItem.scheduledAt));
       if (currentKey === targetWeekKey) return;
     }
 
-    // Compute new scheduledAt: same day-of-week + same time, in target week
     const targetWeekStart = weeks.find((w) => w.key === targetWeekKey)?.start;
     if (!targetWeekStart) return;
 
     let newDate: Date;
     if (draggedItem.scheduledAt) {
       const orig = parseISO(draggedItem.scheduledAt);
-      const dayOfWeek = getDay(orig); // 0=Sun … 6=Sat
-      // Set day within target week
+      const dayOfWeek = getDay(orig);
       newDate = setDay(targetWeekStart, dayOfWeek, { weekStartsOn: 1 });
-      // Copy hours/minutes
       newDate.setHours(orig.getHours(), orig.getMinutes(), 0, 0);
-      // If that lands before today, push to next available slot
       if (isBefore(newDate, today)) {
         newDate = addDays(today, 1);
         newDate.setHours(9, 0, 0, 0);
       }
     } else {
-      // No date: put at Wednesday 9am of target week
       newDate = addDays(targetWeekStart, 2);
       newDate.setHours(9, 0, 0, 0);
     }
 
-    // Optimistic update
     queryClient.setQueryData<PipelineItem[]>(["/api/pipeline"], (prev = []) =>
       prev.map((i) =>
-        i.id === draggedItem.id ? { ...i, scheduledAt: newDate.toISOString(), status: "scheduled" } : i
+        i.id === draggedItem.id
+          ? { ...i, scheduledAt: newDate.toISOString(), status: "scheduled" }
+          : i
       )
     );
 
@@ -635,10 +965,9 @@ export default function ContentPipeline() {
     }
   }
 
-  // ── Unschedule handler ───────────────────────────────────────────────────────
+  // ── Unschedule handler ────────────────────────────────────────────────────
 
   async function handleUnschedule(item: PipelineItem) {
-    // Optimistically remove from the board
     queryClient.setQueryData<PipelineItem[]>(["/api/pipeline"], (prev = []) =>
       prev.filter((i) => i.id !== item.id)
     );
@@ -658,13 +987,14 @@ export default function ContentPipeline() {
     }
   }
 
-  // ── Quick Schedule handler (from picker) ────────────────────────────────────
+  // ── Quick Schedule handler ────────────────────────────────────────────────
 
   async function handleQuickReschedule(item: PipelineItem, date: Date) {
-    // Optimistic update
     queryClient.setQueryData<PipelineItem[]>(["/api/pipeline"], (prev = []) =>
       prev.map((i) =>
-        i.id === item.id ? { ...i, scheduledAt: date.toISOString(), status: "scheduled" } : i
+        i.id === item.id
+          ? { ...i, scheduledAt: date.toISOString(), status: "scheduled" }
+          : i
       )
     );
     try {
@@ -683,7 +1013,13 @@ export default function ContentPipeline() {
     }
   }
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Recurring handler ─────────────────────────────────────────────────────
+
+  function handleRecurring() {
+    refetch();
+  }
+
+  // ── Render ────────────────────────────────────────────────────────────────
 
   return (
     <div className="space-y-6">
@@ -692,7 +1028,8 @@ export default function ContentPipeline() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Content Pipeline</h2>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Drag cards between weeks to reschedule · {items.length} scheduled item{items.length !== 1 ? "s" : ""}
+            Drag cards between weeks to reschedule · {items.length} scheduled
+            item{items.length !== 1 ? "s" : ""}
           </p>
         </div>
 
@@ -727,7 +1064,9 @@ export default function ContentPipeline() {
             className="h-8 w-8"
             onClick={() => refetch()}
           >
-            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            <RefreshCw
+              className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`}
+            />
           </Button>
         </div>
       </div>
@@ -746,8 +1085,11 @@ export default function ContentPipeline() {
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-green-500/60" /> Published
         </span>
-        <span className="ml-auto italic opacity-70">
-          Drag a card to a different week to reschedule it
+        <span className="flex items-center gap-1.5">
+          <Copy className="h-3 w-3 text-violet-400" /> Recurring copy
+        </span>
+        <span className="ml-auto flex items-center gap-1.5 italic opacity-70">
+          <Repeat className="h-3 w-3" /> Click the repeat icon on any card to set a cadence
         </span>
       </div>
 
@@ -761,7 +1103,9 @@ export default function ContentPipeline() {
           <CalendarClock className="h-12 w-12 mb-3 opacity-20" />
           <p className="text-sm font-medium">No scheduled content yet</p>
           <p className="text-xs mt-1 opacity-60">
-            Use <strong>Duplicate &amp; schedule</strong> or <strong>Recurring schedule</strong> from Posts or Pages to add items here.
+            Schedule a post or page, then use the{" "}
+            <Repeat className="inline h-3 w-3" /> icon to set a recurring
+            cadence.
           </p>
         </div>
       ) : (
@@ -771,7 +1115,6 @@ export default function ContentPipeline() {
           onDragStart={handleDragStart}
           onDragEnd={handleDragEnd}
         >
-          {/* Scrollable board */}
           <div className="overflow-x-auto pb-4 -mx-2 px-2">
             <div className="flex gap-3 min-w-max">
               {weeks.map(({ key, start }) => (
@@ -783,12 +1126,12 @@ export default function ContentPipeline() {
                   today={today}
                   onReschedule={handleQuickReschedule}
                   onUnschedule={handleUnschedule}
+                  onRecurring={handleRecurring}
                 />
               ))}
             </div>
           </div>
 
-          {/* Drag overlay */}
           <DragOverlay dropAnimation={{ duration: 150, easing: "ease" }}>
             {activeItem && (
               <div className="rotate-1 scale-105">
@@ -816,11 +1159,16 @@ export default function ContentPipeline() {
                 ) : (
                   <FileText className="h-2.5 w-2.5 text-indigo-400" />
                 )}
-                <span className="text-muted-foreground truncate max-w-[160px]">{item.title}</span>
+                <span className="text-muted-foreground truncate max-w-[160px]">
+                  {item.title}
+                </span>
                 {item.scheduledAt && (
                   <span className="text-muted-foreground/50">
                     · {format(parseISO(item.scheduledAt), "MMM d")}
                   </span>
+                )}
+                {item.sourceId !== null && (
+                  <Copy className="h-2.5 w-2.5 text-violet-400" />
                 )}
               </div>
             ))}
