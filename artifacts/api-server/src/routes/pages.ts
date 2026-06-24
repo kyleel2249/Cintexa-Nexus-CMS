@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { db, pagesTable, pageRevisionsTable, activityTable } from "@workspace/db";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, gt, isNotNull } from "drizzle-orm";
 
 const router = Router();
 
@@ -260,6 +260,65 @@ router.post("/:id/recurring", async (req, res) => {
   });
 
   res.status(201).json({ created: created.length, ids: created.map((c) => c.id) });
+});
+
+// ── Pause series ──────────────────────────────────────────────────────────────
+router.post("/:sourceId/series/pause", async (req, res) => {
+  const sourceId = parseInt(req.params.sourceId);
+  if (isNaN(sourceId)) return res.status(400).json({ error: "Invalid sourceId" });
+  const now = new Date();
+  const updated = await db
+    .update(pagesTable)
+    .set({ status: "draft", updatedAt: now })
+    .where(
+      and(
+        eq(pagesTable.sourceId, sourceId),
+        eq(pagesTable.status, "scheduled"),
+        gt(pagesTable.scheduledAt!, now)
+      )
+    )
+    .returning({ id: pagesTable.id });
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+  if (updated.length > 0) {
+    await db.insert(activityTable).values({
+      type: "update",
+      entityType: "page",
+      entityTitle: `Series #${sourceId}`,
+      userName: savedBy,
+      action: `paused recurring series — ${updated.length} entr${updated.length === 1 ? "y" : "ies"} suspended`,
+    });
+  }
+  res.json({ paused: updated.length });
+});
+
+// ── Resume series ─────────────────────────────────────────────────────────────
+router.post("/:sourceId/series/resume", async (req, res) => {
+  const sourceId = parseInt(req.params.sourceId);
+  if (isNaN(sourceId)) return res.status(400).json({ error: "Invalid sourceId" });
+  const now = new Date();
+  const updated = await db
+    .update(pagesTable)
+    .set({ status: "scheduled", updatedAt: now })
+    .where(
+      and(
+        eq(pagesTable.sourceId, sourceId),
+        eq(pagesTable.status, "draft"),
+        isNotNull(pagesTable.scheduledAt),
+        gt(pagesTable.scheduledAt!, now)
+      )
+    )
+    .returning({ id: pagesTable.id });
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+  if (updated.length > 0) {
+    await db.insert(activityTable).values({
+      type: "update",
+      entityType: "page",
+      entityTitle: `Series #${sourceId}`,
+      userName: savedBy,
+      action: `resumed recurring series — ${updated.length} entr${updated.length === 1 ? "y" : "ies"} reactivated`,
+    });
+  }
+  res.json({ resumed: updated.length });
 });
 
 // ── Schedule history ──────────────────────────────────────────────────────────

@@ -53,6 +53,8 @@ import {
   X,
   Repeat,
   Copy,
+  Pause,
+  Play,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -105,6 +107,38 @@ async function unscheduleItem(
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || "Failed to unschedule");
   }
+}
+
+async function pauseSeries(
+  type: "post" | "page",
+  sourceId: number
+): Promise<{ paused: number }> {
+  const endpoint =
+    type === "page"
+      ? `/api/pages/${sourceId}/series/pause`
+      : `/api/posts/${sourceId}/series/pause`;
+  const res = await fetch(endpoint, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || "Failed to pause series");
+  }
+  return res.json();
+}
+
+async function resumeSeries(
+  type: "post" | "page",
+  sourceId: number
+): Promise<{ resumed: number }> {
+  const endpoint =
+    type === "page"
+      ? `/api/pages/${sourceId}/series/resume`
+      : `/api/posts/${sourceId}/series/resume`;
+  const res = await fetch(endpoint, { method: "POST" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || "Failed to resume series");
+  }
+  return res.json();
 }
 
 async function createRecurringSchedule(
