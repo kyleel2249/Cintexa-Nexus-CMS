@@ -22,9 +22,9 @@ const BUILT_IN_PLUGINS = [
   {
     slug: "subscriber-alerts",
     name: "Subscriber Email Alerts",
-    description: "Sends an email notification to all active subscribers whenever a post is published.",
+    description: "Sends an email notification to all active subscribers whenever a post is published. Enabled by default — configure SMTP credentials to activate delivery.",
     category: "email",
-    enabled: false,
+    enabled: true,
   },
   {
     slug: "social-broadcast",
