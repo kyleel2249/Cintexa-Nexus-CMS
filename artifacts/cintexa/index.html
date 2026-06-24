@@ -1,24 +1,148 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" class="dark">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1" />
-    <title>CINTEXA CMS</title>
-    <meta name="description" content="CINTEXA CMS — built on Replit. Update this description to reflect the app." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5" />
+
+    <!-- Primary Meta -->
+    <title>CINTEXA CMS — AI-Powered Enterprise Content Management</title>
+    <meta name="description" content="CINTEXA is an AI-powered enterprise CMS with a visual drag-and-drop page builder, multi-site management, and built-in AI content generation." />
+    <meta name="keywords" content="CMS, content management, page builder, AI content, enterprise CMS, multi-site" />
+    <meta name="author" content="CINTEXA" />
     <meta name="robots" content="index, follow" />
-    <meta property="og:title" content="CINTEXA CMS" />
-    <meta property="og:description" content="CINTEXA CMS — built on Replit. Update this description to reflect the app." />
+    <meta name="theme-color" content="#0d1120" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- Apple / PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CINTEXA" />
+
+    <!-- Open Graph -->
     <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CINTEXA CMS" />
+    <meta property="og:title" content="CINTEXA CMS — AI-Powered Enterprise Content Management" />
+    <meta property="og:description" content="CINTEXA is an AI-powered enterprise CMS with a visual drag-and-drop page builder, multi-site management, and built-in AI content generation." />
+    <meta property="og:image" content="/opengraph.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="CINTEXA CMS dashboard preview" />
+
+    <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="CINTEXA CMS" />
-    <meta name="twitter:description" content="CINTEXA CMS — built on Replit. Update this description to reflect the app." />
+    <meta name="twitter:title" content="CINTEXA CMS — AI-Powered Enterprise Content Management" />
+    <meta name="twitter:description" content="CINTEXA is an AI-powered enterprise CMS with a visual drag-and-drop page builder, multi-site management, and built-in AI content generation." />
+    <meta name="twitter:image" content="/opengraph.jpg" />
+
+    <!-- Icons -->
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- DNS Prefetch & Preconnect -->
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Font: load non-blocking via media trick, then swap to all -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      />
+    </noscript>
+
+    <!-- Inline critical styles: prevent flash of unstyled/white content -->
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: #0d1120;
+        color: #f0f4ff;
+        font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        min-height: 100svh;
+      }
+      #root { min-height: 100svh; }
+      #cintexa-loader {
+        position: fixed;
+        inset: 0;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1.25rem;
+        background-color: #0d1120;
+        z-index: 9999;
+        transition: opacity 0.3s ease;
+      }
+      #cintexa-loader.fade-out { opacity: 0; pointer-events: none; }
+      #cintexa-loader svg { width: 48px; height: 48px; }
+      #cintexa-loader .spinner {
+        width: 28px;
+        height: 28px;
+        border: 3px solid rgba(99, 102, 241, 0.25);
+        border-top-color: #6366f1;
+        border-radius: 50%;
+        animation: spin 0.7s linear infinite;
+      }
+      @keyframes spin { to { transform: rotate(360deg); } }
+    </style>
   </head>
   <body>
+    <!-- Splash loader shown before React hydrates -->
+    <div id="cintexa-loader" aria-label="Loading CINTEXA CMS" role="status">
+      <svg viewBox="0 0 48 48" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="48" height="48" rx="12" fill="#6366f1"/>
+        <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle"
+              font-family="Inter, system-ui, sans-serif" font-size="22" font-weight="700" fill="white">C</text>
+      </svg>
+      <div class="spinner"></div>
+    </div>
+
     <div id="root"></div>
+
+    <noscript>
+      <style>
+        #cintexa-loader { display: none; }
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; padding: 2rem; }
+      </style>
+      <p style="color:#f0f4ff;font-size:1.125rem;">
+        CINTEXA CMS requires JavaScript to run. Please enable JavaScript in your browser.
+      </p>
+    </noscript>
+
     <script type="module" src="/src/main.tsx"></script>
+
+    <!-- Remove loader once React has mounted -->
+    <script>
+      (function () {
+        var loader = document.getElementById('cintexa-loader');
+        if (!loader) return;
+        var observer = new MutationObserver(function () {
+          if (document.getElementById('root').childElementCount > 0) {
+            loader.classList.add('fade-out');
+            setTimeout(function () { loader.remove(); }, 300);
+            observer.disconnect();
+          }
+        });
+        observer.observe(document.getElementById('root'), { childList: true });
+        // Safety timeout: remove loader after 5s regardless
+        setTimeout(function () {
+          if (loader.parentNode) {
+            loader.classList.add('fade-out');
+            setTimeout(function () { loader.remove(); }, 300);
+          }
+        }, 5000);
+      })();
+    </script>
   </body>
 </html>
