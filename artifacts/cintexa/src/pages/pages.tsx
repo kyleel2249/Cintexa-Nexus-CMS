@@ -4,17 +4,67 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Plus, Search, FileText, MoreHorizontal, MonitorPlay } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { Plus, Search, FileText, MoreHorizontal, MonitorPlay, Clock, CalendarClock, Check, Loader2 } from "lucide-react";
 import { Link } from "wouter";
-import { format } from "date-fns";
+import { format, parseISO } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
+import { useToast } from "@/hooks/use-toast";
+
+async function reschedulePage(id: number, newDate: Date): Promise<void> {
+  const res = await fetch(`/api/pages/${id}/schedule`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scheduledAt: newDate.toISOString() }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as any).error || "Failed to reschedule");
+  }
+}
 
 export default function Pages() {
-  const { data: pages, isLoading } = useGetPages();
+  const { data: pages, isLoading, refetch } = useGetPages();
+  const { toast } = useToast();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPageId, setPreviewPageId] = useState<number | undefined>(undefined);
+
+  const [openRescheduleId, setOpenRescheduleId] = useState<number | null>(null);
+  const [rescheduleDate, setRescheduleDate] = useState<Date | undefined>(undefined);
+  const [rescheduleTime, setRescheduleTime] = useState("12:00");
+  const [reschedulingId, setReschedulingId] = useState<number | null>(null);
+
+  function openPicker(id: number, currentDate?: string | null) {
+    const base = currentDate ? parseISO(currentDate) : new Date();
+    setRescheduleDate(base);
+    setRescheduleTime(format(base, "HH:mm"));
+    setOpenRescheduleId(id);
+  }
+
+  async function confirmReschedule(pageId: number, title: string) {
+    if (!rescheduleDate) return;
+    const [hours, minutes] = rescheduleTime.split(":").map(Number);
+    const newDate = new Date(rescheduleDate);
+    newDate.setHours(hours, minutes, 0, 0);
+
+    setOpenRescheduleId(null);
+    setReschedulingId(pageId);
+    try {
+      await reschedulePage(pageId, newDate);
+      toast({
+        title: "Rescheduled",
+        description: `"${title}" scheduled for ${format(newDate, "MMM d, yyyy 'at' h:mm a")}`,
+      });
+      refetch();
+    } catch (err: any) {
+      toast({ title: err.message || "Reschedule failed", variant: "destructive" });
+    } finally {
+      setReschedulingId(null);
+    }
+  }
 
   return (
     <div className="space-y-6">
@@ -51,7 +101,7 @@ export default function Pages() {
               <TableHead>Status</TableHead>
               <TableHead>Template</TableHead>
               <TableHead>Last Edited</TableHead>
-              <TableHead className="w-[80px]"></TableHead>
+              <TableHead className="w-[100px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -89,6 +139,64 @@ export default function Pages() {
                   </TableCell>
                   <TableCell>
                     <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {reschedulingId === page.id ? (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      ) : (
+                        <Popover
+                          open={openRescheduleId === page.id}
+                          onOpenChange={(open) => {
+                            if (open) openPicker(page.id, page.updatedAt);
+                            else setOpenRescheduleId(null);
+                          }}
+                        >
+                          <PopoverTrigger asChild>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-7 w-7"
+                              title="Reschedule"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <CalendarClock className="h-3.5 w-3.5" />
+                            </Button>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="w-auto p-0"
+                            align="end"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div className="p-3 border-b border-border">
+                              <p className="text-xs font-semibold text-foreground">Reschedule Page</p>
+                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[200px]">{page.title}</p>
+                            </div>
+                            <Calendar
+                              mode="single"
+                              selected={rescheduleDate}
+                              onSelect={setRescheduleDate}
+                              initialFocus
+                            />
+                            <div className="p-3 border-t border-border space-y-3">
+                              <div className="flex items-center gap-2">
+                                <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                <Input
+                                  type="time"
+                                  value={rescheduleTime}
+                                  onChange={(e) => setRescheduleTime(e.target.value)}
+                                  className="h-7 text-xs"
+                                />
+                              </div>
+                              <Button
+                                size="sm"
+                                className="w-full h-7 text-xs gap-1.5"
+                                disabled={!rescheduleDate}
+                                onClick={() => confirmReschedule(page.id, page.title)}
+                              >
+                                <Check className="h-3.5 w-3.5" /> Confirm Reschedule
+                              </Button>
+                            </div>
+                          </PopoverContent>
+                        </Popover>
+                      )}
                       <Button
                         variant="ghost"
                         size="icon"
