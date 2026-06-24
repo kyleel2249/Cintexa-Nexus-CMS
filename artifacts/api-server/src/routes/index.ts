@@ -18,6 +18,7 @@ import pluginsRouter from "./plugins";
 import subscribersRouter from "./subscribers";
 import postImagesRouter from "./post-images";
 import broadcastRouter from "./broadcast";
+import postCommentsRouter from "./post-comments";
 
 const router: IRouter = Router();
 
@@ -29,6 +30,7 @@ router.use("/pages", pagesRouter);
 router.use("/posts", postsRouter);
 router.use("/posts/:id/images", postImagesRouter);
 router.use("/posts/:id/broadcasts", broadcastRouter);
+router.use("/posts/:id/comments", postCommentsRouter);
 router.use("/media", mediaRouter);
 router.use("/users", usersRouter);
 router.use(taxonomyRouter);

@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { logger } from "./logger";
 import { generateImagesForPost } from "../routes/post-images";
 import { broadcastPost } from "../routes/broadcast";
+import { generateCommentsForPost } from "../routes/post-comments";
 
 async function isPluginEnabled(slug: string): Promise<boolean> {
   try {
@@ -116,6 +117,7 @@ export async function runPublishPipeline(postId: number): Promise<void> {
       }
     })(),
     sendSubscriberEmails(post),
+    generateCommentsForPost(postId),
   ]);
 
   logger.info({ postId }, "Publish pipeline complete");

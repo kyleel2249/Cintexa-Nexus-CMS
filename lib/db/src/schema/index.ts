@@ -12,3 +12,4 @@ export * from "./subscribers";
 export * from "./plugins";
 export * from "./post-images";
 export * from "./social-broadcasts";
+export * from "./post-comments";
