@@ -223,6 +223,54 @@
   }
 }
 
+/* ── Accent colour themes ────────────────────────────────────────────────── */
+/* Applied via data-accent="<name>" on <html>; overrides only primary tokens. */
+
+[data-accent="violet"] {
+  --primary: 265 89% 66%;
+  --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 265 89% 66%;
+  --sidebar-ring: 265 89% 66%;
+  --ring: 265 89% 66%;
+  --chart-1: 265 89% 66%;
+}
+
+[data-accent="emerald"] {
+  --primary: 160 84% 39%;
+  --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 160 84% 39%;
+  --sidebar-ring: 160 84% 39%;
+  --ring: 160 84% 39%;
+  --chart-1: 160 84% 39%;
+}
+
+[data-accent="rose"] {
+  --primary: 347 77% 50%;
+  --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 347 77% 50%;
+  --sidebar-ring: 347 77% 50%;
+  --ring: 347 77% 50%;
+  --chart-1: 347 77% 50%;
+}
+
+[data-accent="amber"] {
+  --primary: 38 92% 50%;
+  --primary-foreground: 30 20% 10%;
+  --sidebar-primary: 38 92% 50%;
+  --sidebar-ring: 38 92% 50%;
+  --ring: 38 92% 50%;
+  --chart-1: 38 92% 50%;
+}
+
+[data-accent="cyan"] {
+  --primary: 198 89% 48%;
+  --primary-foreground: 0 0% 100%;
+  --sidebar-primary: 198 89% 48%;
+  --sidebar-ring: 198 89% 48%;
+  --ring: 198 89% 48%;
+  --chart-1: 198 89% 48%;
+}
+
 @layer utilities {
   input[type="search"]::-webkit-search-cancel-button {
     @apply hidden;

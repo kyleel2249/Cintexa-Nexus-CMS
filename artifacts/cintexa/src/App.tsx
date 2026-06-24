@@ -1,3 +1,4 @@
+import { lazy, Suspense } from "react";
 import { Switch, Route, Router as WouterRouter, Redirect, useLocation } from "wouter";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
@@ -6,29 +7,38 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 
-import Dashboard from "@/pages/dashboard";
-import Sites from "@/pages/sites";
-import Pages from "@/pages/pages";
-import PageEditor from "@/pages/pages/editor";
-import Posts from "@/pages/posts";
-import PostEditor from "@/pages/posts/editor";
-import Media from "@/pages/media";
-import Users from "@/pages/users";
-import Categories from "@/pages/categories";
-import Menus from "@/pages/menus";
-import Forms from "@/pages/forms";
-import Seo from "@/pages/seo";
-import AiStudio from "@/pages/ai";
-import Settings from "@/pages/settings";
-import ContentCalendar from "@/pages/calendar";
-import ContentPipeline from "@/pages/pipeline";
-import Plugins from "@/pages/plugins";
-import Subscribers from "@/pages/subscribers";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import NotFound from "@/pages/not-found";
 
+const Dashboard = lazy(() => import("@/pages/dashboard"));
+const Sites = lazy(() => import("@/pages/sites"));
+const Pages = lazy(() => import("@/pages/pages"));
+const PageEditor = lazy(() => import("@/pages/pages/editor"));
+const Posts = lazy(() => import("@/pages/posts"));
+const PostEditor = lazy(() => import("@/pages/posts/editor"));
+const Media = lazy(() => import("@/pages/media"));
+const Users = lazy(() => import("@/pages/users"));
+const Categories = lazy(() => import("@/pages/categories"));
+const Menus = lazy(() => import("@/pages/menus"));
+const Forms = lazy(() => import("@/pages/forms"));
+const Seo = lazy(() => import("@/pages/seo"));
+const AiStudio = lazy(() => import("@/pages/ai"));
+const Settings = lazy(() => import("@/pages/settings"));
+const ContentCalendar = lazy(() => import("@/pages/calendar"));
+const ContentPipeline = lazy(() => import("@/pages/pipeline"));
+const Plugins = lazy(() => import("@/pages/plugins"));
+const Subscribers = lazy(() => import("@/pages/subscribers"));
+
 const queryClient = new QueryClient();
+
+function PageLoader() {
+  return (
+    <div className="flex-1 flex items-center justify-center min-h-[400px]">
+      <div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" />
+    </div>
+  );
+}
 
 function ProtectedRoutes() {
   const { user, isLoading } = useAuth();
@@ -53,29 +63,31 @@ function ProtectedRoutes() {
 
   return (
     <AppLayout>
-      <Switch>
-        <Route path="/" component={Dashboard} />
-        <Route path="/sites" component={Sites} />
-        <Route path="/pages" component={Pages} />
-        <Route path="/pages/new" component={PageEditor} />
-        <Route path="/pages/:id/edit" component={PageEditor} />
-        <Route path="/posts" component={Posts} />
-        <Route path="/posts/new" component={PostEditor} />
-        <Route path="/posts/:id/edit" component={PostEditor} />
-        <Route path="/media" component={Media} />
-        <Route path="/users" component={Users} />
-        <Route path="/categories" component={Categories} />
-        <Route path="/menus" component={Menus} />
-        <Route path="/forms" component={Forms} />
-        <Route path="/calendar" component={ContentCalendar} />
-        <Route path="/pipeline" component={ContentPipeline} />
-        <Route path="/seo" component={Seo} />
-        <Route path="/ai" component={AiStudio} />
-        <Route path="/settings" component={Settings} />
-        <Route path="/plugins" component={Plugins} />
-        <Route path="/subscribers" component={Subscribers} />
-        <Route component={NotFound} />
-      </Switch>
+      <Suspense fallback={<PageLoader />}>
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/sites" component={Sites} />
+          <Route path="/pages" component={Pages} />
+          <Route path="/pages/new" component={PageEditor} />
+          <Route path="/pages/:id/edit" component={PageEditor} />
+          <Route path="/posts" component={Posts} />
+          <Route path="/posts/new" component={PostEditor} />
+          <Route path="/posts/:id/edit" component={PostEditor} />
+          <Route path="/media" component={Media} />
+          <Route path="/users" component={Users} />
+          <Route path="/categories" component={Categories} />
+          <Route path="/menus" component={Menus} />
+          <Route path="/forms" component={Forms} />
+          <Route path="/calendar" component={ContentCalendar} />
+          <Route path="/pipeline" component={ContentPipeline} />
+          <Route path="/seo" component={Seo} />
+          <Route path="/ai" component={AiStudio} />
+          <Route path="/settings" component={Settings} />
+          <Route path="/plugins" component={Plugins} />
+          <Route path="/subscribers" component={Subscribers} />
+          <Route component={NotFound} />
+        </Switch>
+      </Suspense>
     </AppLayout>
   );
 }
@@ -105,7 +117,7 @@ function Router() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <ThemeProvider defaultTheme="dark" storageKey="cintexa-theme">
+      <ThemeProvider defaultTheme="dark" defaultAccent="indigo" storageKey="cintexa-theme" accentStorageKey="cintexa-accent">
         <TooltipProvider>
           <AuthProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>

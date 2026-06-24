@@ -1,3 +1,4 @@
+import { useRef, useLayoutEffect, useCallback } from "react";
 import { Block, FeatureItem } from "./types";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -19,8 +20,24 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
   );
 }
 
+function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay: number): T {
+  const fnRef = useRef(fn);
+  useLayoutEffect(() => { fnRef.current = fn; });
+  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  return useCallback((...args: any[]) => {
+    clearTimeout(timerRef.current);
+    timerRef.current = setTimeout(() => fnRef.current(...args), delay);
+  }, [delay]) as T;
+}
+
 export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
+  const debouncedOnChange = useDebouncedCallback(onChange, 180);
+
   function update(patch: Partial<Block>) {
+    debouncedOnChange({ ...block, ...patch } as Block);
+  }
+
+  function updateImmediate(patch: Partial<Block>) {
     onChange({ ...block, ...patch } as Block);
   }
 
@@ -28,24 +45,39 @@ export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
     return (
       <div className="space-y-4 p-4">
         <Field label="Heading">
-          <Input value={block.heading} onChange={e => update({ heading: e.target.value })} />
+          <Input
+            defaultValue={block.heading}
+            key={block.id + "-heading"}
+            onChange={e => update({ heading: e.target.value })}
+          />
         </Field>
         <Field label="Subheading">
           <Textarea
-            value={block.subheading}
+            defaultValue={block.subheading}
+            key={block.id + "-subheading"}
             onChange={e => update({ subheading: e.target.value })}
             className="min-h-[80px] text-sm"
           />
         </Field>
         <Field label="CTA Button Label">
-          <Input value={block.ctaLabel} onChange={e => update({ ctaLabel: e.target.value })} />
+          <Input
+            defaultValue={block.ctaLabel}
+            key={block.id + "-ctaLabel"}
+            onChange={e => update({ ctaLabel: e.target.value })}
+          />
         </Field>
         <Field label="CTA Button URL">
-          <Input value={block.ctaUrl} onChange={e => update({ ctaUrl: e.target.value })} placeholder="https://" />
+          <Input
+            defaultValue={block.ctaUrl}
+            key={block.id + "-ctaUrl"}
+            onChange={e => update({ ctaUrl: e.target.value })}
+            placeholder="https://"
+          />
         </Field>
         <Field label="Background Image URL">
           <Input
-            value={block.backgroundImage}
+            defaultValue={block.backgroundImage}
+            key={block.id + "-bg"}
             onChange={e => update({ backgroundImage: e.target.value })}
             placeholder="https://images.unsplash.com/..."
           />
@@ -65,22 +97,30 @@ export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
   if (block.type === "feature") {
     function updateFeature(i: number, patch: Partial<FeatureItem>) {
       const features = block.features.map((f, idx) => idx === i ? { ...f, ...patch } : f);
-      onChange({ ...block, features });
+      debouncedOnChange({ ...block, features });
     }
     function addFeature() {
-      onChange({ ...block, features: [...block.features, { icon: "✨", title: "New Feature", description: "Describe this feature." }] });
+      updateImmediate({ features: [...block.features, { icon: "✨", title: "New Feature", description: "Describe this feature." }] } as any);
     }
     function removeFeature(i: number) {
-      onChange({ ...block, features: block.features.filter((_, idx) => idx !== i) });
+      updateImmediate({ features: block.features.filter((_, idx) => idx !== i) } as any);
     }
 
     return (
       <div className="space-y-4 p-4">
         <Field label="Section Heading">
-          <Input value={block.heading} onChange={e => update({ heading: e.target.value })} />
+          <Input
+            defaultValue={block.heading}
+            key={block.id + "-heading"}
+            onChange={e => update({ heading: e.target.value })}
+          />
         </Field>
         <Field label="Section Subheading">
-          <Input value={block.subheading} onChange={e => update({ subheading: e.target.value })} />
+          <Input
+            defaultValue={block.subheading}
+            key={block.id + "-subheading"}
+            onChange={e => update({ subheading: e.target.value })}
+          />
         </Field>
         <div className="space-y-3 pt-2">
           <div className="flex items-center justify-between">
@@ -99,20 +139,23 @@ export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
               </div>
               <div className="grid grid-cols-5 gap-2">
                 <Input
-                  value={f.icon}
+                  defaultValue={f.icon}
+                  key={block.id + "-f" + i + "-icon"}
                   onChange={e => updateFeature(i, { icon: e.target.value })}
                   className="col-span-1 text-center text-lg"
                   placeholder="🎯"
                 />
                 <Input
-                  value={f.title}
+                  defaultValue={f.title}
+                  key={block.id + "-f" + i + "-title"}
                   onChange={e => updateFeature(i, { title: e.target.value })}
                   className="col-span-4"
                   placeholder="Feature title"
                 />
               </div>
               <Textarea
-                value={f.description}
+                defaultValue={f.description}
+                key={block.id + "-f" + i + "-desc"}
                 onChange={e => updateFeature(i, { description: e.target.value })}
                 className="min-h-[56px] text-xs"
                 placeholder="Feature description"
@@ -128,23 +171,50 @@ export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
     return (
       <div className="space-y-4 p-4">
         <Field label="Heading">
-          <Input value={block.heading} onChange={e => update({ heading: e.target.value })} />
+          <Input
+            defaultValue={block.heading}
+            key={block.id + "-heading"}
+            onChange={e => update({ heading: e.target.value })}
+          />
         </Field>
         <Field label="Body Text">
           <Textarea
-            value={block.body}
+            defaultValue={block.body}
+            key={block.id + "-body"}
             onChange={e => update({ body: e.target.value })}
             className="min-h-[80px] text-sm"
           />
         </Field>
         <div className="grid grid-cols-2 gap-3">
           <Field label="Primary Button">
-            <Input value={block.primaryLabel} onChange={e => update({ primaryLabel: e.target.value })} placeholder="Label" />
-            <Input value={block.primaryUrl} onChange={e => update({ primaryUrl: e.target.value })} placeholder="URL" className="mt-1.5" />
+            <Input
+              defaultValue={block.primaryLabel}
+              key={block.id + "-pLabel"}
+              onChange={e => update({ primaryLabel: e.target.value })}
+              placeholder="Label"
+            />
+            <Input
+              defaultValue={block.primaryUrl}
+              key={block.id + "-pUrl"}
+              onChange={e => update({ primaryUrl: e.target.value })}
+              placeholder="URL"
+              className="mt-1.5"
+            />
           </Field>
           <Field label="Secondary Button">
-            <Input value={block.secondaryLabel} onChange={e => update({ secondaryLabel: e.target.value })} placeholder="Label" />
-            <Input value={block.secondaryUrl} onChange={e => update({ secondaryUrl: e.target.value })} placeholder="URL" className="mt-1.5" />
+            <Input
+              defaultValue={block.secondaryLabel}
+              key={block.id + "-sLabel"}
+              onChange={e => update({ secondaryLabel: e.target.value })}
+              placeholder="Label"
+            />
+            <Input
+              defaultValue={block.secondaryUrl}
+              key={block.id + "-sUrl"}
+              onChange={e => update({ secondaryUrl: e.target.value })}
+              placeholder="URL"
+              className="mt-1.5"
+            />
           </Field>
         </div>
       </div>
@@ -155,11 +225,16 @@ export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
     return (
       <div className="space-y-4 p-4">
         <Field label="Heading">
-          <Input value={block.heading} onChange={e => update({ heading: e.target.value })} />
+          <Input
+            defaultValue={block.heading}
+            key={block.id + "-heading"}
+            onChange={e => update({ heading: e.target.value })}
+          />
         </Field>
         <Field label="Body Text">
           <Textarea
-            value={block.body}
+            defaultValue={block.body}
+            key={block.id + "-body"}
             onChange={e => update({ body: e.target.value })}
             className="min-h-[200px] text-sm leading-relaxed"
           />
@@ -173,7 +248,8 @@ export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
       <div className="space-y-4 p-4">
         <Field label="Image URL">
           <Input
-            value={block.src}
+            defaultValue={block.src}
+            key={block.id + "-src"}
             onChange={e => update({ src: e.target.value })}
             placeholder="https://images.unsplash.com/..."
           />
@@ -187,10 +263,18 @@ export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
           )}
         </Field>
         <Field label="Alt Text">
-          <Input value={block.alt} onChange={e => update({ alt: e.target.value })} />
+          <Input
+            defaultValue={block.alt}
+            key={block.id + "-alt"}
+            onChange={e => update({ alt: e.target.value })}
+          />
         </Field>
         <Field label="Caption">
-          <Input value={block.caption} onChange={e => update({ caption: e.target.value })} />
+          <Input
+            defaultValue={block.caption}
+            key={block.id + "-caption"}
+            onChange={e => update({ caption: e.target.value })}
+          />
         </Field>
       </div>
     );

@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, memo } from "react";
 import {
   DndContext,
   closestCenter,
@@ -28,8 +28,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import {
   GripVertical,
   Trash2,
-  ChevronUp,
-  ChevronDown,
   Eye,
   EyeOff,
   Wand2,
@@ -47,6 +45,14 @@ function createBlock(type: BlockType, defaultData: object): Block {
   return { type, id: uid(), ...defaultData } as Block;
 }
 
+const LABEL_MAP: Record<string, string> = {
+  hero: "🦸 Hero",
+  feature: "⚡ Features",
+  cta: "🎯 Call to Action",
+  text: "📝 Text",
+  image: "🖼️ Image",
+};
+
 interface SortableBlockProps {
   block: Block;
   isSelected: boolean;
@@ -55,7 +61,7 @@ interface SortableBlockProps {
   onChange: (b: Block) => void;
 }
 
-function SortableBlock({ block, isSelected, onSelect, onDelete, onChange }: SortableBlockProps) {
+const SortableBlock = memo(function SortableBlock({ block, isSelected, onSelect, onDelete, onChange }: SortableBlockProps) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
     id: block.id,
   });
@@ -67,27 +73,19 @@ function SortableBlock({ block, isSelected, onSelect, onDelete, onChange }: Sort
     zIndex: isDragging ? 999 : undefined,
   };
 
-  const labelMap: Record<string, string> = {
-    hero: "🦸 Hero",
-    feature: "⚡ Features",
-    cta: "🎯 Call to Action",
-    text: "📝 Text",
-    image: "🖼️ Image",
-  };
-
   return (
     <div ref={setNodeRef} style={style} className="group relative">
       <div
         onClick={onSelect}
         className={`relative rounded-xl border-2 transition-all cursor-pointer overflow-hidden ${
           isSelected
-            ? "border-indigo-500 ring-2 ring-indigo-500/20"
+            ? "border-primary ring-2 ring-primary/20"
             : "border-border/40 hover:border-border"
         }`}
       >
         <div
           className={`flex items-center justify-between px-3 py-2 text-xs font-medium transition-colors ${
-            isSelected ? "bg-indigo-500/10 text-indigo-400" : "bg-secondary/50 text-muted-foreground"
+            isSelected ? "bg-primary/10 text-primary" : "bg-secondary/50 text-muted-foreground"
           }`}
         >
           <div className="flex items-center gap-2">
@@ -99,7 +97,7 @@ function SortableBlock({ block, isSelected, onSelect, onDelete, onChange }: Sort
             >
               <GripVertical className="h-3.5 w-3.5" />
             </button>
-            <span>{labelMap[block.type] ?? block.type}</span>
+            <span>{LABEL_MAP[block.type] ?? block.type}</span>
           </div>
           <button
             onClick={e => { e.stopPropagation(); onDelete(); }}
@@ -114,7 +112,7 @@ function SortableBlock({ block, isSelected, onSelect, onDelete, onChange }: Sort
       </div>
     </div>
   );
-}
+});
 
 interface PageBuilderProps {
   initialBlocks?: Block[];
@@ -142,24 +140,33 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
     onChange(next);
   }, [onChange]);
 
-  function addBlock(type: BlockType) {
+  const addBlock = useCallback((type: BlockType) => {
     const palette = BLOCK_PALETTE.find(p => p.type === type)!;
     const block = createBlock(type, palette.defaultData);
-    const next = [...blocks, block];
-    updateBlocks(next);
+    setBlocks(prev => {
+      const next = [...prev, block];
+      onChange(next);
+      return next;
+    });
     setSelectedId(block.id);
-  }
+  }, [onChange]);
 
-  function deleteBlock(id: string) {
-    const next = blocks.filter(b => b.id !== id);
-    updateBlocks(next);
-    if (selectedId === id) setSelectedId(null);
-  }
+  const deleteBlock = useCallback((id: string) => {
+    setBlocks(prev => {
+      const next = prev.filter(b => b.id !== id);
+      onChange(next);
+      return next;
+    });
+    setSelectedId(prev => prev === id ? null : prev);
+  }, [onChange]);
 
-  function updateBlock(updated: Block) {
-    const next = blocks.map(b => b.id === updated.id ? updated : b);
-    updateBlocks(next);
-  }
+  const updateBlock = useCallback((updated: Block) => {
+    setBlocks(prev => {
+      const next = prev.map(b => b.id === updated.id ? updated : b);
+      onChange(next);
+      return next;
+    });
+  }, [onChange]);
 
   function handleDragStart(e: DragStartEvent) {
     setDragActiveId(String(e.active.id));
@@ -169,9 +176,13 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
     setDragActiveId(null);
     const { active, over } = e;
     if (over && active.id !== over.id) {
-      const oldIdx = blocks.findIndex(b => b.id === active.id);
-      const newIdx = blocks.findIndex(b => b.id === over.id);
-      updateBlocks(arrayMove(blocks, oldIdx, newIdx));
+      setBlocks(prev => {
+        const oldIdx = prev.findIndex(b => b.id === active.id);
+        const newIdx = prev.findIndex(b => b.id === over.id);
+        const next = arrayMove(prev, oldIdx, newIdx);
+        onChange(next);
+        return next;
+      });
     }
   }
 
@@ -190,8 +201,11 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
       const data = await res.json();
       if (data.block) {
         const block = { type, id: uid(), ...data.block } as Block;
-        const next = [...blocks, block];
-        updateBlocks(next);
+        setBlocks(prev => {
+          const next = [...prev, block];
+          onChange(next);
+          return next;
+        });
         setSelectedId(block.id);
         toast({ title: `AI-generated ${type} block added` });
       }
@@ -222,7 +236,7 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
                 <div className="flex items-center gap-2.5">
                   <span className="text-lg">{item.icon}</span>
                   <div>
-                    <div className="text-xs font-semibold text-foreground group-hover:text-indigo-400 transition-colors">
+                    <div className="text-xs font-semibold text-foreground group-hover:text-primary transition-colors">
                       {item.label}
                     </div>
                     <div className="text-[10px] text-muted-foreground leading-tight mt-0.5">
@@ -245,7 +259,7 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
               value={aiPrompt}
               onChange={e => setAiPrompt(e.target.value)}
               placeholder="Describe your content…"
-              className="w-full text-xs bg-secondary/60 border border-border/50 rounded-lg px-2.5 py-2 resize-none min-h-[60px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-indigo-500"
+              className="w-full text-xs bg-secondary/60 border border-border/50 rounded-lg px-2.5 py-2 resize-none min-h-[60px] text-foreground placeholder:text-muted-foreground focus:outline-none focus:ring-1 focus:ring-primary"
             />
             <div className="grid grid-cols-1 gap-1">
               {BLOCK_PALETTE.map(item => (
@@ -253,7 +267,7 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
                   key={item.type}
                   onClick={() => generateBlockWithAI(item.type)}
                   disabled={!!aiLoading}
-                  className="flex items-center gap-2 text-[11px] px-2.5 py-1.5 rounded-md bg-indigo-500/10 hover:bg-indigo-500/20 text-indigo-400 transition-colors disabled:opacity-50"
+                  className="flex items-center gap-2 text-[11px] px-2.5 py-1.5 rounded-md bg-primary/10 hover:bg-primary/20 text-primary transition-colors disabled:opacity-50"
                 >
                   {aiLoading === item.type ? (
                     <Loader2 className="h-3 w-3 animate-spin flex-shrink-0" />
@@ -301,7 +315,6 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
 
         <ScrollArea className="flex-1">
           {preview ? (
-            /* Preview Mode */
             <div className="p-6 space-y-0">
               {blocks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
@@ -317,7 +330,6 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
               )}
             </div>
           ) : (
-            /* Edit Mode */
             <div className="p-4">
               {blocks.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-20 text-muted-foreground border-2 border-dashed border-border/40 rounded-xl">
@@ -357,7 +369,7 @@ export function PageBuilder({ initialBlocks = [], onChange }: PageBuilderProps) 
                   </SortableContext>
                   <DragOverlay>
                     {dragActiveBlock && (
-                      <div className="rounded-xl border-2 border-indigo-500 bg-background shadow-2xl overflow-hidden opacity-90">
+                      <div className="rounded-xl border-2 border-primary bg-background shadow-2xl overflow-hidden opacity-90">
                         <BlockPreview block={dragActiveBlock} />
                       </div>
                     )}
@@ -410,7 +422,7 @@ export function blocksToHtml(blocks: Block[]): string {
       case "hero":
         return `<section class="hero" style="background-image:url(${block.backgroundImage})"><h1>${block.heading}</h1><p>${block.subheading}</p><a href="${block.ctaUrl}">${block.ctaLabel}</a></section>`;
       case "feature":
-        return `<section class="features"><h2>${block.heading}</h2><p>${block.subheading}</p>${block.features.map(f => `<div class="feature"><span>${f.icon}</span><h3>${f.title}</h3><p>${f.description}</p></div>`).join("")}</section>`;
+        return `<section class="features"><h2>${block.heading}</h2><p>${block.subheading}</p>${block.features.map((f: any) => `<div class="feature"><span>${f.icon}</span><h3>${f.title}</h3><p>${f.description}</p></div>`).join("")}</section>`;
       case "cta":
         return `<section class="cta"><h2>${block.heading}</h2><p>${block.body}</p><a href="${block.primaryUrl}">${block.primaryLabel}</a><a href="${block.secondaryUrl}">${block.secondaryLabel}</a></section>`;
       case "text":
