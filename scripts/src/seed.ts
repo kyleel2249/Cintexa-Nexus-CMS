@@ -90,6 +90,7 @@ async function main() {
 
   if (FORCE) {
     console.log("⚠️   --force: truncating existing data…");
+    await db.delete(schema.trafficStatsTable);
     await db.delete(schema.activityTable);
     await db.delete(schema.formSubmissionsTable);
     await db.delete(schema.formsTable);
@@ -718,6 +719,56 @@ CINTEXA's SEO module handles items 1, 4, and 5 out of the box.`,
   }
 
   console.log("   ✓ 10 activity entries created\n");
+
+  // ── 12. Traffic Stats ─────────────────────────────────────────────────────
+  console.log("📈  Seeding 30-day traffic data…");
+
+  /**
+   * Generates realistic-looking page-view data by layering:
+   *  - A gradual upward trend (growing site)
+   *  - Weekly rhythm (weekdays spike, weekends dip)
+   *  - Random noise (+/- 15%) to look organic
+   *  - Occasional "viral" day peaks (~3× average, ~1 in 10 chance)
+   */
+  function generateTrafficDay(dayIndex: number, totalDays: number): { views: number; visitors: number } {
+    const progress = dayIndex / (totalDays - 1);             // 0 → 1
+    const trend = 800 + Math.round(progress * 1200);         // 800 → 2000 over 30 days
+
+    // Weekly rhythm: index 0 = today-29 days ago; figure out weekday
+    const weekday = (new Date(Date.now() - (totalDays - 1 - dayIndex) * 86400000)).getDay();
+    const weekdayMultiplier = [0.55, 1.1, 1.15, 1.2, 1.15, 0.9, 0.6][weekday]; // Sun-Sat
+
+    // Deterministic noise using dayIndex as seed
+    const noise = 1 + ((((dayIndex * 7919 + 31337) % 1000) / 1000) - 0.5) * 0.3;
+
+    // Occasional traffic spike (viral post / campaign)
+    const isSpike = (dayIndex * 2053 + 17) % 10 === 0;
+    const spikeMultiplier = isSpike ? 2.6 : 1;
+
+    const views = Math.max(100, Math.round(trend * weekdayMultiplier * noise * spikeMultiplier));
+    const visitors = Math.round(views * (0.58 + ((dayIndex * 1031) % 100) / 1000));
+    return { views, visitors };
+  }
+
+  const trafficRows = [];
+  const today = new Date();
+  const DAYS = 30;
+
+  for (let i = 0; i < DAYS; i++) {
+    const d = new Date(today);
+    d.setDate(d.getDate() - (DAYS - 1 - i));
+    const date = d.toISOString().split("T")[0];
+    const { views, visitors } = generateTrafficDay(i, DAYS);
+    trafficRows.push({ date, views, visitors });
+  }
+
+  await db.insert(schema.trafficStatsTable).values(trafficRows);
+
+  const totalViews = trafficRows.reduce((s, r) => s + r.views, 0);
+  const peakDay = trafficRows.reduce((a, b) => (a.views > b.views ? a : b));
+  console.log(`   ✓ 30 days of traffic seeded`);
+  console.log(`     Total views : ${totalViews.toLocaleString()}`);
+  console.log(`     Peak day    : ${peakDay.date} (${peakDay.views.toLocaleString()} views)\n`);
 
   // ─────────────────────────────────────────────────────────────────────────
   console.log("═".repeat(58));

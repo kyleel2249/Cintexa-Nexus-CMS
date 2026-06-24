@@ -8,6 +8,7 @@ export * from "./navigation";
 export * from "./forms";
 export * from "./seo";
 export * from "./activity";
+export * from "./traffic";
 export * from "./subscribers";
 export * from "./plugins";
 export * from "./post-images";
