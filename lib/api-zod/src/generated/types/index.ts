@@ -40,6 +40,7 @@ export * from './postInput';
 export * from './postUpdate';
 export * from './redirect';
 export * from './redirectInput';
+export * from './scheduleInput';
 export * from './seoSettings';
 export * from './seoSettingsUpdate';
 export * from './site';

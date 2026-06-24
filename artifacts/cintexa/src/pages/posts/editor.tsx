@@ -1,6 +1,8 @@
 import { useState, useEffect } from "react";
 import { useParams, useLocation } from "wouter";
-import { useGetPost, useCreatePost, useUpdatePost } from "@workspace/api-client-react";
+import { useGetPost, useCreatePost, useUpdatePost, useSchedulePost, useUnschedulePost } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { SchedulePanel } from "@/components/schedule-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -22,6 +24,9 @@ export default function PostEditor() {
 
   const createMutation = useCreatePost();
   const updateMutation = useUpdatePost();
+  const scheduleMutation = useSchedulePost();
+  const unscheduleMutation = useUnschedulePost();
+  const queryClient = useQueryClient();
 
   const [formData, setFormData] = useState({
     title: "",
@@ -141,12 +146,36 @@ export default function PostEditor() {
             <CardContent className="space-y-4">
               <div className="flex justify-between items-center text-sm">
                 <span className="text-muted-foreground">Status</span>
-                <span className="font-medium">{post?.status || "Draft"}</span>
+                <span
+                  className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
+                    post?.status === "published"
+                      ? "bg-green-500/15 text-green-400"
+                      : post?.status === "scheduled"
+                      ? "bg-violet-500/15 text-violet-400"
+                      : "bg-yellow-500/15 text-yellow-400"
+                  }`}
+                >
+                  {post?.status || "Draft"}
+                </span>
               </div>
               <div className="flex justify-between items-center text-sm">
                 <span className="text-muted-foreground">Reading Time</span>
                 <span className="font-medium">{post?.readingTime || 0} min</span>
               </div>
+
+              {!isNew && id && (
+                <SchedulePanel
+                  entityId={Number(id)}
+                  currentScheduledAt={post?.scheduledAt}
+                  onSchedule={async (entityId, scheduledAt) => {
+                    await scheduleMutation.mutateAsync({ id: entityId, data: { scheduledAt } });
+                  }}
+                  onUnschedule={async (entityId) => {
+                    await unscheduleMutation.mutateAsync({ id: entityId });
+                  }}
+                  onSuccess={() => queryClient.invalidateQueries({ queryKey: [`/api/posts/${id}`] })}
+                />
+              )}
             </CardContent>
           </Card>
 

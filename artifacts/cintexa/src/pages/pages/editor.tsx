@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParams, useLocation } from "wouter";
-import { useGetPage, useCreatePage, useUpdatePage } from "@workspace/api-client-react";
+import { useGetPage, useCreatePage, useUpdatePage, useSchedulePage, useUnschedulePage } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -15,6 +15,7 @@ import { Block } from "@/components/page-builder/types";
 import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
 import { RevisionHistory } from "@/components/revision-history";
+import { SchedulePanel } from "@/components/schedule-panel";
 import { useQueryClient } from "@tanstack/react-query";
 
 type EditorMode = "visual" | "html";
@@ -33,6 +34,8 @@ export default function PageEditor() {
 
   const createMutation = useCreatePage();
   const updateMutation = useUpdatePage();
+  const scheduleMutation = useSchedulePage();
+  const unscheduleMutation = useUnschedulePage();
 
   const [editorMode, setEditorMode] = useState<EditorMode>("visual");
   const [blocks, setBlocks] = useState<Block[]>([]);
@@ -210,6 +213,8 @@ export default function PageEditor() {
                   className={`text-xs font-semibold px-2 py-0.5 rounded-full ${
                     page?.status === "published"
                       ? "bg-green-500/15 text-green-400"
+                      : page?.status === "scheduled"
+                      ? "bg-violet-500/15 text-violet-400"
                       : "bg-yellow-500/15 text-yellow-400"
                   }`}
                 >
@@ -224,6 +229,20 @@ export default function PageEditor() {
                 <span className="text-muted-foreground">Blocks</span>
                 <span className="text-xs font-medium">{blocks.length}</span>
               </div>
+
+              {!isNew && id && (
+                <SchedulePanel
+                  entityId={Number(id)}
+                  currentScheduledAt={page?.scheduledAt}
+                  onSchedule={async (entityId, scheduledAt) => {
+                    await scheduleMutation.mutateAsync({ id: entityId, data: { scheduledAt } });
+                  }}
+                  onUnschedule={async (entityId) => {
+                    await unscheduleMutation.mutateAsync({ id: entityId });
+                  }}
+                  onSuccess={() => queryClient.invalidateQueries({ queryKey: [`/api/pages/${id}`] })}
+                />
+              )}
             </CardContent>
           </Card>
 

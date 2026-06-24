@@ -23,6 +23,7 @@ async function enrichPost(post: typeof postsTable.$inferSelect) {
     createdAt: post.createdAt.toISOString(),
     updatedAt: post.updatedAt.toISOString(),
     publishedAt: post.publishedAt?.toISOString() ?? null,
+    scheduledAt: post.scheduledAt?.toISOString() ?? null,
   };
 }
 
@@ -87,9 +88,49 @@ router.delete("/:id", async (req, res) => {
 
 router.post("/:id/publish", async (req, res) => {
   const id = parseInt(req.params.id);
-  const [post] = await db.update(postsTable).set({ status: "published", publishedAt: new Date(), updatedAt: new Date() }).where(eq(postsTable.id, id)).returning();
+  const [post] = await db.update(postsTable).set({ status: "published", publishedAt: new Date(), scheduledAt: null, updatedAt: new Date() }).where(eq(postsTable.id, id)).returning();
   if (!post) return res.status(404).json({ error: "Not found" });
   await db.insert(activityTable).values({ type: "publish", entityType: "post", entityTitle: post.title, userName: "Admin", action: "published post" });
+  res.json(await enrichPost(post));
+});
+
+// ── Schedule post ─────────────────────────────────────────────────────────────
+router.post("/:id/schedule", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const { scheduledAt } = req.body;
+  if (!scheduledAt) return res.status(400).json({ error: "scheduledAt is required" });
+  const date = new Date(scheduledAt);
+  if (isNaN(date.getTime())) return res.status(400).json({ error: "Invalid scheduledAt date" });
+  if (date <= new Date()) return res.status(400).json({ error: "scheduledAt must be in the future" });
+
+  const [post] = await db
+    .update(postsTable)
+    .set({ status: "scheduled", scheduledAt: date, updatedAt: new Date() })
+    .where(eq(postsTable.id, id))
+    .returning();
+  if (!post) return res.status(404).json({ error: "Not found" });
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+  await db.insert(activityTable).values({
+    type: "update",
+    entityType: "post",
+    entityTitle: post.title,
+    userName: savedBy,
+    action: `scheduled post to publish on ${date.toISOString()}`,
+  });
+  res.json(await enrichPost(post));
+});
+
+// ── Unschedule post ───────────────────────────────────────────────────────────
+router.delete("/:id/schedule", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const [post] = await db
+    .update(postsTable)
+    .set({ status: "draft", scheduledAt: null, updatedAt: new Date() })
+    .where(eq(postsTable.id, id))
+    .returning();
+  if (!post) return res.status(404).json({ error: "Not found" });
   res.json(await enrichPost(post));
 });
 

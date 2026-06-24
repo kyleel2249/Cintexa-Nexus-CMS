@@ -283,6 +283,49 @@ paths:
               schema:
                 $ref: "#/components/schemas/Page"
 
+  # ─── Page Schedule ───────────────────────────────────────────────────────────
+  /pages/{id}/schedule:
+    post:
+      operationId: schedulePage
+      tags: [pages]
+      summary: Schedule a page for future publishing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleInput"
+      responses:
+        "200":
+          description: Scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+    delete:
+      operationId: unschedulePage
+      tags: [pages]
+      summary: Cancel scheduled publishing for a page
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Unscheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Page"
+
   # ─── Page Revisions ──────────────────────────────────────────────────────────
   /pages/{id}/revisions:
     get:
@@ -464,6 +507,49 @@ paths:
       responses:
         "200":
           description: Published
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+
+  # ─── Post Schedule ───────────────────────────────────────────────────────────
+  /posts/{id}/schedule:
+    post:
+      operationId: schedulePost
+      tags: [posts]
+      summary: Schedule a post for future publishing
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/ScheduleInput"
+      responses:
+        "200":
+          description: Scheduled
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Post"
+    delete:
+      operationId: unschedulePost
+      tags: [posts]
+      summary: Cancel scheduled publishing for a post
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Unscheduled
           content:
             application/json:
               schema:
@@ -1139,6 +1225,14 @@ components:
           type: string
       required: [id, type, entityType, entityTitle, userName, action, createdAt]
 
+    ScheduleInput:
+      type: object
+      properties:
+        scheduledAt:
+          type: string
+          description: ISO 8601 date-time string for when to publish
+      required: [scheduledAt]
+
     TrafficPoint:
       type: object
       properties:
@@ -1249,6 +1343,8 @@ components:
         featuredImage:
           type: ["string", "null"]
         publishedAt:
+          type: ["string", "null"]
+        scheduledAt:
           type: ["string", "null"]
         createdAt:
           type: string
@@ -1362,6 +1458,8 @@ components:
         readingTime:
           type: ["integer", "null"]
         publishedAt:
+          type: ["string", "null"]
+        scheduledAt:
           type: ["string", "null"]
         createdAt:
           type: string

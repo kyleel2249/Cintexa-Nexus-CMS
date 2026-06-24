@@ -184,6 +184,7 @@ export const GetPagesResponseItem = zod.object({
   "metaDescription": zod.string().nullish(),
   "featuredImage": zod.string().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -227,6 +228,7 @@ export const GetPageResponse = zod.object({
   "metaDescription": zod.string().nullish(),
   "featuredImage": zod.string().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -262,6 +264,7 @@ export const UpdatePageResponse = zod.object({
   "metaDescription": zod.string().nullish(),
   "featuredImage": zod.string().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -294,6 +297,61 @@ export const PublishPageResponse = zod.object({
   "metaDescription": zod.string().nullish(),
   "featuredImage": zod.string().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Schedule a page for future publishing
+ */
+export const SchedulePageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SchedulePageBody = zod.object({
+  "scheduledAt": zod.string().describe('ISO 8601 date-time string for when to publish')
+})
+
+export const SchedulePageResponse = zod.object({
+  "id": zod.number(),
+  "siteId": zod.number().nullish(),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "status": zod.string(),
+  "template": zod.string().nullish(),
+  "content": zod.string().nullish(),
+  "metaTitle": zod.string().nullish(),
+  "metaDescription": zod.string().nullish(),
+  "featuredImage": zod.string().nullish(),
+  "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Cancel scheduled publishing for a page
+ */
+export const UnschedulePageParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UnschedulePageResponse = zod.object({
+  "id": zod.number(),
+  "siteId": zod.number().nullish(),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "status": zod.string(),
+  "template": zod.string().nullish(),
+  "content": zod.string().nullish(),
+  "metaTitle": zod.string().nullish(),
+  "metaDescription": zod.string().nullish(),
+  "featuredImage": zod.string().nullish(),
+  "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -369,6 +427,7 @@ export const RestorePageRevisionResponse = zod.object({
   "metaDescription": zod.string().nullish(),
   "featuredImage": zod.string().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -398,6 +457,7 @@ export const GetPostsResponseItem = zod.object({
   "metaDescription": zod.string().nullish(),
   "readingTime": zod.number().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -446,6 +506,7 @@ export const GetPostResponse = zod.object({
   "metaDescription": zod.string().nullish(),
   "readingTime": zod.number().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -487,6 +548,7 @@ export const UpdatePostResponse = zod.object({
   "metaDescription": zod.string().nullish(),
   "readingTime": zod.number().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })
@@ -523,6 +585,69 @@ export const PublishPostResponse = zod.object({
   "metaDescription": zod.string().nullish(),
   "readingTime": zod.number().nullish(),
   "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Schedule a post for future publishing
+ */
+export const SchedulePostParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const SchedulePostBody = zod.object({
+  "scheduledAt": zod.string().describe('ISO 8601 date-time string for when to publish')
+})
+
+export const SchedulePostResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "status": zod.string(),
+  "excerpt": zod.string().nullish(),
+  "content": zod.string().nullish(),
+  "authorId": zod.number().nullish(),
+  "authorName": zod.string().nullish(),
+  "categoryId": zod.number().nullish(),
+  "categoryName": zod.string().nullish(),
+  "featuredImage": zod.string().nullish(),
+  "metaTitle": zod.string().nullish(),
+  "metaDescription": zod.string().nullish(),
+  "readingTime": zod.number().nullish(),
+  "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
+ * @summary Cancel scheduled publishing for a post
+ */
+export const UnschedulePostParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const UnschedulePostResponse = zod.object({
+  "id": zod.number(),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "status": zod.string(),
+  "excerpt": zod.string().nullish(),
+  "content": zod.string().nullish(),
+  "authorId": zod.number().nullish(),
+  "authorName": zod.string().nullish(),
+  "categoryId": zod.number().nullish(),
+  "categoryName": zod.string().nullish(),
+  "featuredImage": zod.string().nullish(),
+  "metaTitle": zod.string().nullish(),
+  "metaDescription": zod.string().nullish(),
+  "readingTime": zod.number().nullish(),
+  "publishedAt": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
   "createdAt": zod.string(),
   "updatedAt": zod.string()
 })

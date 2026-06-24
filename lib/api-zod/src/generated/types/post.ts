@@ -33,6 +33,8 @@ export interface Post {
   readingTime?: number | null;
   /** @nullable */
   publishedAt?: string | null;
+  /** @nullable */
+  scheduledAt?: string | null;
   createdAt: string;
   updatedAt: string;
 }

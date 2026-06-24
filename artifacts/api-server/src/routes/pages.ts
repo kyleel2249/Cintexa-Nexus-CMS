@@ -10,6 +10,7 @@ function serializePage(p: typeof pagesTable.$inferSelect) {
     createdAt: p.createdAt.toISOString(),
     updatedAt: p.updatedAt.toISOString(),
     publishedAt: p.publishedAt?.toISOString() ?? null,
+    scheduledAt: p.scheduledAt?.toISOString() ?? null,
   };
 }
 
@@ -79,7 +80,6 @@ router.patch("/:id", async (req, res) => {
   const id = parseInt(req.params.id);
   if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
 
-  // Fetch current state before overwriting (needed for snapshot)
   const [current] = await db.select().from(pagesTable).where(eq(pagesTable.id, id));
   if (!current) return res.status(404).json({ error: "Not found" });
 
@@ -96,7 +96,6 @@ router.patch("/:id", async (req, res) => {
 
   const [page] = await db.update(pagesTable).set(updates as any).where(eq(pagesTable.id, id)).returning();
 
-  // Save snapshot of the NEW state after save
   const savedBy = (req.headers["x-user-name"] as string) || "Admin";
   const label = req.body.status === "published" ? "Published" : undefined;
   await Promise.all([
@@ -120,7 +119,7 @@ router.post("/:id/publish", async (req, res) => {
   const id = parseInt(req.params.id);
   const [page] = await db
     .update(pagesTable)
-    .set({ status: "published", publishedAt: new Date(), updatedAt: new Date() })
+    .set({ status: "published", publishedAt: new Date(), scheduledAt: null, updatedAt: new Date() })
     .where(eq(pagesTable.id, id))
     .returning();
   if (!page) return res.status(404).json({ error: "Not found" });
@@ -129,6 +128,46 @@ router.post("/:id/publish", async (req, res) => {
     snapshotPage(id, page, savedBy, "Published"),
     db.insert(activityTable).values({ type: "publish", entityType: "page", entityTitle: page.title, userName: savedBy, action: "published page" }),
   ]);
+  res.json(serializePage(page));
+});
+
+// ── Schedule page ─────────────────────────────────────────────────────────────
+router.post("/:id/schedule", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const { scheduledAt } = req.body;
+  if (!scheduledAt) return res.status(400).json({ error: "scheduledAt is required" });
+  const date = new Date(scheduledAt);
+  if (isNaN(date.getTime())) return res.status(400).json({ error: "Invalid scheduledAt date" });
+  if (date <= new Date()) return res.status(400).json({ error: "scheduledAt must be in the future" });
+
+  const [page] = await db
+    .update(pagesTable)
+    .set({ status: "scheduled", scheduledAt: date, updatedAt: new Date() })
+    .where(eq(pagesTable.id, id))
+    .returning();
+  if (!page) return res.status(404).json({ error: "Not found" });
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+  await db.insert(activityTable).values({
+    type: "update",
+    entityType: "page",
+    entityTitle: page.title,
+    userName: savedBy,
+    action: `scheduled page to publish on ${date.toISOString()}`,
+  });
+  res.json(serializePage(page));
+});
+
+// ── Unschedule page ───────────────────────────────────────────────────────────
+router.delete("/:id/schedule", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const [page] = await db
+    .update(pagesTable)
+    .set({ status: "draft", scheduledAt: null, updatedAt: new Date() })
+    .where(eq(pagesTable.id, id))
+    .returning();
+  if (!page) return res.status(404).json({ error: "Not found" });
   res.json(serializePage(page));
 });
 
@@ -161,21 +200,18 @@ router.post("/:id/revisions/:revisionId/restore", async (req, res) => {
   const id = parseInt(req.params.id);
   const revisionId = parseInt(req.params.revisionId);
 
-  // Fetch the target revision
   const [revision] = await db
     .select()
     .from(pageRevisionsTable)
     .where(and(eq(pageRevisionsTable.id, revisionId), eq(pageRevisionsTable.pageId, id)));
   if (!revision) return res.status(404).json({ error: "Revision not found" });
 
-  // Snapshot the current state before restoring (so it's recoverable)
   const [current] = await db.select().from(pagesTable).where(eq(pagesTable.id, id));
   if (current) {
     const savedBy = (req.headers["x-user-name"] as string) || "Admin";
     await snapshotPage(id, current, savedBy, "Auto-saved before restore");
   }
 
-  // Apply the revision to the live page
   const [restored] = await db
     .update(pagesTable)
     .set({
