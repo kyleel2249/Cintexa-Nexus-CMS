@@ -64,4 +64,3 @@ channel = "stable-25_05"
 
 [userenv.shared]
 GITHUB_REPO_URL = "https://github.com/kyleel2249/Cintexa-Nexus-CMS"
-JWT_SECRET = "32e920635405918c0d9ed2eaefcabaf00f3d081ed092ef35b8b187f06958e23a9635319a389ba7e0165f3fc5453c6b72"
