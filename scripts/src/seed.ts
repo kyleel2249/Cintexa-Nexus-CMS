@@ -91,6 +91,7 @@ async function main() {
   if (FORCE) {
     console.log("⚠️   --force: truncating existing data…");
     await db.delete(schema.trafficStatsTable);
+    await db.delete(schema.subscribersTable);
     await db.delete(schema.activityTable);
     await db.delete(schema.formSubmissionsTable);
     await db.delete(schema.formsTable);
@@ -769,6 +770,58 @@ CINTEXA's SEO module handles items 1, 4, and 5 out of the box.`,
   console.log(`   ✓ 30 days of traffic seeded`);
   console.log(`     Total views : ${totalViews.toLocaleString()}`);
   console.log(`     Peak day    : ${peakDay.date} (${peakDay.views.toLocaleString()} views)\n`);
+
+  // ── 13. Subscribers ───────────────────────────────────────────────────────
+  console.log("📧  Seeding subscribers…");
+
+  const { randomBytes } = await import("node:crypto");
+  function makeToken() { return randomBytes(24).toString("hex"); }
+
+  // Helper: timestamp N days ago at a random hour
+  function daysAgo(n: number, hourOffset = 0): Date {
+    const d = new Date();
+    d.setDate(d.getDate() - n);
+    d.setHours(hourOffset, Math.floor(Math.random() * 60), 0, 0);
+    return d;
+  }
+
+  const subscribers = [
+    // Historical — past 30 days (spread across different days)
+    { email: "james.carter@example.com",   name: "James Carter",   status: "active",       createdAt: daysAgo(29, 9)  },
+    { email: "olivia.chen@example.com",    name: "Olivia Chen",    status: "active",       createdAt: daysAgo(27, 14) },
+    { email: "miguel.torres@example.com",  name: "Miguel Torres",  status: "active",       createdAt: daysAgo(25, 11) },
+    { email: "priya.sharma@example.com",   name: "Priya Sharma",   status: "unsubscribed", createdAt: daysAgo(23, 16) },
+    { email: "lucas.martin@example.com",   name: "Lucas Martin",   status: "active",       createdAt: daysAgo(21, 8)  },
+    { email: "aisha.patel@example.com",    name: "Aisha Patel",    status: "active",       createdAt: daysAgo(19, 10) },
+    { email: "tom.nguyen@example.com",     name: "Tom Nguyen",     status: "active",       createdAt: daysAgo(17, 13) },
+    { email: "sofia.rossi@example.com",    name: "Sofia Rossi",    status: "unsubscribed", createdAt: daysAgo(15, 9)  },
+    { email: "david.kim@example.com",      name: "David Kim",      status: "active",       createdAt: daysAgo(13, 15) },
+    { email: "emma.johnson@example.com",   name: "Emma Johnson",   status: "active",       createdAt: daysAgo(11, 7)  },
+    { email: "carlos.mendez@example.com",  name: "Carlos Mendez",  status: "active",       createdAt: daysAgo(9,  12) },
+    { email: "yuki.tanaka@example.com",    name: "Yuki Tanaka",    status: "active",       createdAt: daysAgo(7,  11) },
+    { email: "nina.wolff@example.com",     name: "Nina Wolff",     status: "active",       createdAt: daysAgo(5,  16) },
+    { email: "samuel.brooks@example.com",  name: "Samuel Brooks",  status: "active",       createdAt: daysAgo(3,  9)  },
+    { email: "lena.fischer@example.com",   name: "Lena Fischer",   status: "active",       createdAt: daysAgo(2,  14) },
+    // Today — these show up in the "gained today" counter
+    { email: "alex.huang@example.com",     name: "Alex Huang",     status: "active",       createdAt: daysAgo(0,  7)  },
+    { email: "maria.lopez@example.com",    name: "Maria Lopez",    status: "active",       createdAt: daysAgo(0,  9)  },
+    { email: "rahul.verma@example.com",    name: "Rahul Verma",    status: "active",       createdAt: daysAgo(0,  11) },
+  ];
+
+  for (const s of subscribers) {
+    await db.insert(schema.subscribersTable).values({
+      email: s.email,
+      name: s.name,
+      status: s.status,
+      unsubscribeToken: makeToken(),
+      createdAt: s.createdAt,
+    });
+  }
+
+  const todayCount = subscribers.filter(
+    (s) => s.status === "active" && s.createdAt >= daysAgo(0, 0)
+  ).length;
+  console.log(`   ✓ ${subscribers.length} subscribers seeded (${todayCount} gained today)\n`);
 
   // ─────────────────────────────────────────────────────────────────────────
   console.log("═".repeat(58));

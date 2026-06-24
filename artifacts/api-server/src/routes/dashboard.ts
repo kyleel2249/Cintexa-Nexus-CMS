@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "@workspace/db";
-import { pagesTable, postsTable, mediaTable, usersTable, sitesTable, formsTable, activityTable, trafficStatsTable } from "@workspace/db";
-import { count, desc, eq, asc, sum } from "drizzle-orm";
+import { pagesTable, postsTable, mediaTable, usersTable, sitesTable, formsTable, activityTable, trafficStatsTable, subscribersTable } from "@workspace/db";
+import { count, desc, eq, asc, sum, gte, and } from "drizzle-orm";
 
 const router = Router();
 
@@ -136,6 +136,28 @@ router.get("/sparklines", async (_req, res) => {
     users:  makeSparkline(Number(totalUsers),  0x5678),
     sites:  makeSparkline(Number(totalSites),  0x9abc),
     forms:  makeSparkline(Number(totalForms),  0xcdef),
+  });
+});
+
+router.get("/subscribers-summary", async (_req, res) => {
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [[{ total }], [{ active }], [{ today }]] = await Promise.all([
+    db.select({ total: count() }).from(subscribersTable),
+    db.select({ active: count() }).from(subscribersTable).where(eq(subscribersTable.status, "active")),
+    db.select({ today: count() }).from(subscribersTable).where(
+      and(
+        gte(subscribersTable.createdAt, todayStart),
+        eq(subscribersTable.status, "active"),
+      )
+    ),
+  ]);
+
+  res.json({
+    total:  Number(total),
+    active: Number(active),
+    today:  Number(today),
   });
 });
 
