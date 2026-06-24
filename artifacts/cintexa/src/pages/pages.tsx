@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useGetPages } from "@workspace/api-client-react";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -7,7 +7,17 @@ import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Plus, Search, FileText, MoreHorizontal, MonitorPlay, Clock, CalendarClock, Check, Loader2, X, CalendarRange } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  Plus, Search, FileText, MoreHorizontal, MonitorPlay,
+  Clock, CalendarClock, Check, Loader2, X, CalendarRange, Copy, ExternalLink,
+} from "lucide-react";
 import { Link } from "wouter";
 import { format, parseISO } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -55,15 +65,44 @@ export default function Pages() {
     setReschedulingId(pageId);
     try {
       await reschedulePage(pageId, newDate);
-      toast({
-        title: "Rescheduled",
-        description: `"${title}" scheduled for ${format(newDate, "MMM d, yyyy 'at' h:mm a")}`,
-      });
+      toast({ title: "Rescheduled", description: `"${title}" scheduled for ${format(newDate, "MMM d, yyyy 'at' h:mm a")}` });
       refetch();
     } catch (err: any) {
       toast({ title: err.message || "Reschedule failed", variant: "destructive" });
     } finally {
       setReschedulingId(null);
+    }
+  }
+
+  // ── Duplicate & schedule ───────────────────────────────────────────────────
+  const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
+  const [pendingRescheduleId, setPendingRescheduleId] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!pendingRescheduleId || !pages) return;
+    const page = pages.find((p) => p.id === pendingRescheduleId);
+    if (page) {
+      openPicker(page.id, page.updatedAt);
+      setPendingRescheduleId(null);
+    }
+  }, [pendingRescheduleId, pages]);
+
+  async function duplicateAndSchedule(sourceId: number) {
+    setDuplicatingId(sourceId);
+    try {
+      const res = await fetch(`/api/pages/${sourceId}/duplicate`, { method: "POST" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to duplicate");
+      }
+      const copy = await res.json();
+      toast({ title: "Page duplicated", description: `"${copy.title}" created as draft` });
+      setPendingRescheduleId(copy.id);
+      refetch();
+    } catch (err: any) {
+      toast({ title: err.message || "Duplication failed", variant: "destructive" });
+    } finally {
+      setDuplicatingId(null);
     }
   }
 
@@ -103,30 +142,19 @@ export default function Pages() {
     const [hours, minutes] = bulkTime.split(":").map(Number);
     const newDate = new Date(bulkDate);
     newDate.setHours(hours, minutes, 0, 0);
-
     setBulkPickerOpen(false);
     setIsBulkRescheduling(true);
     const ids = Array.from(selectedIds);
-
     const results = await Promise.allSettled(ids.map((id) => reschedulePage(id, newDate)));
     const succeeded = results.filter((r) => r.status === "fulfilled").length;
     const failed = results.filter((r) => r.status === "rejected").length;
-
     setIsBulkRescheduling(false);
     clearSelection();
     refetch();
-
     if (failed === 0) {
-      toast({
-        title: `${succeeded} page${succeeded !== 1 ? "s" : ""} rescheduled`,
-        description: `All moved to ${format(newDate, "MMM d, yyyy 'at' h:mm a")}`,
-      });
+      toast({ title: `${succeeded} page${succeeded !== 1 ? "s" : ""} rescheduled`, description: `All moved to ${format(newDate, "MMM d, yyyy 'at' h:mm a")}` });
     } else {
-      toast({
-        title: `${succeeded} succeeded, ${failed} failed`,
-        description: "Some pages could not be rescheduled.",
-        variant: "destructive",
-      });
+      toast({ title: `${succeeded} succeeded, ${failed} failed`, description: "Some pages could not be rescheduled.", variant: "destructive" });
     }
   }
 
@@ -176,7 +204,7 @@ export default function Pages() {
               <TableHead>Status</TableHead>
               <TableHead>Template</TableHead>
               <TableHead>Last Edited</TableHead>
-              <TableHead className="w-[100px]"></TableHead>
+              <TableHead className="w-[110px]"></TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -195,6 +223,7 @@ export default function Pages() {
             ) : pages?.length ? (
               pages.map((page) => {
                 const isSelected = selectedIds.has(page.id);
+                const isBusy = reschedulingId === page.id || duplicatingId === page.id;
                 return (
                   <TableRow
                     key={page.id}
@@ -228,76 +257,74 @@ export default function Pages() {
                     </TableCell>
                     <TableCell>
                       <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                        {reschedulingId === page.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        {isBusy ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground mx-1" />
                         ) : (
-                          <Popover
-                            open={openRescheduleId === page.id}
-                            onOpenChange={(open) => {
-                              if (open) openPicker(page.id, page.updatedAt);
-                              else setOpenRescheduleId(null);
-                            }}
-                          >
-                            <PopoverTrigger asChild>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-7 w-7"
-                                title="Reschedule"
-                                onClick={(e) => e.stopPropagation()}
-                              >
-                                <CalendarClock className="h-3.5 w-3.5" />
-                              </Button>
-                            </PopoverTrigger>
-                            <PopoverContent
-                              className="w-auto p-0"
-                              align="end"
-                              onClick={(e) => e.stopPropagation()}
+                          <>
+                            {/* Single reschedule picker */}
+                            <Popover
+                              open={openRescheduleId === page.id}
+                              onOpenChange={(open) => {
+                                if (open) openPicker(page.id, page.updatedAt);
+                                else setOpenRescheduleId(null);
+                              }}
                             >
-                              <div className="p-3 border-b border-border">
-                                <p className="text-xs font-semibold text-foreground">Reschedule Page</p>
-                                <p className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[200px]">{page.title}</p>
-                              </div>
-                              <Calendar
-                                mode="single"
-                                selected={rescheduleDate}
-                                onSelect={setRescheduleDate}
-                                initialFocus
-                              />
-                              <div className="p-3 border-t border-border space-y-3">
-                                <div className="flex items-center gap-2">
-                                  <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                  <Input
-                                    type="time"
-                                    value={rescheduleTime}
-                                    onChange={(e) => setRescheduleTime(e.target.value)}
-                                    className="h-7 text-xs"
-                                  />
-                                </div>
-                                <Button
-                                  size="sm"
-                                  className="w-full h-7 text-xs gap-1.5"
-                                  disabled={!rescheduleDate}
-                                  onClick={() => confirmReschedule(page.id, page.title)}
-                                >
-                                  <Check className="h-3.5 w-3.5" /> Confirm Reschedule
+                              <PopoverTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" title="Reschedule" onClick={(e) => e.stopPropagation()}>
+                                  <CalendarClock className="h-3.5 w-3.5" />
                                 </Button>
-                              </div>
-                            </PopoverContent>
-                          </Popover>
+                              </PopoverTrigger>
+                              <PopoverContent className="w-auto p-0" align="end" onClick={(e) => e.stopPropagation()}>
+                                <div className="p-3 border-b border-border">
+                                  <p className="text-xs font-semibold text-foreground">Reschedule Page</p>
+                                  <p className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[200px]">{page.title}</p>
+                                </div>
+                                <Calendar mode="single" selected={rescheduleDate} onSelect={setRescheduleDate} initialFocus />
+                                <div className="p-3 border-t border-border space-y-3">
+                                  <div className="flex items-center gap-2">
+                                    <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    <Input type="time" value={rescheduleTime} onChange={(e) => setRescheduleTime(e.target.value)} className="h-7 text-xs" />
+                                  </div>
+                                  <Button size="sm" className="w-full h-7 text-xs gap-1.5" disabled={!rescheduleDate} onClick={() => confirmReschedule(page.id, page.title)}>
+                                    <Check className="h-3.5 w-3.5" /> Confirm Reschedule
+                                  </Button>
+                                </div>
+                              </PopoverContent>
+                            </Popover>
+
+                            {/* Preview button */}
+                            <Button variant="ghost" size="icon" className="h-7 w-7" title="Preview page" onClick={() => { setPreviewPageId(page.id); setPreviewOpen(true); }}>
+                              <MonitorPlay className="h-3.5 w-3.5" />
+                            </Button>
+
+                            {/* Actions dropdown */}
+                            <DropdownMenu>
+                              <DropdownMenuTrigger asChild>
+                                <Button variant="ghost" size="icon" className="h-7 w-7" onClick={(e) => e.stopPropagation()}>
+                                  <MoreHorizontal className="h-4 w-4" />
+                                </Button>
+                              </DropdownMenuTrigger>
+                              <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuItem asChild>
+                                  <Link href={`/pages/${page.id}/edit`} className="flex items-center gap-2 cursor-pointer">
+                                    <ExternalLink className="h-3.5 w-3.5" /> Edit page
+                                  </Link>
+                                </DropdownMenuItem>
+                                <DropdownMenuSeparator />
+                                <DropdownMenuItem
+                                  className="gap-2 cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    duplicateAndSchedule(page.id);
+                                  }}
+                                >
+                                  <Copy className="h-3.5 w-3.5 text-violet-400" />
+                                  <span>Duplicate &amp; schedule</span>
+                                </DropdownMenuItem>
+                              </DropdownMenuContent>
+                            </DropdownMenu>
+                          </>
                         )}
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-7 w-7"
-                          title="Preview page"
-                          onClick={() => { setPreviewPageId(page.id); setPreviewOpen(true); }}
-                        >
-                          <MonitorPlay className="h-3.5 w-3.5" />
-                        </Button>
-                        <Button variant="ghost" size="icon" className="h-7 w-7">
-                          <MoreHorizontal className="h-4 w-4" />
-                        </Button>
                       </div>
                     </TableCell>
                   </TableRow>
@@ -331,7 +358,6 @@ export default function Pages() {
                 </div>
                 page{selectedCount !== 1 ? "s" : ""} selected
               </div>
-
               <Popover open={bulkPickerOpen} onOpenChange={setBulkPickerOpen}>
                 <PopoverTrigger asChild>
                   <Button variant="outline" size="sm" className="h-8 gap-2 text-xs">
@@ -342,60 +368,25 @@ export default function Pages() {
                 <PopoverContent className="w-auto p-0" align="center" side="top">
                   <div className="p-3 border-b border-border">
                     <p className="text-xs font-semibold">Bulk Reschedule</p>
-                    <p className="text-[11px] text-muted-foreground mt-0.5">
-                      {selectedCount} page{selectedCount !== 1 ? "s" : ""} will be moved to this date
-                    </p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">{selectedCount} page{selectedCount !== 1 ? "s" : ""} will be moved to this date</p>
                   </div>
-                  <Calendar
-                    mode="single"
-                    selected={bulkDate}
-                    onSelect={setBulkDate}
-                    initialFocus
-                  />
+                  <Calendar mode="single" selected={bulkDate} onSelect={setBulkDate} initialFocus />
                   <div className="p-3 border-t border-border space-y-3">
                     <div className="flex items-center gap-2">
                       <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                      <Input
-                        type="time"
-                        value={bulkTime}
-                        onChange={(e) => setBulkTime(e.target.value)}
-                        className="h-7 text-xs"
-                      />
+                      <Input type="time" value={bulkTime} onChange={(e) => setBulkTime(e.target.value)} className="h-7 text-xs" />
                     </div>
-                    <Button
-                      size="sm"
-                      className="w-full h-7 text-xs gap-1.5"
-                      disabled={!bulkDate}
-                      onClick={confirmBulkReschedule}
-                    >
-                      <Check className="h-3.5 w-3.5" />
-                      Reschedule {selectedCount} page{selectedCount !== 1 ? "s" : ""}
+                    <Button size="sm" className="w-full h-7 text-xs gap-1.5" disabled={!bulkDate} onClick={confirmBulkReschedule}>
+                      <Check className="h-3.5 w-3.5" /> Reschedule {selectedCount} page{selectedCount !== 1 ? "s" : ""}
                     </Button>
                   </div>
                 </PopoverContent>
               </Popover>
-
-              <Button
-                size="sm"
-                className="h-8 gap-2 text-xs"
-                disabled={!bulkDate || isBulkRescheduling}
-                onClick={confirmBulkReschedule}
-              >
-                {isBulkRescheduling ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                ) : (
-                  <CalendarClock className="h-3.5 w-3.5" />
-                )}
+              <Button size="sm" className="h-8 gap-2 text-xs" disabled={!bulkDate || isBulkRescheduling} onClick={confirmBulkReschedule}>
+                {isBulkRescheduling ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <CalendarClock className="h-3.5 w-3.5" />}
                 {isBulkRescheduling ? "Rescheduling…" : "Reschedule"}
               </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-8 w-8 text-muted-foreground hover:text-foreground"
-                onClick={clearSelection}
-                title="Clear selection"
-              >
+              <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-foreground" onClick={clearSelection} title="Clear selection">
                 <X className="h-4 w-4" />
               </Button>
             </div>
@@ -405,10 +396,7 @@ export default function Pages() {
 
       <AnimatePresence>
         {previewOpen && (
-          <SitePreview
-            onClose={() => setPreviewOpen(false)}
-            initialPageId={previewPageId}
-          />
+          <SitePreview onClose={() => setPreviewOpen(false)} initialPageId={previewPageId} />
         )}
       </AnimatePresence>
     </div>

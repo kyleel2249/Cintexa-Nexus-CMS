@@ -158,6 +158,48 @@ router.post("/:id/schedule", async (req, res) => {
   res.json(serializePage(page));
 });
 
+// ── Duplicate page ────────────────────────────────────────────────────────────
+router.post("/:id/duplicate", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const [source] = await db.select().from(pagesTable).where(eq(pagesTable.id, id));
+  if (!source) return res.status(404).json({ error: "Not found" });
+
+  const baseSlug = `${source.slug}-copy`;
+  const existing = await db.select({ slug: pagesTable.slug }).from(pagesTable);
+  const slugSet = new Set(existing.map((r) => r.slug));
+  let slug = baseSlug;
+  if (slugSet.has(slug)) slug = `${baseSlug}-${Date.now()}`;
+
+  const [copy] = await db
+    .insert(pagesTable)
+    .values({
+      siteId: source.siteId,
+      title: `Copy of ${source.title}`,
+      slug,
+      template: source.template,
+      content: source.content,
+      metaTitle: source.metaTitle,
+      metaDescription: source.metaDescription,
+      featuredImage: source.featuredImage,
+      status: "draft",
+    })
+    .returning();
+
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+  await Promise.all([
+    snapshotPage(copy.id, copy, savedBy, "Initial version (duplicated)"),
+    db.insert(activityTable).values({
+      type: "create",
+      entityType: "page",
+      entityTitle: copy.title,
+      userName: savedBy,
+      action: `duplicated page from "${source.title}"`,
+    }),
+  ]);
+  res.status(201).json(serializePage(copy));
+});
+
 // ── Unschedule page ───────────────────────────────────────────────────────────
 router.delete("/:id/schedule", async (req, res) => {
   const id = parseInt(req.params.id);

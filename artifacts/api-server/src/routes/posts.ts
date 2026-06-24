@@ -121,6 +121,46 @@ router.post("/:id/schedule", async (req, res) => {
   res.json(await enrichPost(post));
 });
 
+// ── Duplicate post ────────────────────────────────────────────────────────────
+router.post("/:id/duplicate", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const [source] = await db.select().from(postsTable).where(eq(postsTable.id, id));
+  if (!source) return res.status(404).json({ error: "Not found" });
+
+  const baseSlug = `${source.slug}-copy`;
+  // Make slug unique by appending a timestamp suffix if needed
+  const existing = await db.select({ slug: postsTable.slug }).from(postsTable);
+  const slugSet = new Set(existing.map((r) => r.slug));
+  let slug = baseSlug;
+  if (slugSet.has(slug)) slug = `${baseSlug}-${Date.now()}`;
+
+  const [copy] = await db
+    .insert(postsTable)
+    .values({
+      title: `Copy of ${source.title}`,
+      slug,
+      excerpt: source.excerpt,
+      content: source.content,
+      authorId: source.authorId,
+      categoryId: source.categoryId,
+      featuredImage: source.featuredImage,
+      metaTitle: source.metaTitle,
+      metaDescription: source.metaDescription,
+      readingTime: source.readingTime,
+      status: "draft",
+    })
+    .returning();
+  await db.insert(activityTable).values({
+    type: "create",
+    entityType: "post",
+    entityTitle: copy.title,
+    userName: "Admin",
+    action: `duplicated post from "${source.title}"`,
+  });
+  res.status(201).json(await enrichPost(copy));
+});
+
 // ── Unschedule post ───────────────────────────────────────────────────────────
 router.delete("/:id/schedule", async (req, res) => {
   const id = parseInt(req.params.id);
