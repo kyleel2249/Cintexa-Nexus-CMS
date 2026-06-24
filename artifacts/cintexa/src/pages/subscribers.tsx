@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from 
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
-import { Plus, Mail, Users, Trash2, Upload, CheckCircle2, XCircle } from "lucide-react";
+import { Plus, Mail, Users, Trash2, Upload, Download, CheckCircle2, XCircle } from "lucide-react";
 
 interface Subscriber {
   id: number;
@@ -101,6 +101,27 @@ export default function Subscribers() {
     importMutation.mutate(subs);
   };
 
+  const handleExport = () => {
+    const header = ["Name", "Email", "Status", "Signup Date"];
+    const rows = subscribers.map((s) => [
+      s.name ?? "",
+      s.email,
+      s.status,
+      new Date(s.createdAt).toLocaleDateString("en-US", { year: "numeric", month: "2-digit", day: "2-digit" }),
+    ]);
+    const csv = [header, ...rows]
+      .map((row) => row.map((cell) => `"${String(cell).replace(/"/g, '""')}"`).join(","))
+      .join("\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `subscribers-${new Date().toISOString().split("T")[0]}.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+    toast({ title: `Exported ${subscribers.length} subscriber${subscribers.length !== 1 ? "s" : ""}` });
+  };
+
   const filtered = subscribers.filter((s) =>
     s.email.toLowerCase().includes(search.toLowerCase()) ||
     (s.name ?? "").toLowerCase().includes(search.toLowerCase()),
@@ -117,6 +138,16 @@ export default function Subscribers() {
           <p className="text-muted-foreground mt-1">Manage your email subscriber list</p>
         </div>
         <div className="flex items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExport}
+            disabled={subscribers.length === 0}
+          >
+            <Download className="w-4 h-4 mr-2" />
+            Export CSV
+          </Button>
+
           <Dialog open={importOpen} onOpenChange={setImportOpen}>
             <DialogTrigger asChild>
               <Button variant="outline" size="sm"><Upload className="w-4 h-4 mr-2" />Import CSV</Button>
