@@ -4,13 +4,15 @@ import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { Plus, Search, MoreHorizontal, Clock, CalendarClock, Check, Loader2 } from "lucide-react";
+import { Plus, Search, MoreHorizontal, Clock, CalendarClock, Check, Loader2, X, CalendarRange } from "lucide-react";
 import { Link } from "wouter";
 import { format, parseISO } from "date-fns";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useToast } from "@/hooks/use-toast";
+import { motion, AnimatePresence } from "framer-motion";
 
 async function reschedulePost(id: number, newDate: Date): Promise<void> {
   const res = await fetch(`/api/posts/${id}/schedule`, {
@@ -28,6 +30,7 @@ export default function Posts() {
   const { data: posts, isLoading, refetch } = useGetPosts();
   const { toast } = useToast();
 
+  // ── Single-row reschedule ──────────────────────────────────────────────────
   const [openRescheduleId, setOpenRescheduleId] = useState<number | null>(null);
   const [rescheduleDate, setRescheduleDate] = useState<Date | undefined>(undefined);
   const [rescheduleTime, setRescheduleTime] = useState("12:00");
@@ -45,7 +48,6 @@ export default function Posts() {
     const [hours, minutes] = rescheduleTime.split(":").map(Number);
     const newDate = new Date(rescheduleDate);
     newDate.setHours(hours, minutes, 0, 0);
-
     setOpenRescheduleId(null);
     setReschedulingId(postId);
     try {
@@ -61,6 +63,74 @@ export default function Posts() {
       setReschedulingId(null);
     }
   }
+
+  // ── Bulk selection ─────────────────────────────────────────────────────────
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkDate, setBulkDate] = useState<Date | undefined>(undefined);
+  const [bulkTime, setBulkTime] = useState("12:00");
+  const [bulkPickerOpen, setBulkPickerOpen] = useState(false);
+  const [isBulkRescheduling, setIsBulkRescheduling] = useState(false);
+
+  const allIds = posts?.map((p) => p.id) ?? [];
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.has(id));
+  const someSelected = allIds.some((id) => selectedIds.has(id));
+
+  function toggleAll() {
+    if (allSelected) {
+      setSelectedIds(new Set());
+    } else {
+      setSelectedIds(new Set(allIds));
+    }
+  }
+
+  function toggleOne(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function clearSelection() {
+    setSelectedIds(new Set());
+    setBulkDate(undefined);
+    setBulkPickerOpen(false);
+  }
+
+  async function confirmBulkReschedule() {
+    if (!bulkDate || selectedIds.size === 0) return;
+    const [hours, minutes] = bulkTime.split(":").map(Number);
+    const newDate = new Date(bulkDate);
+    newDate.setHours(hours, minutes, 0, 0);
+
+    setBulkPickerOpen(false);
+    setIsBulkRescheduling(true);
+    const ids = Array.from(selectedIds);
+
+    const results = await Promise.allSettled(ids.map((id) => reschedulePost(id, newDate)));
+    const succeeded = results.filter((r) => r.status === "fulfilled").length;
+    const failed = results.filter((r) => r.status === "rejected").length;
+
+    setIsBulkRescheduling(false);
+    clearSelection();
+    refetch();
+
+    if (failed === 0) {
+      toast({
+        title: `${succeeded} post${succeeded !== 1 ? "s" : ""} rescheduled`,
+        description: `All moved to ${format(newDate, "MMM d, yyyy 'at' h:mm a")}`,
+      });
+    } else {
+      toast({
+        title: `${succeeded} succeeded, ${failed} failed`,
+        description: "Some posts could not be rescheduled.",
+        variant: "destructive",
+      });
+    }
+  }
+
+  const selectedCount = selectedIds.size;
 
   return (
     <div className="space-y-6">
@@ -86,6 +156,15 @@ export default function Posts() {
         <Table>
           <TableHeader>
             <TableRow>
+              <TableHead className="w-[40px] pr-0">
+                <Checkbox
+                  checked={allSelected}
+                  data-state={someSelected && !allSelected ? "indeterminate" : undefined}
+                  onCheckedChange={toggleAll}
+                  aria-label="Select all"
+                  className="translate-y-[1px]"
+                />
+              </TableHead>
               <TableHead>Title</TableHead>
               <TableHead>Author</TableHead>
               <TableHead>Category</TableHead>
@@ -98,6 +177,7 @@ export default function Posts() {
             {isLoading ? (
               Array(5).fill(0).map((_, i) => (
                 <TableRow key={i}>
+                  <TableCell><Skeleton className="h-4 w-4" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-[250px]" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-[100px]" /></TableCell>
                   <TableCell><Skeleton className="h-4 w-[80px]" /></TableCell>
@@ -107,103 +187,117 @@ export default function Posts() {
                 </TableRow>
               ))
             ) : posts?.length ? (
-              posts.map((post) => (
-                <TableRow key={post.id} className="group cursor-pointer">
-                  <TableCell className="font-medium">
-                    <div className="flex flex-col gap-1">
-                      <Link href={`/posts/${post.id}/edit`} className="hover:text-primary transition-colors">
-                        {post.title}
-                      </Link>
-                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                        <span>/{post.slug}</span>
-                        {post.readingTime && (
-                          <span className="flex items-center gap-1">
-                            <Clock className="h-3 w-3" /> {post.readingTime} min
-                          </span>
-                        )}
+              posts.map((post) => {
+                const isSelected = selectedIds.has(post.id);
+                return (
+                  <TableRow
+                    key={post.id}
+                    className={`group cursor-pointer transition-colors ${isSelected ? "bg-primary/5" : ""}`}
+                  >
+                    <TableCell className="pr-0" onClick={(e) => e.stopPropagation()}>
+                      <Checkbox
+                        checked={isSelected}
+                        onCheckedChange={() => toggleOne(post.id)}
+                        aria-label={`Select ${post.title}`}
+                        className="translate-y-[1px]"
+                      />
+                    </TableCell>
+                    <TableCell className="font-medium">
+                      <div className="flex flex-col gap-1">
+                        <Link href={`/posts/${post.id}/edit`} className="hover:text-primary transition-colors">
+                          {post.title}
+                        </Link>
+                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                          <span>/{post.slug}</span>
+                          {post.readingTime && (
+                            <span className="flex items-center gap-1">
+                              <Clock className="h-3 w-3" /> {post.readingTime} min
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{post.authorName || 'System'}</TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{post.categoryName || 'Uncategorized'}</TableCell>
-                  <TableCell>
-                    <Badge variant={post.status === 'Published' ? 'default' : post.status === 'Draft' ? 'secondary' : 'outline'}>
-                      {post.status}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">
-                    {format(new Date(post.updatedAt), "MMM d, yyyy")}
-                  </TableCell>
-                  <TableCell>
-                    <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {reschedulingId === post.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-                      ) : (
-                        <Popover
-                          open={openRescheduleId === post.id}
-                          onOpenChange={(open) => {
-                            if (open) openPicker(post.id, post.updatedAt);
-                            else setOpenRescheduleId(null);
-                          }}
-                        >
-                          <PopoverTrigger asChild>
-                            <Button
-                              variant="ghost"
-                              size="icon"
-                              className="h-7 w-7"
-                              title="Reschedule"
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{post.authorName || 'System'}</TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{post.categoryName || 'Uncategorized'}</TableCell>
+                    <TableCell>
+                      <Badge variant={post.status === 'Published' ? 'default' : post.status === 'Draft' ? 'secondary' : 'outline'}>
+                        {post.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">
+                      {format(new Date(post.updatedAt), "MMM d, yyyy")}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                        {reschedulingId === post.id ? (
+                          <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                        ) : (
+                          <Popover
+                            open={openRescheduleId === post.id}
+                            onOpenChange={(open) => {
+                              if (open) openPicker(post.id, post.updatedAt);
+                              else setOpenRescheduleId(null);
+                            }}
+                          >
+                            <PopoverTrigger asChild>
+                              <Button
+                                variant="ghost"
+                                size="icon"
+                                className="h-7 w-7"
+                                title="Reschedule"
+                                onClick={(e) => e.stopPropagation()}
+                              >
+                                <CalendarClock className="h-3.5 w-3.5" />
+                              </Button>
+                            </PopoverTrigger>
+                            <PopoverContent
+                              className="w-auto p-0"
+                              align="end"
                               onClick={(e) => e.stopPropagation()}
                             >
-                              <CalendarClock className="h-3.5 w-3.5" />
-                            </Button>
-                          </PopoverTrigger>
-                          <PopoverContent
-                            className="w-auto p-0"
-                            align="end"
-                            onClick={(e) => e.stopPropagation()}
-                          >
-                            <div className="p-3 border-b border-border">
-                              <p className="text-xs font-semibold text-foreground">Reschedule Post</p>
-                              <p className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[200px]">{post.title}</p>
-                            </div>
-                            <Calendar
-                              mode="single"
-                              selected={rescheduleDate}
-                              onSelect={setRescheduleDate}
-                              initialFocus
-                            />
-                            <div className="p-3 border-t border-border space-y-3">
-                              <div className="flex items-center gap-2">
-                                <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
-                                <Input
-                                  type="time"
-                                  value={rescheduleTime}
-                                  onChange={(e) => setRescheduleTime(e.target.value)}
-                                  className="h-7 text-xs"
-                                />
+                              <div className="p-3 border-b border-border">
+                                <p className="text-xs font-semibold text-foreground">Reschedule Post</p>
+                                <p className="text-[11px] text-muted-foreground mt-0.5 truncate max-w-[200px]">{post.title}</p>
                               </div>
-                              <Button
-                                size="sm"
-                                className="w-full h-7 text-xs gap-1.5"
-                                disabled={!rescheduleDate}
-                                onClick={() => confirmReschedule(post.id, post.title)}
-                              >
-                                <Check className="h-3.5 w-3.5" /> Confirm Reschedule
-                              </Button>
-                            </div>
-                          </PopoverContent>
-                        </Popover>
-                      )}
-                      <Button variant="ghost" size="icon" className="h-7 w-7 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <MoreHorizontal className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))
+                              <Calendar
+                                mode="single"
+                                selected={rescheduleDate}
+                                onSelect={setRescheduleDate}
+                                initialFocus
+                              />
+                              <div className="p-3 border-t border-border space-y-3">
+                                <div className="flex items-center gap-2">
+                                  <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                  <Input
+                                    type="time"
+                                    value={rescheduleTime}
+                                    onChange={(e) => setRescheduleTime(e.target.value)}
+                                    className="h-7 text-xs"
+                                  />
+                                </div>
+                                <Button
+                                  size="sm"
+                                  className="w-full h-7 text-xs gap-1.5"
+                                  disabled={!rescheduleDate}
+                                  onClick={() => confirmReschedule(post.id, post.title)}
+                                >
+                                  <Check className="h-3.5 w-3.5" /> Confirm Reschedule
+                                </Button>
+                              </div>
+                            </PopoverContent>
+                          </Popover>
+                        )}
+                        <Button variant="ghost" size="icon" className="h-7 w-7">
+                          <MoreHorizontal className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })
             ) : (
               <TableRow>
-                <TableCell colSpan={6} className="h-32 text-center text-muted-foreground">
+                <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                   No posts found.
                 </TableCell>
               </TableRow>
@@ -211,6 +305,95 @@ export default function Posts() {
           </TableBody>
         </Table>
       </div>
+
+      {/* ── Bulk action bar ──────────────────────────────────────────────────── */}
+      <AnimatePresence>
+        {selectedCount > 0 && (
+          <motion.div
+            initial={{ y: 80, opacity: 0 }}
+            animate={{ y: 0, opacity: 1 }}
+            exit={{ y: 80, opacity: 0 }}
+            transition={{ type: "spring", stiffness: 400, damping: 35 }}
+            className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50"
+          >
+            <div className="flex items-center gap-3 bg-card border border-border/70 rounded-xl shadow-2xl px-4 py-3">
+              <div className="flex items-center gap-2 text-sm font-medium pr-3 border-r border-border">
+                <div className="h-5 w-5 rounded-full bg-primary flex items-center justify-center text-[10px] font-bold text-primary-foreground">
+                  {selectedCount}
+                </div>
+                post{selectedCount !== 1 ? "s" : ""} selected
+              </div>
+
+              <Popover open={bulkPickerOpen} onOpenChange={setBulkPickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button variant="outline" size="sm" className="h-8 gap-2 text-xs">
+                    <CalendarRange className="h-3.5 w-3.5" />
+                    {bulkDate ? format(bulkDate, "MMM d, yyyy") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="center" side="top">
+                  <div className="p-3 border-b border-border">
+                    <p className="text-xs font-semibold">Bulk Reschedule</p>
+                    <p className="text-[11px] text-muted-foreground mt-0.5">
+                      {selectedCount} post{selectedCount !== 1 ? "s" : ""} will be moved to this date
+                    </p>
+                  </div>
+                  <Calendar
+                    mode="single"
+                    selected={bulkDate}
+                    onSelect={setBulkDate}
+                    initialFocus
+                  />
+                  <div className="p-3 border-t border-border space-y-3">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                      <Input
+                        type="time"
+                        value={bulkTime}
+                        onChange={(e) => setBulkTime(e.target.value)}
+                        className="h-7 text-xs"
+                      />
+                    </div>
+                    <Button
+                      size="sm"
+                      className="w-full h-7 text-xs gap-1.5"
+                      disabled={!bulkDate}
+                      onClick={confirmBulkReschedule}
+                    >
+                      <Check className="h-3.5 w-3.5" />
+                      Reschedule {selectedCount} post{selectedCount !== 1 ? "s" : ""}
+                    </Button>
+                  </div>
+                </PopoverContent>
+              </Popover>
+
+              <Button
+                size="sm"
+                className="h-8 gap-2 text-xs"
+                disabled={!bulkDate || isBulkRescheduling}
+                onClick={confirmBulkReschedule}
+              >
+                {isBulkRescheduling ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <CalendarClock className="h-3.5 w-3.5" />
+                )}
+                {isBulkRescheduling ? "Rescheduling…" : "Reschedule"}
+              </Button>
+
+              <Button
+                variant="ghost"
+                size="icon"
+                className="h-8 w-8 text-muted-foreground hover:text-foreground"
+                onClick={clearSelection}
+                title="Clear selection"
+              >
+                <X className="h-4 w-4" />
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
