@@ -21,6 +21,7 @@ import Seo from "@/pages/seo";
 import AiStudio from "@/pages/ai";
 import Settings from "@/pages/settings";
 import ContentCalendar from "@/pages/calendar";
+import ContentPipeline from "@/pages/pipeline";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -43,6 +44,7 @@ function Router() {
         <Route path="/menus" component={Menus} />
         <Route path="/forms" component={Forms} />
         <Route path="/calendar" component={ContentCalendar} />
+        <Route path="/pipeline" component={ContentPipeline} />
         <Route path="/seo" component={Seo} />
         <Route path="/ai" component={AiStudio} />
         <Route path="/settings" component={Settings} />

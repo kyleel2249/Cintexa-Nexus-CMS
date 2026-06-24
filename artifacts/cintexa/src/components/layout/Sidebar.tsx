@@ -15,6 +15,7 @@ import {
   Settings,
   MonitorPlay,
   CalendarDays,
+  Kanban,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -33,7 +34,8 @@ const navGroups = [
       { name: "Sites", href: "/sites", icon: Globe },
       { name: "Pages", href: "/pages", icon: FileText },
       { name: "Posts", href: "/posts", icon: PenTool },
-      { name: "Calendar", href: "/calendar", icon: CalendarDays }
+      { name: "Calendar", href: "/calendar", icon: CalendarDays },
+      { name: "Pipeline", href: "/pipeline", icon: Kanban }
     ]
   },
   {
