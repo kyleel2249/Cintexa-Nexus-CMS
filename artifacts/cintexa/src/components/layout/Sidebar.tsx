@@ -14,6 +14,7 @@ import {
   Wand2, 
   Settings,
   MonitorPlay,
+  CalendarDays,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -31,7 +32,8 @@ const navGroups = [
     items: [
       { name: "Sites", href: "/sites", icon: Globe },
       { name: "Pages", href: "/pages", icon: FileText },
-      { name: "Posts", href: "/posts", icon: PenTool }
+      { name: "Posts", href: "/posts", icon: PenTool },
+      { name: "Calendar", href: "/calendar", icon: CalendarDays }
     ]
   },
   {

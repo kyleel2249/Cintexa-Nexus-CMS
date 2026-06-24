@@ -11,6 +11,7 @@ import menusRouter from "./menus";
 import formsRouter from "./forms";
 import seoRouter from "./seo";
 import aiRouter from "./ai";
+import calendarRouter from "./calendar";
 
 const router: IRouter = Router();
 
@@ -26,5 +27,6 @@ router.use("/menus", menusRouter);
 router.use("/forms", formsRouter);
 router.use("/seo", seoRouter);
 router.use("/ai", aiRouter);
+router.use("/calendar", calendarRouter);
 
 export default router;

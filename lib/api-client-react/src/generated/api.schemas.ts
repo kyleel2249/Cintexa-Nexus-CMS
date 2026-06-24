@@ -444,6 +444,40 @@ export interface AiTitleResponse {
   titles: string[];
 }
 
+export type CalendarItemType = typeof CalendarItemType[keyof typeof CalendarItemType];
+
+
+export const CalendarItemType = {
+  page: 'page',
+  post: 'post',
+} as const;
+
+export type CalendarItemDateType = typeof CalendarItemDateType[keyof typeof CalendarItemDateType];
+
+
+export const CalendarItemDateType = {
+  scheduled: 'scheduled',
+  published: 'published',
+} as const;
+
+export interface CalendarItem {
+  id: number;
+  type: CalendarItemType;
+  title: string;
+  slug: string;
+  status: string;
+  /** @nullable */
+  siteId?: number | null;
+  /** @nullable */
+  siteName?: string | null;
+  /** @nullable */
+  scheduledAt?: string | null;
+  /** @nullable */
+  publishedAt?: string | null;
+  date: string;
+  dateType: CalendarItemDateType;
+}
+
 export type GetPagesParams = {
 siteId?: number;
 status?: string;
@@ -457,5 +491,10 @@ categoryId?: number;
 export type GetMediaParams = {
 type?: string;
 search?: string;
+};
+
+export type GetCalendarParams = {
+from?: string;
+to?: string;
 };
 

@@ -27,6 +27,7 @@ import type {
   AiSeoResponse,
   AiTitleRequest,
   AiTitleResponse,
+  CalendarItem,
   Category,
   CategoryInput,
   CategoryUpdate,
@@ -35,6 +36,7 @@ import type {
   FormInput,
   FormSubmission,
   FormUpdate,
+  GetCalendarParams,
   GetMediaParams,
   GetPagesParams,
   GetPostsParams,
@@ -4571,6 +4573,90 @@ export const useAiGenerateSeo = <TError = ErrorType<unknown>,
       > => {
       return useMutation(getAiGenerateSeoMutationOptions(options));
     }
+
+export const getGetCalendarUrl = (params?: GetCalendarParams,) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? 'null' : value.toString())
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0 ? `/api/calendar?${stringifiedParams}` : `/api/calendar`
+}
+
+/**
+ * @summary Get all scheduled and published content in a date range
+ */
+export const getCalendar = async (params?: GetCalendarParams, options?: RequestInit): Promise<CalendarItem[]> => {
+
+  return customFetch<CalendarItem[]>(getGetCalendarUrl(params),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetCalendarQueryKey = (params?: GetCalendarParams,) => {
+    return [
+    `/api/calendar`, ...(params ? [params] : [])
+    ] as const;
+    }
+
+
+export const getGetCalendarQueryOptions = <TData = Awaited<ReturnType<typeof getCalendar>>, TError = ErrorType<unknown>>(params?: GetCalendarParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalendar>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetCalendarQueryKey(params);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getCalendar>>> = ({ signal }) => getCalendar(params, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getCalendar>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetCalendarQueryResult = NonNullable<Awaited<ReturnType<typeof getCalendar>>>
+export type GetCalendarQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get all scheduled and published content in a date range
+ */
+
+export function useGetCalendar<TData = Awaited<ReturnType<typeof getCalendar>>, TError = ErrorType<unknown>>(
+ params?: GetCalendarParams, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getCalendar>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetCalendarQueryOptions(params,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
 
 export const getAiSuggestTitlesUrl = () => {
 

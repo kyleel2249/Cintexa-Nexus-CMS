@@ -20,6 +20,7 @@ import Forms from "@/pages/forms";
 import Seo from "@/pages/seo";
 import AiStudio from "@/pages/ai";
 import Settings from "@/pages/settings";
+import ContentCalendar from "@/pages/calendar";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -41,6 +42,7 @@ function Router() {
         <Route path="/categories" component={Categories} />
         <Route path="/menus" component={Menus} />
         <Route path="/forms" component={Forms} />
+        <Route path="/calendar" component={ContentCalendar} />
         <Route path="/seo" component={Seo} />
         <Route path="/ai" component={AiStudio} />
         <Route path="/settings" component={Settings} />

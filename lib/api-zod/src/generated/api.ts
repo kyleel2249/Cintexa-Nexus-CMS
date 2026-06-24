@@ -1171,6 +1171,30 @@ export const AiGenerateSeoResponse = zod.object({
 
 
 /**
+ * @summary Get all scheduled and published content in a date range
+ */
+export const GetCalendarQueryParams = zod.object({
+  "from": zod.coerce.string().optional(),
+  "to": zod.coerce.string().optional()
+})
+
+export const GetCalendarResponseItem = zod.object({
+  "id": zod.number(),
+  "type": zod.enum(['page', 'post']),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "status": zod.string(),
+  "siteId": zod.number().nullish(),
+  "siteName": zod.string().nullish(),
+  "scheduledAt": zod.string().nullish(),
+  "publishedAt": zod.string().nullish(),
+  "date": zod.string(),
+  "dateType": zod.enum(['scheduled', 'published'])
+})
+export const GetCalendarResponse = zod.array(GetCalendarResponseItem)
+
+
+/**
  * @summary Suggest title variations
  */
 

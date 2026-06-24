@@ -1139,6 +1139,31 @@ paths:
               schema:
                 $ref: "#/components/schemas/AiSeoResponse"
 
+  # ─── Content Calendar ────────────────────────────────────────────────────────
+  /calendar:
+    get:
+      operationId: getCalendar
+      tags: [calendar]
+      summary: Get all scheduled and published content in a date range
+      parameters:
+        - name: from
+          in: query
+          schema:
+            type: string
+        - name: to
+          in: query
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Calendar items
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CalendarItem"
+
   /ai/suggest-titles:
     post:
       operationId: aiSuggestTitles
@@ -1915,3 +1940,32 @@ components:
           items:
             type: string
       required: [titles]
+
+    CalendarItem:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+          enum: [page, post]
+        title:
+          type: string
+        slug:
+          type: string
+        status:
+          type: string
+        siteId:
+          type: ["integer", "null"]
+        siteName:
+          type: ["string", "null"]
+        scheduledAt:
+          type: ["string", "null"]
+        publishedAt:
+          type: ["string", "null"]
+        date:
+          type: string
+        dateType:
+          type: string
+          enum: [scheduled, published]
+      required: [id, type, title, slug, status, date, dateType]
