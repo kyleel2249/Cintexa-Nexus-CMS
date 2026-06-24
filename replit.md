@@ -9,7 +9,14 @@ AI-powered enterprise CMS admin interface with a visual drag-and-drop page build
 - `pnpm run build` — typecheck + build all packages
 - `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
 - `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
+- `pnpm --filter @workspace/scripts run seed` — seed database with demo data (safe to re-run; skips if already seeded)
+- `pnpm --filter @workspace/scripts run seed:force` — wipe and re-seed from scratch
 - Required env: `DATABASE_URL` — Postgres connection string, `OPENROUTER_API_KEY` — for AI features
+
+## Default Login (after seeding)
+
+- **Admin**: `admin@cintexa.com` / `Admin@123456`
+- **Editor**: `sarah@cintexa.com` / `Editor@123456`
 
 ## Stack
 
