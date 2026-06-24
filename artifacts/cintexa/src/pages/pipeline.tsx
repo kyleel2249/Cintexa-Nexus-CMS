@@ -18,22 +18,22 @@ import {
   startOfWeek,
   endOfWeek,
   addWeeks,
-  subWeeks,
   format,
-  isWithinInterval,
   parseISO,
   isBefore,
-  isAfter,
   getDay,
   setDay,
   addDays,
+  set,
 } from "date-fns";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { useToast } from "@/hooks/use-toast";
 import { useLocation } from "wouter";
 import {
   CalendarClock,
+  CalendarIcon,
   ChevronLeft,
   ChevronRight,
   FileText,
@@ -42,6 +42,7 @@ import {
   Inbox,
   GripVertical,
   Clock,
+  Check,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -106,14 +107,136 @@ function weekDateRange(weekStart: Date): string {
   return `${format(weekStart, "MMM d")} – ${format(end, "MMM d")}`;
 }
 
+// ── Quick Schedule Picker ──────────────────────────────────────────────────────
+
+function QuickSchedulePicker({
+  item,
+  onReschedule,
+}: {
+  item: PipelineItem;
+  onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
+}) {
+  const initial = item.scheduledAt ? parseISO(item.scheduledAt) : new Date();
+  const [open, setOpen] = useState(false);
+  const [selectedDay, setSelectedDay] = useState<Date | undefined>(initial);
+  const [hour, setHour] = useState(
+    String(initial.getHours()).padStart(2, "0")
+  );
+  const [minute, setMinute] = useState(
+    String(initial.getMinutes()).padStart(2, "0")
+  );
+  const [saving, setSaving] = useState(false);
+
+  async function handleConfirm() {
+    if (!selectedDay) return;
+    const date = set(selectedDay, {
+      hours: parseInt(hour, 10),
+      minutes: parseInt(minute, 10),
+      seconds: 0,
+      milliseconds: 0,
+    });
+    setSaving(true);
+    try {
+      await onReschedule(item, date);
+      setOpen(false);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); setOpen((o) => !o); }}
+          title="Quick schedule"
+          className="flex items-center justify-center h-5 w-5 rounded hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors flex-shrink-0"
+        >
+          <CalendarIcon className="h-3 w-3" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent
+        className="w-auto p-0 overflow-hidden"
+        align="start"
+        side="bottom"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="p-3 border-b border-border/60">
+          <p className="text-xs font-semibold text-foreground truncate max-w-[200px]">
+            {item.title}
+          </p>
+          <p className="text-[10px] text-muted-foreground mt-0.5">Quick schedule</p>
+        </div>
+
+        <Calendar
+          mode="single"
+          selected={selectedDay}
+          onSelect={setSelectedDay}
+          initialFocus
+          disabled={(d) => isBefore(d, addDays(new Date(), -1))}
+          className="[--cell-size:1.9rem]"
+        />
+
+        {/* Time row */}
+        <div className="flex items-center gap-2 px-3 py-2.5 border-t border-border/60 bg-muted/30">
+          <Clock className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+          <div className="flex items-center gap-1">
+            <input
+              type="number"
+              min={0}
+              max={23}
+              value={hour}
+              onChange={(e) => setHour(e.target.value.padStart(2, "0"))}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="w-10 text-center text-sm bg-background border border-border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+            <span className="text-muted-foreground font-bold text-sm">:</span>
+            <input
+              type="number"
+              min={0}
+              max={59}
+              value={minute}
+              onChange={(e) => setMinute(e.target.value.padStart(2, "0"))}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="w-10 text-center text-sm bg-background border border-border rounded px-1 py-0.5 focus:outline-none focus:ring-1 focus:ring-primary"
+            />
+          </div>
+          <span className="text-[10px] text-muted-foreground">
+            {parseInt(hour) < 12 ? "AM" : "PM"}
+          </span>
+
+          <Button
+            size="sm"
+            className="ml-auto h-7 text-xs gap-1 px-2.5"
+            disabled={!selectedDay || saving}
+            onClick={handleConfirm}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            {saving ? (
+              <RefreshCw className="h-3 w-3 animate-spin" />
+            ) : (
+              <Check className="h-3 w-3" />
+            )}
+            Set
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 // ── Draggable Card ─────────────────────────────────────────────────────────────
 
 function PipelineCard({
   item,
   isDragging = false,
+  onReschedule,
 }: {
   item: PipelineItem;
   isDragging?: boolean;
+  onReschedule?: (item: PipelineItem, date: Date) => Promise<void>;
 }) {
   const [, setLocation] = useLocation();
   const scheduled = item.scheduledAt ? parseISO(item.scheduledAt) : null;
@@ -153,13 +276,16 @@ function PipelineCard({
         </span>
       </div>
 
-      {/* Date/time */}
-      {scheduled && (
-        <div className="flex items-center gap-1 text-[10px] text-muted-foreground pl-5">
-          <Clock className="h-2.5 w-2.5" />
-          {format(scheduled, "EEE, MMM d · h:mm a")}
-        </div>
-      )}
+      {/* Date/time row with Quick Schedule trigger */}
+      <div className="flex items-center gap-1 pl-5">
+        <Clock className="h-2.5 w-2.5 text-muted-foreground flex-shrink-0" />
+        <span className="text-[10px] text-muted-foreground flex-1 truncate">
+          {scheduled ? format(scheduled, "EEE, MMM d · h:mm a") : "Not scheduled"}
+        </span>
+        {!isDragging && onReschedule && (
+          <QuickSchedulePicker item={item} onReschedule={onReschedule} />
+        )}
+      </div>
 
       {/* Slug */}
       <p className="text-[10px] text-muted-foreground/50 font-mono pl-5 truncate">
@@ -185,12 +311,14 @@ function WeekColumn({
   items,
   today,
   isOver,
+  onReschedule,
 }: {
   weekKey: string;
   weekStart: Date;
   items: PipelineItem[];
   today: Date;
   isOver: boolean;
+  onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
 }) {
   const label = weekLabel(weekStart, today);
   const range = weekDateRange(weekStart);
@@ -246,7 +374,7 @@ function WeekColumn({
       <div className="flex-1 p-2 space-y-2">
         <AnimatePresence>
           {items.map((item) => (
-            <DraggableCard key={item.id} item={item} />
+            <DraggableCard key={item.id} item={item} onReschedule={onReschedule} />
           ))}
         </AnimatePresence>
 
@@ -269,7 +397,13 @@ function WeekColumn({
 
 // ── Draggable wrapper ─────────────────────────────────────────────────────────
 
-function DraggableCard({ item }: { item: PipelineItem }) {
+function DraggableCard({
+  item,
+  onReschedule,
+}: {
+  item: PipelineItem;
+  onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: item.id, data: item });
 
@@ -290,7 +424,7 @@ function DraggableCard({ item }: { item: PipelineItem }) {
       {...attributes}
       {...listeners}
     >
-      <PipelineCard item={item} isDragging={isDragging} />
+      <PipelineCard item={item} isDragging={isDragging} onReschedule={onReschedule} />
     </motion.div>
   );
 }
@@ -302,11 +436,13 @@ function DroppableWeekColumn({
   weekStart,
   items,
   today,
+  onReschedule,
 }: {
   weekKey: string;
   weekStart: Date;
   items: PipelineItem[];
   today: Date;
+  onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: weekKey });
 
@@ -318,6 +454,7 @@ function DroppableWeekColumn({
         items={items}
         today={today}
         isOver={isOver}
+        onReschedule={onReschedule}
       />
     </div>
   );
@@ -440,7 +577,31 @@ export default function ContentPipeline() {
         description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       });
-      // Revert
+      refetch();
+    }
+  }
+
+  // ── Quick Schedule handler (from picker) ────────────────────────────────────
+
+  async function handleQuickReschedule(item: PipelineItem, date: Date) {
+    // Optimistic update
+    queryClient.setQueryData<PipelineItem[]>(["/api/pipeline"], (prev = []) =>
+      prev.map((i) =>
+        i.id === item.id ? { ...i, scheduledAt: date.toISOString(), status: "scheduled" } : i
+      )
+    );
+    try {
+      await rescheduleItem(item.type, item.entityId, date);
+      toast({
+        title: "Scheduled",
+        description: `"${item.title}" set for ${format(date, "EEE, MMM d 'at' h:mm a")}`,
+      });
+    } catch (err: unknown) {
+      toast({
+        title: "Failed to schedule",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
       refetch();
     }
   }
@@ -543,6 +704,7 @@ export default function ContentPipeline() {
                   weekStart={start}
                   items={grouped[key] ?? []}
                   today={today}
+                  onReschedule={handleQuickReschedule}
                 />
               ))}
             </div>
