@@ -58,3 +58,8 @@ timeoutMs = 20000
 
 [nix]
 channel = "stable-25_05"
+
+[userenv]
+
+[userenv.shared]
+GITHUB_REPO_URL = "https://github.com/kyleel2249/Cintexa-Nexus-CMS"
