@@ -10,6 +10,8 @@ export const usersTable = pgTable("cms_users", {
   avatar: text("avatar"),
   bio: text("bio"),
   status: text("status").notNull().default("active"),
+  passwordHash: text("password_hash"),
+  lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
 });
 
