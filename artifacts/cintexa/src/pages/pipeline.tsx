@@ -43,6 +43,7 @@ import {
   GripVertical,
   Clock,
   Check,
+  X,
 } from "lucide-react";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -81,6 +82,19 @@ async function rescheduleItem(
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
     throw new Error((err as { error?: string }).error || "Failed to reschedule");
+  }
+}
+
+async function unscheduleItem(
+  type: "post" | "page",
+  id: number
+): Promise<void> {
+  const endpoint =
+    type === "page" ? `/api/pages/${id}/schedule` : `/api/posts/${id}/schedule`;
+  const res = await fetch(endpoint, { method: "DELETE" });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error((err as { error?: string }).error || "Failed to unschedule");
   }
 }
 
@@ -233,13 +247,27 @@ function PipelineCard({
   item,
   isDragging = false,
   onReschedule,
+  onUnschedule,
 }: {
   item: PipelineItem;
   isDragging?: boolean;
   onReschedule?: (item: PipelineItem, date: Date) => Promise<void>;
+  onUnschedule?: (item: PipelineItem) => Promise<void>;
 }) {
   const [, setLocation] = useLocation();
+  const [unscheduling, setUnscheduling] = useState(false);
   const scheduled = item.scheduledAt ? parseISO(item.scheduledAt) : null;
+
+  async function handleUnschedule(e: React.MouseEvent) {
+    e.stopPropagation();
+    if (!onUnschedule) return;
+    setUnscheduling(true);
+    try {
+      await onUnschedule(item);
+    } finally {
+      setUnscheduling(false);
+    }
+  }
 
   return (
     <div
@@ -263,17 +291,36 @@ function PipelineCard({
           </span>
         </div>
 
-        <span
-          className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full flex-shrink-0 ${
-            item.status === "published"
-              ? "bg-green-500/15 text-green-400"
-              : item.status === "scheduled"
-              ? "bg-violet-500/15 text-violet-400"
-              : "bg-yellow-500/15 text-yellow-400"
-          }`}
-        >
-          {item.status}
-        </span>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <span
+            className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${
+              item.status === "published"
+                ? "bg-green-500/15 text-green-400"
+                : item.status === "scheduled"
+                ? "bg-violet-500/15 text-violet-400"
+                : "bg-yellow-500/15 text-yellow-400"
+            }`}
+          >
+            {item.status}
+          </span>
+
+          {/* Unschedule button — only shown on hover, hidden while dragging */}
+          {!isDragging && onUnschedule && item.status !== "published" && (
+            <button
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={handleUnschedule}
+              disabled={unscheduling}
+              title="Unschedule — move back to draft"
+              className="opacity-0 group-hover:opacity-100 flex items-center justify-center h-4 w-4 rounded text-muted-foreground/50 hover:text-red-400 hover:bg-red-500/10 transition-all"
+            >
+              {unscheduling ? (
+                <RefreshCw className="h-2.5 w-2.5 animate-spin" />
+              ) : (
+                <X className="h-2.5 w-2.5" />
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Date/time row with Quick Schedule trigger */}
@@ -312,6 +359,7 @@ function WeekColumn({
   today,
   isOver,
   onReschedule,
+  onUnschedule,
 }: {
   weekKey: string;
   weekStart: Date;
@@ -319,6 +367,7 @@ function WeekColumn({
   today: Date;
   isOver: boolean;
   onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
+  onUnschedule: (item: PipelineItem) => Promise<void>;
 }) {
   const label = weekLabel(weekStart, today);
   const range = weekDateRange(weekStart);
@@ -374,7 +423,7 @@ function WeekColumn({
       <div className="flex-1 p-2 space-y-2">
         <AnimatePresence>
           {items.map((item) => (
-            <DraggableCard key={item.id} item={item} onReschedule={onReschedule} />
+            <DraggableCard key={item.id} item={item} onReschedule={onReschedule} onUnschedule={onUnschedule} />
           ))}
         </AnimatePresence>
 
@@ -400,9 +449,11 @@ function WeekColumn({
 function DraggableCard({
   item,
   onReschedule,
+  onUnschedule,
 }: {
   item: PipelineItem;
   onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
+  onUnschedule: (item: PipelineItem) => Promise<void>;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } =
     useDraggable({ id: item.id, data: item });
@@ -424,7 +475,7 @@ function DraggableCard({
       {...attributes}
       {...listeners}
     >
-      <PipelineCard item={item} isDragging={isDragging} onReschedule={onReschedule} />
+      <PipelineCard item={item} isDragging={isDragging} onReschedule={onReschedule} onUnschedule={onUnschedule} />
     </motion.div>
   );
 }
@@ -437,12 +488,14 @@ function DroppableWeekColumn({
   items,
   today,
   onReschedule,
+  onUnschedule,
 }: {
   weekKey: string;
   weekStart: Date;
   items: PipelineItem[];
   today: Date;
   onReschedule: (item: PipelineItem, date: Date) => Promise<void>;
+  onUnschedule: (item: PipelineItem) => Promise<void>;
 }) {
   const { setNodeRef, isOver } = useDroppable({ id: weekKey });
 
@@ -455,6 +508,7 @@ function DroppableWeekColumn({
         today={today}
         isOver={isOver}
         onReschedule={onReschedule}
+        onUnschedule={onUnschedule}
       />
     </div>
   );
@@ -574,6 +628,29 @@ export default function ContentPipeline() {
     } catch (err: unknown) {
       toast({
         title: "Reschedule failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+        variant: "destructive",
+      });
+      refetch();
+    }
+  }
+
+  // ── Unschedule handler ───────────────────────────────────────────────────────
+
+  async function handleUnschedule(item: PipelineItem) {
+    // Optimistically remove from the board
+    queryClient.setQueryData<PipelineItem[]>(["/api/pipeline"], (prev = []) =>
+      prev.filter((i) => i.id !== item.id)
+    );
+    try {
+      await unscheduleItem(item.type, item.entityId);
+      toast({
+        title: "Moved to draft",
+        description: `"${item.title}" has been unscheduled.`,
+      });
+    } catch (err: unknown) {
+      toast({
+        title: "Failed to unschedule",
         description: err instanceof Error ? err.message : "Unknown error",
         variant: "destructive",
       });
@@ -705,6 +782,7 @@ export default function ContentPipeline() {
                   items={grouped[key] ?? []}
                   today={today}
                   onReschedule={handleQuickReschedule}
+                  onUnschedule={handleUnschedule}
                 />
               ))}
             </div>
