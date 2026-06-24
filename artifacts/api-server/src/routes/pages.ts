@@ -200,6 +200,66 @@ router.post("/:id/duplicate", async (req, res) => {
   res.status(201).json(serializePage(copy));
 });
 
+// ── Recurring schedule ────────────────────────────────────────────────────────
+router.post("/:id/recurring", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const { scheduledDates } = req.body;
+  if (!Array.isArray(scheduledDates) || scheduledDates.length === 0) {
+    return res.status(400).json({ error: "scheduledDates array is required" });
+  }
+  const [source] = await db.select().from(pagesTable).where(eq(pagesTable.id, id));
+  if (!source) return res.status(404).json({ error: "Not found" });
+
+  const existing = await db.select({ slug: pagesTable.slug }).from(pagesTable);
+  const slugSet = new Set(existing.map((r) => r.slug));
+  const savedBy = (req.headers["x-user-name"] as string) || "Admin";
+
+  const created: (typeof pagesTable.$inferSelect)[] = [];
+  for (const rawDate of scheduledDates) {
+    const scheduledAt = new Date(rawDate);
+    if (isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) continue;
+
+    const baseSlug = `${source.slug}-copy`;
+    let slug = baseSlug;
+    let attempt = 0;
+    while (slugSet.has(slug)) {
+      attempt++;
+      slug = `${baseSlug}-${Date.now()}-${attempt}`;
+    }
+    slugSet.add(slug);
+
+    const [copy] = await db
+      .insert(pagesTable)
+      .values({
+        siteId: source.siteId,
+        title: `Copy of ${source.title}`,
+        slug,
+        template: source.template,
+        content: source.content,
+        metaTitle: source.metaTitle,
+        metaDescription: source.metaDescription,
+        featuredImage: source.featuredImage,
+        status: "scheduled",
+        scheduledAt,
+      })
+      .returning();
+
+    await snapshotPage(copy.id, copy, savedBy, "Initial version (recurring schedule)");
+    created.push(copy);
+  }
+
+  await db.insert(activityTable).values({
+    type: "create",
+    entityType: "page",
+    entityTitle: source.title,
+    userName: savedBy,
+    action: `created recurring schedule with ${created.length} copies`,
+  });
+
+  res.status(201).json({ created: created.length, ids: created.map((c) => c.id) });
+});
+
 // ── Unschedule page ───────────────────────────────────────────────────────────
 router.delete("/:id/schedule", async (req, res) => {
   const id = parseInt(req.params.id);

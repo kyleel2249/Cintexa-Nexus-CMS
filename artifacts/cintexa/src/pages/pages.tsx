@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useGetPages } from "@workspace/api-client-react";
+import { RecurringScheduleDialog } from "@/components/recurring-schedule-dialog";
 import { Button } from "@/components/ui/button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -16,7 +17,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 import {
   Plus, Search, FileText, MoreHorizontal, MonitorPlay,
-  Clock, CalendarClock, Check, Loader2, X, CalendarRange, Copy, ExternalLink,
+  Clock, CalendarClock, Check, Loader2, X, CalendarRange, Copy, ExternalLink, RefreshCw,
 } from "lucide-react";
 import { Link } from "wouter";
 import { format, parseISO } from "date-fns";
@@ -73,6 +74,10 @@ export default function Pages() {
       setReschedulingId(null);
     }
   }
+
+  // ── Recurring schedule dialog ──────────────────────────────────────────────
+  const [recurringOpen, setRecurringOpen] = useState(false);
+  const [recurringSource, setRecurringSource] = useState<{ id: number; title: string } | null>(null);
 
   // ── Duplicate & schedule ───────────────────────────────────────────────────
   const [duplicatingId, setDuplicatingId] = useState<number | null>(null);
@@ -321,6 +326,17 @@ export default function Pages() {
                                   <Copy className="h-3.5 w-3.5 text-violet-400" />
                                   <span>Duplicate &amp; schedule</span>
                                 </DropdownMenuItem>
+                                <DropdownMenuItem
+                                  className="gap-2 cursor-pointer"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setRecurringSource({ id: page.id, title: page.title });
+                                    setRecurringOpen(true);
+                                  }}
+                                >
+                                  <RefreshCw className="h-3.5 w-3.5 text-indigo-400" />
+                                  <span>Recurring schedule…</span>
+                                </DropdownMenuItem>
                               </DropdownMenuContent>
                             </DropdownMenu>
                           </>
@@ -340,6 +356,18 @@ export default function Pages() {
           </TableBody>
         </Table>
       </div>
+
+      {/* ── Recurring schedule dialog ────────────────────────────────────────── */}
+      {recurringSource && (
+        <RecurringScheduleDialog
+          open={recurringOpen}
+          onOpenChange={setRecurringOpen}
+          sourceId={recurringSource.id}
+          sourceTitle={recurringSource.title}
+          type="page"
+          onSuccess={() => refetch()}
+        />
+      )}
 
       {/* ── Bulk action bar ──────────────────────────────────────────────────── */}
       <AnimatePresence>

@@ -161,6 +161,66 @@ router.post("/:id/duplicate", async (req, res) => {
   res.status(201).json(await enrichPost(copy));
 });
 
+// ── Recurring schedule ────────────────────────────────────────────────────────
+router.post("/:id/recurring", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const { scheduledDates } = req.body;
+  if (!Array.isArray(scheduledDates) || scheduledDates.length === 0) {
+    return res.status(400).json({ error: "scheduledDates array is required" });
+  }
+  const [source] = await db.select().from(postsTable).where(eq(postsTable.id, id));
+  if (!source) return res.status(404).json({ error: "Not found" });
+
+  const existing = await db.select({ slug: postsTable.slug }).from(postsTable);
+  const slugSet = new Set(existing.map((r) => r.slug));
+
+  const created: (typeof postsTable.$inferSelect)[] = [];
+  for (const rawDate of scheduledDates) {
+    const scheduledAt = new Date(rawDate);
+    if (isNaN(scheduledAt.getTime()) || scheduledAt <= new Date()) continue;
+
+    // Build unique slug
+    const baseSlug = `${source.slug}-copy`;
+    let slug = baseSlug;
+    let attempt = 0;
+    while (slugSet.has(slug)) {
+      attempt++;
+      slug = `${baseSlug}-${Date.now()}-${attempt}`;
+    }
+    slugSet.add(slug);
+
+    const [copy] = await db
+      .insert(postsTable)
+      .values({
+        title: `Copy of ${source.title}`,
+        slug,
+        excerpt: source.excerpt,
+        content: source.content,
+        authorId: source.authorId,
+        categoryId: source.categoryId,
+        featuredImage: source.featuredImage,
+        metaTitle: source.metaTitle,
+        metaDescription: source.metaDescription,
+        readingTime: source.readingTime,
+        status: "scheduled",
+        scheduledAt,
+      })
+      .returning();
+    created.push(copy);
+  }
+
+  await db.insert(activityTable).values({
+    type: "create",
+    entityType: "post",
+    entityTitle: source.title,
+    userName: "Admin",
+    action: `created recurring schedule with ${created.length} copies`,
+  });
+
+  res.status(201).json({ created: created.length, ids: created.map((c) => c.id) });
+});
+
 // ── Unschedule post ───────────────────────────────────────────────────────────
 router.delete("/:id/schedule", async (req, res) => {
   const id = parseInt(req.params.id);
