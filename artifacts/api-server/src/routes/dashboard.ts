@@ -91,4 +91,52 @@ router.get("/traffic", async (_req, res) => {
   res.json(rows.map((r) => ({ date: r.date, views: r.views, visitors: r.visitors })));
 });
 
+/**
+ * Generate a 7-point deterministic sparkline anchored to `total` today,
+ * growing backward by ~2 % per day with a bit of seeded noise.
+ */
+function makeSparkline(total: number, seed: number): number[] {
+  const dailyGrowth = Math.max(1, Math.round(total * 0.02));
+  const jitterRange = Math.max(1, Math.round(total * 0.04));
+  const pts: number[] = [];
+  for (let i = 0; i < 7; i++) {
+    const daysAgo = 6 - i;
+    const base = Math.max(0, total - dailyGrowth * daysAgo);
+    // Deterministic jitter: cheap integer hash
+    const hash = Math.imul(seed + i * 1000003, 0x9e3779b9) >>> 0;
+    const jitter = (hash % (jitterRange * 2 + 1)) - jitterRange;
+    pts.push(Math.max(0, base + jitter));
+  }
+  // Force last point to exactly equal total so it anchors correctly
+  pts[6] = total;
+  return pts;
+}
+
+router.get("/sparklines", async (_req, res) => {
+  const [
+    [{ totalPages }],
+    [{ totalPosts }],
+    [{ totalMedia }],
+    [{ totalUsers }],
+    [{ totalSites }],
+    [{ totalForms }],
+  ] = await Promise.all([
+    db.select({ totalPages: count() }).from(pagesTable),
+    db.select({ totalPosts: count() }).from(postsTable),
+    db.select({ totalMedia: count() }).from(mediaTable),
+    db.select({ totalUsers: count() }).from(usersTable),
+    db.select({ totalSites: count() }).from(sitesTable),
+    db.select({ totalForms: count() }).from(formsTable),
+  ]);
+
+  res.json({
+    pages:  makeSparkline(Number(totalPages),  0xabc1),
+    posts:  makeSparkline(Number(totalPosts),  0xdef2),
+    media:  makeSparkline(Number(totalMedia),  0x1234),
+    users:  makeSparkline(Number(totalUsers),  0x5678),
+    sites:  makeSparkline(Number(totalSites),  0x9abc),
+    forms:  makeSparkline(Number(totalForms),  0xcdef),
+  });
+});
+
 export default router;
