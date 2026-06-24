@@ -54,7 +54,7 @@ export default function Dashboard() {
                 </div>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{stat?.value.toLocaleString()}</div>
+                <div className="text-2xl font-bold">{stat?.value?.toLocaleString()}</div>
                 <div className="flex items-center text-xs text-muted-foreground mt-1">
                   <ArrowUpRight className="h-3 w-3 text-emerald-500 mr-1" />
                   <span className="text-emerald-500 font-medium">{stat?.trend}</span>
