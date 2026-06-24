@@ -5,7 +5,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AppLayout } from "@/components/layout/AppLayout";
 
-// Pages
 import Dashboard from "@/pages/dashboard";
 import Sites from "@/pages/sites";
 import Pages from "@/pages/pages";
@@ -22,6 +21,8 @@ import AiStudio from "@/pages/ai";
 import Settings from "@/pages/settings";
 import ContentCalendar from "@/pages/calendar";
 import ContentPipeline from "@/pages/pipeline";
+import Plugins from "@/pages/plugins";
+import Subscribers from "@/pages/subscribers";
 import NotFound from "@/pages/not-found";
 
 const queryClient = new QueryClient();
@@ -48,6 +49,8 @@ function Router() {
         <Route path="/seo" component={Seo} />
         <Route path="/ai" component={AiStudio} />
         <Route path="/settings" component={Settings} />
+        <Route path="/plugins" component={Plugins} />
+        <Route path="/subscribers" component={Subscribers} />
         <Route component={NotFound} />
       </Switch>
     </AppLayout>

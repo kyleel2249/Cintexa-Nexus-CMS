@@ -13,6 +13,10 @@ import seoRouter from "./seo";
 import aiRouter from "./ai";
 import calendarRouter from "./calendar";
 import pipelineRouter from "./pipeline";
+import pluginsRouter from "./plugins";
+import subscribersRouter from "./subscribers";
+import postImagesRouter from "./post-images";
+import broadcastRouter from "./broadcast";
 
 const router: IRouter = Router();
 
@@ -21,6 +25,8 @@ router.use("/dashboard", dashboardRouter);
 router.use("/sites", sitesRouter);
 router.use("/pages", pagesRouter);
 router.use("/posts", postsRouter);
+router.use("/posts/:id/images", postImagesRouter);
+router.use("/posts/:id/broadcasts", broadcastRouter);
 router.use("/media", mediaRouter);
 router.use("/users", usersRouter);
 router.use(taxonomyRouter);
@@ -30,5 +36,7 @@ router.use("/seo", seoRouter);
 router.use("/ai", aiRouter);
 router.use("/calendar", calendarRouter);
 router.use("/pipeline", pipelineRouter);
+router.use("/plugins", pluginsRouter);
+router.use("/subscribers", subscribersRouter);
 
 export default router;

@@ -14,6 +14,8 @@ export const postsTable = pgTable("posts", {
   featuredImage: text("featured_image"),
   metaTitle: text("meta_title"),
   metaDescription: text("meta_description"),
+  keywords: text("keywords"),
+  citationLinks: text("citation_links"),
   readingTime: integer("reading_time"),
   publishedAt: timestamp("published_at"),
   scheduledAt: timestamp("scheduled_at"),

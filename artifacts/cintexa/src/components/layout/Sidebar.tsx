@@ -1,21 +1,23 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { 
-  LayoutDashboard, 
-  Globe, 
-  FileText, 
-  PenTool, 
-  Image as ImageIcon, 
-  Users, 
-  Tags, 
-  MenuSquare, 
-  FormInput, 
-  Search, 
-  Wand2, 
+import {
+  LayoutDashboard,
+  Globe,
+  FileText,
+  PenTool,
+  Image as ImageIcon,
+  Users,
+  Tags,
+  MenuSquare,
+  FormInput,
+  Search,
+  Wand2,
   Settings,
   MonitorPlay,
   CalendarDays,
   Kanban,
+  Puzzle,
+  Mail,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -25,8 +27,8 @@ const navGroups = [
   {
     title: "Overview",
     items: [
-      { name: "Dashboard", href: "/", icon: LayoutDashboard }
-    ]
+      { name: "Dashboard", href: "/", icon: LayoutDashboard },
+    ],
   },
   {
     title: "Content",
@@ -35,37 +37,39 @@ const navGroups = [
       { name: "Pages", href: "/pages", icon: FileText },
       { name: "Posts", href: "/posts", icon: PenTool },
       { name: "Calendar", href: "/calendar", icon: CalendarDays },
-      { name: "Pipeline", href: "/pipeline", icon: Kanban }
-    ]
+      { name: "Pipeline", href: "/pipeline", icon: Kanban },
+    ],
   },
   {
     title: "Media",
     items: [
-      { name: "Library", href: "/media", icon: ImageIcon }
-    ]
+      { name: "Library", href: "/media", icon: ImageIcon },
+    ],
   },
   {
-    title: "Team",
+    title: "Audience",
     items: [
-      { name: "Users", href: "/users", icon: Users }
-    ]
+      { name: "Subscribers", href: "/subscribers", icon: Mail },
+      { name: "Users", href: "/users", icon: Users },
+    ],
   },
   {
     title: "Taxonomy",
     items: [
       { name: "Categories", href: "/categories", icon: Tags },
       { name: "Menus", href: "/menus", icon: MenuSquare },
-      { name: "Forms", href: "/forms", icon: FormInput }
-    ]
+      { name: "Forms", href: "/forms", icon: FormInput },
+    ],
   },
   {
     title: "System",
     items: [
       { name: "SEO", href: "/seo", icon: Search },
       { name: "AI Studio", href: "/ai", icon: Wand2 },
-      { name: "Settings", href: "/settings", icon: Settings }
-    ]
-  }
+      { name: "Plugins", href: "/plugins", icon: Puzzle },
+      { name: "Settings", href: "/settings", icon: Settings },
+    ],
+  },
 ];
 
 export function Sidebar() {
@@ -82,7 +86,7 @@ export function Sidebar() {
           <span className="font-bold text-lg tracking-tight text-foreground">CINTEXA</span>
         </div>
       </div>
-      
+
       <div className="flex-1 overflow-y-auto py-6 px-4 space-y-8">
         {navGroups.map((group) => (
           <div key={group.title} className="space-y-2">
@@ -96,9 +100,9 @@ export function Sidebar() {
                   <Link key={item.name} href={item.href}>
                     <div className={cn(
                       "flex items-center gap-3 px-2 py-2 rounded-md transition-colors cursor-pointer group",
-                      isActive 
-                        ? "bg-primary text-primary-foreground font-medium shadow-sm" 
-                        : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      isActive
+                        ? "bg-primary text-primary-foreground font-medium shadow-sm"
+                        : "text-muted-foreground hover:bg-secondary hover:text-foreground",
                     )}>
                       <item.icon className={cn("w-4 h-4", isActive ? "text-primary-foreground" : "text-muted-foreground group-hover:text-foreground")} />
                       <span className="text-sm">{item.name}</span>
@@ -111,7 +115,6 @@ export function Sidebar() {
         ))}
       </div>
 
-      {/* Preview Site button at the bottom */}
       <div className="px-4 py-4 border-t border-border/50">
         <button
           onClick={() => setPreviewOpen(true)}

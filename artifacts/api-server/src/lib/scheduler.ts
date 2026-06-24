@@ -1,11 +1,12 @@
 import { db, pagesTable, postsTable, activityTable } from "@workspace/db";
 import { eq, and, lte } from "drizzle-orm";
 import { logger } from "./logger";
+import { runPublishPipeline } from "./publish-pipeline";
+import { seedPlugins } from "../routes/plugins";
 
 async function publishDueContent() {
   const now = new Date();
 
-  // Publish scheduled pages
   const duePagesResult = await db
     .update(pagesTable)
     .set({ status: "published", publishedAt: now, scheduledAt: null, updatedAt: now })
@@ -14,16 +15,9 @@ async function publishDueContent() {
 
   for (const page of duePagesResult) {
     logger.info({ pageId: page.id }, `Scheduler: auto-published page "${page.title}"`);
-    await db.insert(activityTable).values({
-      type: "publish",
-      entityType: "page",
-      entityTitle: page.title,
-      userName: "Scheduler",
-      action: "auto-published scheduled page",
-    });
+    await db.insert(activityTable).values({ type: "publish", entityType: "page", entityTitle: page.title, userName: "Scheduler", action: "auto-published scheduled page" });
   }
 
-  // Publish scheduled posts
   const duePostsResult = await db
     .update(postsTable)
     .set({ status: "published", publishedAt: now, scheduledAt: null, updatedAt: now })
@@ -32,19 +26,14 @@ async function publishDueContent() {
 
   for (const post of duePostsResult) {
     logger.info({ postId: post.id }, `Scheduler: auto-published post "${post.title}"`);
-    await db.insert(activityTable).values({
-      type: "publish",
-      entityType: "post",
-      entityTitle: post.title,
-      userName: "Scheduler",
-      action: "auto-published scheduled post",
-    });
+    await db.insert(activityTable).values({ type: "publish", entityType: "post", entityTitle: post.title, userName: "Scheduler", action: "auto-published scheduled post" });
+    runPublishPipeline(post.id).catch((err) => logger.error(err, "Publish pipeline error"));
   }
 }
 
-export function startScheduler() {
+export async function startScheduler() {
+  await seedPlugins();
   logger.info("Content scheduler started (60s interval)");
-  // Run immediately on start, then every 60 seconds
   publishDueContent().catch((err) => logger.error(err, "Scheduler error"));
   return setInterval(() => {
     publishDueContent().catch((err) => logger.error(err, "Scheduler error"));
