@@ -128,6 +128,28 @@ export interface PageUpdate {
   featuredImage?: string;
 }
 
+export interface PageRevision {
+  id: number;
+  pageId: number;
+  title: string;
+  slug: string;
+  status: string;
+  /** @nullable */
+  template?: string | null;
+  /** @nullable */
+  content?: string | null;
+  /** @nullable */
+  metaTitle?: string | null;
+  /** @nullable */
+  metaDescription?: string | null;
+  /** @nullable */
+  featuredImage?: string | null;
+  savedBy: string;
+  /** @nullable */
+  label?: string | null;
+  createdAt: string;
+}
+
 export interface Post {
   id: number;
   title: string;

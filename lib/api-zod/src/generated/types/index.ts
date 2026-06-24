@@ -33,6 +33,7 @@ export * from './menuInput';
 export * from './menuUpdate';
 export * from './page';
 export * from './pageInput';
+export * from './pageRevision';
 export * from './pageUpdate';
 export * from './post';
 export * from './postInput';

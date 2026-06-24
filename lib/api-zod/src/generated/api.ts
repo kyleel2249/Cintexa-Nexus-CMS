@@ -300,6 +300,81 @@ export const PublishPageResponse = zod.object({
 
 
 /**
+ * @summary List all revisions for a page
+ */
+export const GetPageRevisionsParams = zod.object({
+  "id": zod.coerce.number()
+})
+
+export const GetPageRevisionsResponseItem = zod.object({
+  "id": zod.number(),
+  "pageId": zod.number(),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "status": zod.string(),
+  "template": zod.string().nullish(),
+  "content": zod.string().nullish(),
+  "metaTitle": zod.string().nullish(),
+  "metaDescription": zod.string().nullish(),
+  "featuredImage": zod.string().nullish(),
+  "savedBy": zod.string(),
+  "label": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+export const GetPageRevisionsResponse = zod.array(GetPageRevisionsResponseItem)
+
+
+/**
+ * @summary Get a single revision
+ */
+export const GetPageRevisionParams = zod.object({
+  "id": zod.coerce.number(),
+  "revisionId": zod.coerce.number()
+})
+
+export const GetPageRevisionResponse = zod.object({
+  "id": zod.number(),
+  "pageId": zod.number(),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "status": zod.string(),
+  "template": zod.string().nullish(),
+  "content": zod.string().nullish(),
+  "metaTitle": zod.string().nullish(),
+  "metaDescription": zod.string().nullish(),
+  "featuredImage": zod.string().nullish(),
+  "savedBy": zod.string(),
+  "label": zod.string().nullish(),
+  "createdAt": zod.string()
+})
+
+
+/**
+ * @summary Restore a page to a specific revision
+ */
+export const RestorePageRevisionParams = zod.object({
+  "id": zod.coerce.number(),
+  "revisionId": zod.coerce.number()
+})
+
+export const RestorePageRevisionResponse = zod.object({
+  "id": zod.number(),
+  "siteId": zod.number().nullish(),
+  "title": zod.string(),
+  "slug": zod.string(),
+  "status": zod.string(),
+  "template": zod.string().nullish(),
+  "content": zod.string().nullish(),
+  "metaTitle": zod.string().nullish(),
+  "metaDescription": zod.string().nullish(),
+  "featuredImage": zod.string().nullish(),
+  "publishedAt": zod.string().nullish(),
+  "createdAt": zod.string(),
+  "updatedAt": zod.string()
+})
+
+
+/**
  * @summary List all posts
  */
 export const GetPostsQueryParams = zod.object({

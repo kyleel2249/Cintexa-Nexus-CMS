@@ -47,6 +47,7 @@ import type {
   MenuUpdate,
   Page,
   PageInput,
+  PageRevision,
   PageUpdate,
   Post,
   PostInput,
@@ -1195,6 +1196,237 @@ export const usePublishPage = <TError = ErrorType<unknown>,
         TContext
       > => {
       return useMutation(getPublishPageMutationOptions(options));
+    }
+
+export const getGetPageRevisionsUrl = (id: number,) => {
+
+
+
+
+  return `/api/pages/${id}/revisions`
+}
+
+/**
+ * @summary List all revisions for a page
+ */
+export const getPageRevisions = async (id: number, options?: RequestInit): Promise<PageRevision[]> => {
+
+  return customFetch<PageRevision[]>(getGetPageRevisionsUrl(id),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPageRevisionsQueryKey = (id: number,) => {
+    return [
+    `/api/pages/${id}/revisions`
+    ] as const;
+    }
+
+
+export const getGetPageRevisionsQueryOptions = <TData = Awaited<ReturnType<typeof getPageRevisions>>, TError = ErrorType<unknown>>(id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPageRevisions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPageRevisionsQueryKey(id);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPageRevisions>>> = ({ signal }) => getPageRevisions(id, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPageRevisions>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPageRevisionsQueryResult = NonNullable<Awaited<ReturnType<typeof getPageRevisions>>>
+export type GetPageRevisionsQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary List all revisions for a page
+ */
+
+export function useGetPageRevisions<TData = Awaited<ReturnType<typeof getPageRevisions>>, TError = ErrorType<unknown>>(
+ id: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPageRevisions>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPageRevisionsQueryOptions(id,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getGetPageRevisionUrl = (id: number,
+    revisionId: number,) => {
+
+
+
+
+  return `/api/pages/${id}/revisions/${revisionId}`
+}
+
+/**
+ * @summary Get a single revision
+ */
+export const getPageRevision = async (id: number,
+    revisionId: number, options?: RequestInit): Promise<PageRevision> => {
+
+  return customFetch<PageRevision>(getGetPageRevisionUrl(id,revisionId),
+  {
+    ...options,
+    method: 'GET'
+
+
+  }
+);}
+
+
+
+
+
+export const getGetPageRevisionQueryKey = (id: number,
+    revisionId: number,) => {
+    return [
+    `/api/pages/${id}/revisions/${revisionId}`
+    ] as const;
+    }
+
+
+export const getGetPageRevisionQueryOptions = <TData = Awaited<ReturnType<typeof getPageRevision>>, TError = ErrorType<unknown>>(id: number,
+    revisionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPageRevision>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+) => {
+
+const {query: queryOptions, request: requestOptions} = options ?? {};
+
+  const queryKey =  queryOptions?.queryKey ?? getGetPageRevisionQueryKey(id,revisionId);
+
+
+
+    const queryFn: QueryFunction<Awaited<ReturnType<typeof getPageRevision>>> = ({ signal }) => getPageRevision(id,revisionId, { signal, ...requestOptions });
+
+
+
+
+
+   return  { queryKey, queryFn, enabled: !!(id && revisionId), ...queryOptions} as UseQueryOptions<Awaited<ReturnType<typeof getPageRevision>>, TError, TData> & { queryKey: QueryKey }
+}
+
+export type GetPageRevisionQueryResult = NonNullable<Awaited<ReturnType<typeof getPageRevision>>>
+export type GetPageRevisionQueryError = ErrorType<unknown>
+
+
+/**
+ * @summary Get a single revision
+ */
+
+export function useGetPageRevision<TData = Awaited<ReturnType<typeof getPageRevision>>, TError = ErrorType<unknown>>(
+ id: number,
+    revisionId: number, options?: { query?:UseQueryOptions<Awaited<ReturnType<typeof getPageRevision>>, TError, TData>, request?: SecondParameter<typeof customFetch>}
+
+ ):  UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+
+  const queryOptions = getGetPageRevisionQueryOptions(id,revisionId,options)
+
+  const query = useQuery(queryOptions) as  UseQueryResult<TData, TError> & { queryKey: QueryKey };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}
+
+
+
+
+
+
+
+export const getRestorePageRevisionUrl = (id: number,
+    revisionId: number,) => {
+
+
+
+
+  return `/api/pages/${id}/revisions/${revisionId}/restore`
+}
+
+/**
+ * @summary Restore a page to a specific revision
+ */
+export const restorePageRevision = async (id: number,
+    revisionId: number, options?: RequestInit): Promise<Page> => {
+
+  return customFetch<Page>(getRestorePageRevisionUrl(id,revisionId),
+  {
+    ...options,
+    method: 'POST'
+
+
+  }
+);}
+
+
+
+
+export const getRestorePageRevisionMutationOptions = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restorePageRevision>>, TError,{id: number;revisionId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof restorePageRevision>>, TError,{id: number;revisionId: number}, TContext> => {
+
+const mutationKey = ['restorePageRevision'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof restorePageRevision>>, {id: number;revisionId: number}> = (props) => {
+          const {id,revisionId} = props ?? {};
+
+          return  restorePageRevision(id,revisionId,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type RestorePageRevisionMutationResult = NonNullable<Awaited<ReturnType<typeof restorePageRevision>>>
+
+    export type RestorePageRevisionMutationError = ErrorType<unknown>
+
+    /**
+ * @summary Restore a page to a specific revision
+ */
+export const useRestorePageRevision = <TError = ErrorType<unknown>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof restorePageRevision>>, TError,{id: number;revisionId: number}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof restorePageRevision>>,
+        TError,
+        {id: number;revisionId: number},
+        TContext
+      > => {
+      return useMutation(getRestorePageRevisionMutationOptions(options));
     }
 
 export const getGetPostsUrl = (params?: GetPostsParams,) => {

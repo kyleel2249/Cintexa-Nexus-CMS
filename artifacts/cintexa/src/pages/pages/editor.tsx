@@ -8,12 +8,14 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save, Globe, Image as ImageIcon, Layers, Code2, MonitorPlay } from "lucide-react";
+import { ArrowLeft, Save, Globe, Image as ImageIcon, Layers, Code2, MonitorPlay, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PageBuilder, blocksToHtml, htmlToBlocks } from "@/components/page-builder";
 import { Block } from "@/components/page-builder/types";
 import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
+import { RevisionHistory } from "@/components/revision-history";
+import { useQueryClient } from "@tanstack/react-query";
 
 type EditorMode = "visual" | "html";
 
@@ -23,6 +25,7 @@ export default function PageEditor() {
   const { toast } = useToast();
   const isNew = !id || id === "new";
   const [previewOpen, setPreviewOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: page, isLoading } = useGetPage(Number(id), {
     query: { enabled: !isNew && !!id },
@@ -238,7 +241,7 @@ export default function PageEditor() {
             </CardContent>
           </Card>
 
-          <Accordion type="single" collapsible className="w-full">
+          <Accordion type="multiple" className="w-full space-y-2">
             <AccordionItem value="seo" className="border border-border/50 rounded-xl px-1">
               <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-3 py-3">
                 SEO Meta
@@ -276,6 +279,25 @@ export default function PageEditor() {
                 </div>
               </AccordionContent>
             </AccordionItem>
+
+            {!isNew && id && (
+              <AccordionItem value="revisions" className="border border-border/50 rounded-xl px-1 overflow-hidden">
+                <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-3 py-3">
+                  <span className="flex items-center gap-1.5">
+                    <History className="h-3 w-3" />
+                    Revision History
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="p-0">
+                  <RevisionHistory
+                    pageId={Number(id)}
+                    onRestored={() => {
+                      queryClient.invalidateQueries({ queryKey: [`/api/pages/${id}`] });
+                    }}
+                  />
+                </AccordionContent>
+              </AccordionItem>
+            )}
           </Accordion>
         </div>
       </div>
