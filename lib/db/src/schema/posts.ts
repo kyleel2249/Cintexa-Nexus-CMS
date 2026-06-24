@@ -17,6 +17,7 @@ export const postsTable = pgTable("posts", {
   readingTime: integer("reading_time"),
   publishedAt: timestamp("published_at"),
   scheduledAt: timestamp("scheduled_at"),
+  sourceId: integer("source_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

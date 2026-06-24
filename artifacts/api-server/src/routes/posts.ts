@@ -149,6 +149,7 @@ router.post("/:id/duplicate", async (req, res) => {
       metaDescription: source.metaDescription,
       readingTime: source.readingTime,
       status: "draft",
+      sourceId: id,
     })
     .returning();
   await db.insert(activityTable).values({
@@ -205,6 +206,7 @@ router.post("/:id/recurring", async (req, res) => {
         readingTime: source.readingTime,
         status: "scheduled",
         scheduledAt,
+        sourceId: id,
       })
       .returning();
     created.push(copy);
@@ -219,6 +221,19 @@ router.post("/:id/recurring", async (req, res) => {
   });
 
   res.status(201).json({ created: created.length, ids: created.map((c) => c.id) });
+});
+
+// ── Schedule history ──────────────────────────────────────────────────────────
+router.get("/:id/schedule-history", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const copies = await db
+    .select()
+    .from(postsTable)
+    .where(eq(postsTable.sourceId, id))
+    .orderBy(postsTable.scheduledAt);
+  const enriched = await Promise.all(copies.map(enrichPost));
+  res.json(enriched);
 });
 
 // ── Unschedule post ───────────────────────────────────────────────────────────

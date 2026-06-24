@@ -15,6 +15,7 @@ export const pagesTable = pgTable("pages", {
   featuredImage: text("featured_image"),
   publishedAt: timestamp("published_at"),
   scheduledAt: timestamp("scheduled_at"),
+  sourceId: integer("source_id"),
   createdAt: timestamp("created_at").notNull().defaultNow(),
   updatedAt: timestamp("updated_at").notNull().defaultNow(),
 });

@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { ArrowLeft, Save, Globe, Image as ImageIcon, Layers, Code2, MonitorPlay, History } from "lucide-react";
+import { ArrowLeft, Save, Globe, Image as ImageIcon, Layers, Code2, MonitorPlay, History, CalendarClock } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { PageBuilder, blocksToHtml, htmlToBlocks } from "@/components/page-builder";
 import { Block } from "@/components/page-builder/types";
@@ -16,6 +16,7 @@ import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
 import { RevisionHistory } from "@/components/revision-history";
 import { SchedulePanel } from "@/components/schedule-panel";
+import { ScheduleHistoryPanel } from "@/components/schedule-history-panel";
 import { useQueryClient } from "@tanstack/react-query";
 
 type EditorMode = "visual" | "html";
@@ -314,6 +315,20 @@ export default function PageEditor() {
                       queryClient.invalidateQueries({ queryKey: [`/api/pages/${id}`] });
                     }}
                   />
+                </AccordionContent>
+              </AccordionItem>
+            )}
+
+            {!isNew && id && (
+              <AccordionItem value="schedule-history" className="border border-border/50 rounded-xl px-1 overflow-hidden">
+                <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-3 py-3">
+                  <span className="flex items-center gap-1.5">
+                    <CalendarClock className="h-3 w-3" />
+                    Schedule History
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="p-0">
+                  <ScheduleHistoryPanel entityId={Number(id)} type="page" />
                 </AccordionContent>
               </AccordionItem>
             )}

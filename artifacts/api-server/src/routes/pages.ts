@@ -183,6 +183,7 @@ router.post("/:id/duplicate", async (req, res) => {
       metaDescription: source.metaDescription,
       featuredImage: source.featuredImage,
       status: "draft",
+      sourceId: id,
     })
     .returning();
 
@@ -242,6 +243,7 @@ router.post("/:id/recurring", async (req, res) => {
         featuredImage: source.featuredImage,
         status: "scheduled",
         scheduledAt,
+        sourceId: id,
       })
       .returning();
 
@@ -258,6 +260,18 @@ router.post("/:id/recurring", async (req, res) => {
   });
 
   res.status(201).json({ created: created.length, ids: created.map((c) => c.id) });
+});
+
+// ── Schedule history ──────────────────────────────────────────────────────────
+router.get("/:id/schedule-history", async (req, res) => {
+  const id = parseInt(req.params.id);
+  if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+  const copies = await db
+    .select()
+    .from(pagesTable)
+    .where(eq(pagesTable.sourceId, id))
+    .orderBy(pagesTable.scheduledAt);
+  res.json(copies.map(serializePage));
 });
 
 // ── Unschedule page ───────────────────────────────────────────────────────────

@@ -3,13 +3,14 @@ import { useParams, useLocation } from "wouter";
 import { useGetPost, useCreatePost, useUpdatePost, useSchedulePost, useUnschedulePost } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { SchedulePanel } from "@/components/schedule-panel";
+import { ScheduleHistoryPanel } from "@/components/schedule-history-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { ArrowLeft, Save, Globe, Image as ImageIcon } from "lucide-react";
+import { ArrowLeft, Save, Globe, Image as ImageIcon, History } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 export default function PostEditor() {
@@ -191,10 +192,10 @@ export default function PostEditor() {
             </CardContent>
           </Card>
 
-          <Accordion type="single" collapsible className="w-full">
-            <AccordionItem value="seo" className="border-border/50">
-              <AccordionTrigger className="text-sm font-medium">SEO Meta</AccordionTrigger>
-              <AccordionContent className="space-y-4 pt-4">
+          <Accordion type="multiple" className="w-full space-y-2">
+            <AccordionItem value="seo" className="border border-border/50 rounded-xl px-1">
+              <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-3 py-3">SEO Meta</AccordionTrigger>
+              <AccordionContent className="space-y-4 px-3 pb-4">
                 <div className="space-y-2">
                   <Label className="text-xs">Meta Title</Label>
                   <Input 
@@ -215,6 +216,20 @@ export default function PostEditor() {
                 </div>
               </AccordionContent>
             </AccordionItem>
+
+            {!isNew && id && (
+              <AccordionItem value="schedule-history" className="border border-border/50 rounded-xl px-1 overflow-hidden">
+                <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-3 py-3">
+                  <span className="flex items-center gap-1.5">
+                    <History className="h-3 w-3" />
+                    Schedule History
+                  </span>
+                </AccordionTrigger>
+                <AccordionContent className="p-0">
+                  <ScheduleHistoryPanel entityId={Number(id)} type="post" />
+                </AccordionContent>
+              </AccordionItem>
+            )}
           </Accordion>
         </div>
       </div>
