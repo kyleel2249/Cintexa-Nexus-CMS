@@ -1,7 +1,7 @@
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { FileText, PenTool, Image as ImageIcon, Users, Globe, FormInput, ArrowUpRight, Activity } from "lucide-react";
+import { FileText, PenTool, Image as ImageIcon, Users, Globe, FormInput, ArrowUpRight, Activity, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer } from "recharts";
 import { format } from "date-fns";
 
@@ -9,6 +9,13 @@ export default function Dashboard() {
   const { data: summary, isLoading: isLoadingSummary } = useGetDashboardSummary();
   const { data: activity, isLoading: isLoadingActivity } = useGetDashboardActivity();
   const { data: traffic, isLoading: isLoadingTraffic } = useGetDashboardTraffic();
+
+  // Today vs Yesterday badge computation
+  const todayViews = traffic && traffic.length >= 1 ? traffic[traffic.length - 1].views : null;
+  const yesterdayViews = traffic && traffic.length >= 2 ? traffic[traffic.length - 2].views : null;
+  const viewsDelta = todayViews !== null && yesterdayViews !== null && yesterdayViews > 0
+    ? Math.round(((todayViews - yesterdayViews) / yesterdayViews) * 100)
+    : null;
 
   const stats = summary ? [
     { label: "Total Pages", value: summary.totalPages, icon: FileText, trend: "+12%" },
@@ -69,8 +76,37 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
         <Card className="col-span-2 border-border/50 bg-card/50">
           <CardHeader>
-            <CardTitle>Traffic Overview</CardTitle>
-            <CardDescription>Page views and unique visitors over the last 30 days.</CardDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <CardTitle>Traffic Overview</CardTitle>
+                <CardDescription>Page views and unique visitors over the last 30 days.</CardDescription>
+              </div>
+              {isLoadingTraffic ? (
+                <Skeleton className="h-7 w-32 rounded-full" />
+              ) : viewsDelta !== null && (
+                <div className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shrink-0 ${
+                  viewsDelta > 0
+                    ? "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20"
+                    : viewsDelta < 0
+                    ? "bg-red-500/10 text-red-400 ring-1 ring-red-500/20"
+                    : "bg-muted text-muted-foreground ring-1 ring-border"
+                }`}>
+                  {viewsDelta > 0 ? (
+                    <TrendingUp className="h-3.5 w-3.5" />
+                  ) : viewsDelta < 0 ? (
+                    <TrendingDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <Minus className="h-3.5 w-3.5" />
+                  )}
+                  <span>
+                    {viewsDelta > 0 ? "+" : ""}{viewsDelta}% vs yesterday
+                  </span>
+                  <span className="text-[10px] opacity-60 font-normal">
+                    ({todayViews?.toLocaleString()} views)
+                  </span>
+                </div>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="h-[350px]">
             {isLoadingTraffic ? (
