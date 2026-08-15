@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
-import { analyze, validateSmartGoal } from "../services/diagnostic-engine";
+import { analyze, benchmarkGap, projectScenario, validateSmartGoal } from "../services/diagnostic-engine";
 
 const router = Router();
 const json = (value: unknown) => value ?? {};
@@ -56,6 +56,15 @@ router.post("/analyze", async (req, res) => {
   const body = req.body ?? {};
   const result = analyze(body.metrics ?? {}, body.pillarScores ?? {});
   res.json({ ...result, generatedAt: new Date().toISOString(), evidencePolicy: "Conclusions are calculated from supplied values; missing benchmarks and external facts remain UNKNOWN." });
+});
+
+router.post("/benchmark", async (req, res) => {
+  const body = req.body ?? {};
+  res.json({ metric: body.metric ?? null, actual: body.actual ?? null, benchmark: body.benchmark ?? null, ...benchmarkGap(body.actual, body.benchmark) });
+});
+
+router.post("/scenario", async (req, res) => {
+  res.json({ ...projectScenario(req.body ?? {}), generatedAt: new Date().toISOString() });
 });
 
 router.post("/smart/validate", async (req, res) => {
