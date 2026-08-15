@@ -4,9 +4,7 @@ import tailwindcss from "@tailwindcss/vite";
 import path from "path";
 import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
 
-// Local development should work from a normal Windows CMD prompt without
-// requiring shell-specific environment-variable syntax. CI/hosting can still
-// override these values explicitly.
+// Keep local development compatible with a normal Windows CMD prompt.
 const rawPort = process.env.PORT ?? "5173";
 const port = Number(rawPort);
 
@@ -22,17 +20,12 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
-    ...(process.env.NODE_ENV !== "production" &&
-    process.env.REPL_ID !== undefined
+    ...(process.env.NODE_ENV !== "production" && process.env.REPL_ID !== undefined
       ? [
           await import("@replit/vite-plugin-cartographer").then((m) =>
-            m.cartographer({
-              root: path.resolve(import.meta.dirname, ".."),
-            }),
+            m.cartographer({ root: path.resolve(import.meta.dirname, "..") }),
           ),
-          await import("@replit/vite-plugin-dev-banner").then((m) =>
-            m.devBanner(),
-          ),
+          await import("@replit/vite-plugin-dev-banner").then((m) => m.devBanner()),
         ]
       : []),
   ],
@@ -49,13 +42,18 @@ export default defineConfig({
     emptyOutDir: true,
   },
   server: {
+    host: "0.0.0.0",
     port,
     strictPort: true,
-    host: "0.0.0.0",
-    allowedHosts: true,
-    fs: {
-      strict: true,
+    // Keep the browser's HMR connection on the local Windows host instead of
+    // exposing an internal/container address such as 172.x.x.x.
+    hmr: {
+      host: "localhost",
+      port,
+      protocol: "ws",
     },
+    allowedHosts: true,
+    fs: { strict: true },
     proxy: {
       "/api": {
         target: "http://localhost:8080",
