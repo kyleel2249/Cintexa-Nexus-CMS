@@ -1,0 +1,46 @@
+name: Windows Build
+
+on:
+  push:
+    branches:
+      - main
+      - feature/business-diagnostic-engine
+  pull_request:
+
+jobs:
+  windows-build:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Enable Corepack
+        shell: pwsh
+        run: corepack enable
+
+      - name: Activate pnpm
+        shell: pwsh
+        run: corepack prepare pnpm@10 --activate
+
+      - name: Install dependencies
+        shell: pwsh
+        run: pnpm install --no-frozen-lockfile
+
+      - name: Typecheck
+        shell: pwsh
+        run: pnpm run typecheck
+
+      - name: Build CINTEXA frontend
+        shell: pwsh
+        run: pnpm run build:app
+
+      - name: Build API
+        shell: pwsh
+        run: pnpm --filter @workspace/api-server run build
