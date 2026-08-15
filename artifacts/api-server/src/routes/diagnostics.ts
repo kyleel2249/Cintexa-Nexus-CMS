@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
-import { analyze, benchmarkGap, projectScenario, validateSmartGoal } from "../services/diagnostic-engine";
+import { analyze, benchmarkGap, projectScenario, validateSmartGoal, buildFullReport, getBenchmarks, buildBenchmarkReport } from "../services/diagnostic-engine";
 
 const router = Router();
 const json = (value: unknown) => value ?? {};
@@ -96,4 +96,81 @@ router.post("/goals", async (req, res) => {
   res.status(201).json({ ...goal, smartValidation: smart });
 });
 
+
+router.post("/report", async (req, res) => {
+  const body = req.body ?? {};
+  const report = buildFullReport({
+    companyName: body.companyName,
+    industry: body.industry,
+    metrics: body.metrics ?? {},
+    pillarScores: body.pillarScores ?? {},
+    competitors: body.competitors ?? [],
+  });
+  res.json(report);
+});
+
+router.get("/benchmarks", async (req, res) => {
+  const industry = typeof req.query.industry === "string" ? req.query.industry : null;
+  res.json({ industry: industry ?? "default", benchmarks: getBenchmarks(industry), note: "Benchmarks are documented public research summaries. Apply only when industry match is reasonable." });
+});
+
+router.post("/research", async (req, res) => {
+  const body = req.body ?? {};
+  const company = String(body.companyName ?? "").trim();
+  const competitors = Array.isArray(body.competitors) ? body.competitors.map((c: any) => String(c?.name ?? c).trim()).filter(Boolean) : [];
+  const industry = String(body.industry ?? "").trim();
+  // Structured research response — never fabricate competitor facts.
+  res.json({
+    companyName: company || null,
+    industry: industry || null,
+    researchedAt: new Date().toISOString(),
+    evidencePolicy: "Public claims require source and date. Without live web enrichment credentials, results remain USER PROVIDED or UNKNOWN.",
+    companyInsights: company ? [
+      { claim: `Profile recorded for ${company}`, evidence: "USER PROVIDED", source: "Diagnostic profile", date: new Date().toISOString().slice(0, 10) },
+      { claim: industry ? `Industry context set to ${industry}` : "Industry not specified", evidence: industry ? "USER PROVIDED" : "UNKNOWN", source: "Diagnostic profile", date: new Date().toISOString().slice(0, 10) },
+    ] : [],
+    competitorInsights: competitors.map((name: string) => ({
+      name,
+      claims: [
+        { claim: `Competitor named ${name} was supplied by the user`, evidence: "USER PROVIDED", source: "User input", date: new Date().toISOString().slice(0, 10) },
+        { claim: "Public positioning, pricing and review data not verified in this session", evidence: "UNKNOWN", source: null, date: null },
+      ],
+      recommendedNextStep: `Collect dated public sources for ${name}: website positioning, pricing pages, reviews and hiring signals.`,
+    })),
+    strategyHints: [
+      "Map conversion, cycle time and CAC against industry benchmarks before changing spend.",
+      "Build a monthly competitor scorecard with source/date for every external claim.",
+      "Convert top findings into SMART goals with owners and 30/90/365 day checkpoints.",
+    ],
+    benchmarks: getBenchmarks(industry || null),
+  });
+});
+
+router.post("/documents", async (req, res) => {
+  const body = req.body ?? {};
+  const files = Array.isArray(body.files) ? body.files : [];
+  // Accept metadata + extracted text summaries from client; store-ready payload.
+  const normalized = files.map((f: any, i: number) => ({
+    id: f.id ?? `doc-${i + 1}`,
+    name: String(f.name ?? "untitled"),
+    mimeType: String(f.mimeType ?? "application/octet-stream"),
+    size: Number(f.size ?? 0),
+    extractedTextPreview: typeof f.text === "string" ? f.text.slice(0, 4000) : null,
+    evidence: "USER PROVIDED",
+    uploadedAt: new Date().toISOString(),
+  }));
+  res.status(201).json({
+    accepted: normalized.length,
+    documents: normalized,
+    analysisNotes: normalized.map((d: any) => ({
+      document: d.name,
+      insight: d.extractedTextPreview
+        ? "Document text captured for diagnostic context (USER PROVIDED)."
+        : "No extractable text provided; file metadata recorded only.",
+      evidence: "USER PROVIDED",
+    })),
+  });
+});
+
 export default router;
+

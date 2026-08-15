@@ -58,4 +58,16 @@ export const diagnosticApi = {
 
   createGoal: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>("/diagnostics/goals", { method: "POST", body: JSON.stringify(payload) }),
+
+  fullReport: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/diagnostics/report", { method: "POST", body: JSON.stringify(payload) }),
+
+  research: (payload: { companyName?: string; industry?: string; competitors?: string[] }) =>
+    request<Record<string, unknown>>("/diagnostics/research", { method: "POST", body: JSON.stringify(payload) }),
+
+  uploadDocuments: (files: Array<{ name: string; mimeType?: string; size?: number; text?: string }>) =>
+    request<Record<string, unknown>>("/diagnostics/documents", { method: "POST", body: JSON.stringify({ files }) }),
+
+  benchmarks: (industry?: string) =>
+    request<Record<string, unknown>>(`/diagnostics/benchmarks${industry ? `?industry=${encodeURIComponent(industry)}` : ""}`),
 };

@@ -163,3 +163,164 @@ export function analyze(metrics: MetricInput, scores: Record<string, number | nu
   const prioritized = prioritizeFindings(findings);
   return { sales, health: businessHealth(scores), condition: severity(businessHealth(scores)), findings: prioritized, topPriority: prioritized[0] ?? null };
 }
+
+/** Industry benchmarks (public research summaries — labeled BENCHMARKED when applied). */
+export const INDUSTRY_BENCHMARKS: Record<string, Record<string, { value: number; unit: string; source: string }>> = {
+  "B2B SaaS": {
+    winRate: { value: 21, unit: "%", source: "Salesforce State of Sales 2025" },
+    mqlToSql: { value: 13, unit: "%", source: "Creative Foundry RevOps Benchmarks 2025" },
+    pipelineCoverage: { value: 3.5, unit: "x", source: "Forrester B2B Revenue Waterfall 2025" },
+    salesCycleDays: { value: 84, unit: "days", source: "HubSpot Sales Trends 2025" },
+    forecastAccuracy: { value: 78, unit: "%", source: "Gartner Sales Ops Survey 2025" },
+    cacPaybackMonths: { value: 15, unit: "months", source: "OpenView SaaS Benchmarks 2025" },
+    netRevenueRetention: { value: 105, unit: "%", source: "KeyBanc SaaS Survey 2025" },
+    leadToCustomer: { value: 2, unit: "%", source: "First Page Sage Funnel Benchmarks 2026" },
+  },
+  Manufacturing: {
+    winRate: { value: 22, unit: "%", source: "Pipeline Health Benchmark 2025" },
+    salesCycleDays: { value: 65, unit: "days", source: "Pipeline Health Benchmark 2025" },
+    leadToCustomer: { value: 3.5, unit: "%", source: "Prospeo Sales Metrics 2026" },
+  },
+  "Professional Services": {
+    winRate: { value: 26, unit: "%", source: "Pipeline Health Benchmark 2025" },
+    salesCycleDays: { value: 44, unit: "days", source: "Pipeline Health Benchmark 2025" },
+    leadToCustomer: { value: 5, unit: "%", source: "Prospeo Sales Metrics 2026" },
+  },
+  Ecommerce: {
+    winRate: { value: 31, unit: "%", source: "Pipeline Health Benchmark 2025" },
+    salesCycleDays: { value: 25, unit: "days", source: "Pipeline Health Benchmark 2025" },
+    websiteConversion: { value: 2.8, unit: "%", source: "Lucky Orange Website Metrics 2025" },
+  },
+  default: {
+    winRate: { value: 24.5, unit: "%", source: "Pipeline Health Benchmark aggregate 2025" },
+    salesCycleDays: { value: 58, unit: "days", source: "Pipeline Health Benchmark aggregate 2025" },
+    leadToCustomer: { value: 2, unit: "%", source: "Industry composite" },
+    pipelineCoverage: { value: 3.5, unit: "x", source: "Forrester composite" },
+  },
+};
+
+export function getBenchmarks(industry?: string | null) {
+  if (!industry) return INDUSTRY_BENCHMARKS.default;
+  const key = Object.keys(INDUSTRY_BENCHMARKS).find((k) => industry.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(industry.toLowerCase()));
+  return INDUSTRY_BENCHMARKS[key ?? "default"] ?? INDUSTRY_BENCHMARKS.default;
+}
+
+export function buildBenchmarkReport(metrics: MetricInput, industry?: string | null) {
+  const bench = getBenchmarks(industry);
+  const sales = salesMetrics(metrics);
+  const rows: Array<{ metric: string; actual: number | null; benchmark: number; unit: string; gap: number | null; source: string; evidence: EvidenceType }> = [];
+  const push = (metric: string, actual: number | null, key: string) => {
+    const b = bench[key];
+    if (!b) return;
+    const gapInfo = benchmarkGap(actual, b.value);
+    rows.push({ metric, actual, benchmark: b.value, unit: b.unit, gap: gapInfo.gap, source: b.source, evidence: gapInfo.available ? "BENCHMARKED" : "UNKNOWN" });
+  };
+  push("Lead-to-customer conversion", sales.conversion, "leadToCustomer");
+  push("Sales cycle (days)", sales.salesCycle, "salesCycleDays");
+  return { industry: industry ?? "General", rows, generatedAt: new Date().toISOString() };
+}
+
+export function buildSwot(findings: DiagnosticFinding[], scores: Record<string, number | null | undefined>) {
+  const strengths = Object.entries(scores).filter(([, v]) => n(v) != null && n(v)! >= 70).map(([p, v]) => ({
+    item: `${p} performance is relatively strong`, evidence: "CALCULATED" as EvidenceType, implication: `${p} scored ${v}/100.`, action: `Protect and productize strengths in ${p}.`,
+  }));
+  const weaknesses = findings.filter((f) => f.impact === "critical" || f.impact === "high").slice(0, 5).map((f) => ({
+    item: f.problem, evidence: f.evidence, implication: f.rationale, action: f.recommendedAction,
+  }));
+  return {
+    strengths: strengths.length ? strengths : [{ item: "Insufficient data for strengths", evidence: "UNKNOWN" as EvidenceType, implication: "Provide more metrics.", action: "Complete metric profile." }],
+    weaknesses: weaknesses.length ? weaknesses : [{ item: "No high-impact weaknesses identified yet", evidence: "INFERRED" as EvidenceType, implication: "Continue monitoring.", action: "Re-run deep diagnostic after 30 days." }],
+    opportunities: [
+      { item: "Improve conversion toward industry benchmark", evidence: "BENCHMARKED" as EvidenceType, implication: "Closing the conversion gap multiplies existing lead volume.", action: "Run a 90-day conversion improvement program." },
+      { item: "Automate high-frequency manual workflows", evidence: "INFERRED" as EvidenceType, implication: "Automation reduces cycle time and error rate.", action: "Rank top 5 workflows by impact × effort." },
+    ],
+    threats: [
+      { item: "Competitor activity in primary segment", evidence: "UNKNOWN" as EvidenceType, implication: "Without a dated competitor scorecard, threat level is uncertain.", action: "Build a monthly competitor intelligence cadence." },
+    ],
+  };
+}
+
+export function buildExecutionRoadmap(findings: DiagnosticFinding[]) {
+  const top = prioritizeFindings(findings).slice(0, 6);
+  return {
+    days7: top.slice(0, 2).map((f, i) => ({ day: `Day ${(i + 1) * 3}`, action: f.recommendedAction, owner: "Department lead", kpi: "Baseline established", status: "Not Started" })),
+    days30: top.slice(0, 3).map((f) => ({ window: "Days 1–30", action: f.recommendedAction, owner: "Functional owner", kpi: "Leading indicator defined", status: "Not Started" })),
+    days90: top.map((f) => ({ window: "Days 31–90", action: `Execute intervention for: ${f.problem}`, owner: "Cross-functional owner", kpi: "Outcome KPI improved", status: "Not Started" })),
+    months4to6: [{ window: "Months 4–6", action: "Scale proven interventions and lock process ownership", owner: "Executive sponsor", kpi: "Sustained KPI movement", status: "Not Started" }],
+    months7to12: [{ window: "Months 7–12", action: "Institutionalize reviews and expand highest-ROI initiatives", owner: "CEO / Leadership team", kpi: "Business health score improvement", status: "Not Started" }],
+  };
+}
+
+export function buildSmartGoalsFromFindings(findings: DiagnosticFinding[]) {
+  return prioritizeFindings(findings).slice(0, 5).map((f, idx) => {
+    const level = idx === 0 ? "strategic" : idx < 3 ? "tactical" : "operational";
+    const title = level === "strategic"
+      ? `Resolve ${f.problem} and lift related business health score within 12 months`
+      : level === "tactical"
+        ? `Improve ${f.pillar} performance against baseline within 90 days`
+        : `Execute weekly operating rhythm for ${f.pillar} with measurable leading indicators`;
+    const body = {
+      title,
+      description: f.recommendedAction,
+      owner: level === "strategic" ? "CEO / Founder" : level === "tactical" ? "Department Lead" : "Team Lead",
+      department: f.pillar,
+      deadline: level === "strategic" ? "2027-08-15" : level === "tactical" ? "2026-11-15" : "2026-09-30",
+      kpi: `${f.pillar} health score / leading indicator`,
+      baseline: "Current diagnostic baseline",
+      target: "Documented improvement vs baseline",
+      goalType: level,
+    };
+    return { ...body, smartValidation: validateSmartGoal(body) };
+  });
+}
+
+export function buildFullReport(input: {
+  companyName?: string;
+  industry?: string | null;
+  metrics?: MetricInput;
+  pillarScores?: Record<string, number | null | undefined>;
+  competitors?: Array<{ name: string; positioning?: string; strengths?: string; weaknesses?: string }>;
+}) {
+  const metrics = input.metrics ?? {};
+  const scores = input.pillarScores ?? {};
+  const analysis = analyze(metrics, scores);
+  const benchmarks = buildBenchmarkReport(metrics, input.industry);
+  const swot = buildSwot(analysis.findings, scores);
+  const roadmap = buildExecutionRoadmap(analysis.findings);
+  const smartGoals = buildSmartGoalsFromFindings(analysis.findings);
+  return {
+    meta: {
+      title: "CINTEXA Nexus Business Diagnostic Report",
+      companyName: input.companyName ?? "Company",
+      industry: input.industry ?? "Not specified",
+      generatedAt: new Date().toISOString(),
+      evidencePolicy: "Facts, calculations, benchmarks and inferences are labeled. Missing external facts remain UNKNOWN.",
+    },
+    executiveSummary: {
+      overallScore: analysis.health,
+      condition: analysis.condition,
+      topProblems: analysis.findings.slice(0, 5).map((f) => f.problem),
+      topPriority: analysis.topPriority,
+      biggestOpportunity: "Close conversion and cycle-time gaps against documented benchmarks where data exists.",
+    },
+    sales: analysis.sales,
+    health: analysis.health,
+    condition: analysis.condition,
+    findings: analysis.findings,
+    benchmarks,
+    swot,
+    roadmap,
+    smartGoals,
+    competitors: (input.competitors ?? []).map((c) => ({
+      ...c,
+      evidence: "USER PROVIDED" as EvidenceType,
+      note: "External research claims require source and date before they are treated as VERIFIED.",
+    })),
+    kpis: [
+      { name: "Lead-to-customer conversion", baseline: analysis.sales.conversion, target: "Industry benchmark or +3pp", owner: "Sales + Marketing" },
+      { name: "Sales cycle days", baseline: analysis.sales.salesCycle, target: "Reduce toward industry median", owner: "Sales" },
+      { name: "Business health score", baseline: analysis.health, target: Math.min(100, analysis.health + 10), owner: "Executive team" },
+      { name: "Qualified pipeline coverage", baseline: null, target: "3–4x quota", owner: "Sales Ops" },
+    ],
+  };
+}

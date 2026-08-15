@@ -19,6 +19,8 @@ import {
   buildAdaptiveQuestions, calculateBusinessHealth, calculateSalesMetrics, initialMetrics,
   pillars, questionBank, scoreSeverity, type Competitor, type DiagnosticMode, type Goal, type Metric,
 } from "@/lib/business-diagnostic";
+import { diagnosticApi } from "@/lib/diagnostic-api";
+import { downloadDiagnosticPdf } from "@/lib/diagnostic-report-pdf";
 
 const modes: { id: DiagnosticMode; label: string; minutes: string; description: string }[] = [
   { id: "quick", label: "Quick Scan", minutes: "10–15 min", description: "Rapid health and priority scan" },
@@ -89,6 +91,10 @@ export default function BusinessDiagnostic() {
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [newCompetitor, setNewCompetitor] = useState("");
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [uploadedDocs, setUploadedDocs] = useState<Array<{ name: string; size: number; mimeType: string; text?: string }>>([]);
+  const [researchNotes, setResearchNotes] = useState<string | null>(null);
+  const [reportBusy, setReportBusy] = useState(false);
+  const [docBusy, setDocBusy] = useState(false);
   const [scenarioConversion, setScenarioConversion] = useState(12);
   const [scenarioAov, setScenarioAov] = useState(10);
 
@@ -172,14 +178,66 @@ export default function BusinessDiagnostic() {
     </div>
   );
 
-  if (stage === "results") return (
+  
+  const downloadDetailedPdf = async () => {
+    setReportBusy(true);
+    try {
+      const report = await diagnosticApi.fullReport({
+        companyName: company.name || "Company",
+        industry: company.industry,
+        metrics: {
+          monthlyLeads: metrics.find(m => m.id === "monthlyLeads")?.value,
+          monthlyQualifiedLeads: metrics.find(m => m.id === "qualifiedLeads")?.value,
+          monthlyCustomers: metrics.find(m => m.id === "customers")?.value,
+          avgTransactionValue: metrics.find(m => m.id === "aov")?.value,
+          customerAcquisitionCost: metrics.find(m => m.id === "cac")?.value,
+          salesCycleDays: metrics.find(m => m.id === "salesCycle")?.value,
+        },
+        pillarScores: scores,
+        competitors: competitors.map(c => ({ name: c.name, positioning: c.positioning, strengths: Array.isArray(c.strengths) ? c.strengths.join(", ") : "", weaknesses: Array.isArray(c.weaknesses) ? c.weaknesses.join(", ") : "" })),
+      });
+      downloadDiagnosticPdf(report as any);
+    } catch (err) {
+      console.error(err);
+      window.print();
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
+  const handleDocumentUpload = async (fileList: FileList | null) => {
+    if (!fileList?.length) return;
+    setDocBusy(true);
+    try {
+      const files = await Promise.all(Array.from(fileList).map(async (file) => {
+        let text: string | undefined;
+        if (file.type.startsWith("text/") || /\.(md|csv|json|txt)$/i.test(file.name)) text = await file.text();
+        return { name: file.name, size: file.size, mimeType: file.type || "application/octet-stream", text };
+      }));
+      setUploadedDocs(prev => [...prev, ...files]);
+      await diagnosticApi.uploadDocuments(files);
+    } catch (err) { console.error(err); }
+    finally { setDocBusy(false); }
+  };
+
+  const runResearch = async () => {
+    try {
+      const result = await diagnosticApi.research({ companyName: company.name, industry: company.industry, competitors: competitors.map(c => c.name) });
+      setResearchNotes(JSON.stringify(result, null, 2));
+    } catch {
+      setResearchNotes("Research endpoint unavailable. Competitor claims remain USER PROVIDED until sources are attached.");
+    }
+  };
+
+if (stage === "results") return (
     <div className="space-y-7 pb-12 print:pb-0">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={printReport}><Download className="w-4 h-4 mr-2"/> Print / PDF</Button></div></div>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={downloadDetailedPdf} disabled={reportBusy}><Download className="w-4 h-4 mr-2"/> {reportBusy ? "Building PDF…" : "Download detailed PDF"}</Button><Button variant="outline" onClick={printReport}>Print</Button></div></div>
       <div className="grid lg:grid-cols-[auto_1fr] gap-5"><Card><CardContent className="p-8 flex flex-col items-center justify-center min-w-[180px]"><ScoreRing score={health} label="Business Health" size="lg"/><Badge className="mt-8">{severity}</Badge></CardContent></Card><Card><CardHeader><CardTitle>Executive readout</CardTitle><CardDescription>What CINTEXA would put in front of leadership first.</CardDescription></CardHeader><CardContent className="grid sm:grid-cols-2 gap-4"><Readout title="Strongest pillar" value={`${strongest.label} — ${scores[strongest.id]}/100`} icon={TrendingUp} tone="good" /><Readout title="Priority pillar" value={`${weakest.label} — ${scores[weakest.id]}/100`} icon={AlertTriangle} tone="risk" /><Readout title="Biggest revenue leak" value="Sales funnel conversion requires validation" icon={BarChart3} tone="risk" /><Readout title="Evidence gap" value="Competitor benchmarks need dated sources" icon={ShieldAlert} tone="neutral" /></CardContent></Card></div>
       <Card><CardHeader><CardTitle>Diagnostic pillar scorecard</CardTitle><CardDescription>Scores are a working diagnostic model. They should strengthen as evidence is supplied.</CardDescription></CardHeader><CardContent><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{pillars.map(p => <div key={p.id} className="border rounded-xl p-4"><div className="flex justify-between mb-2"><span className="font-medium">{p.label}</span><span className="font-bold">{scores[p.id]}/100</span></div><Progress value={scores[p.id]} /><div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>{scoreSeverity(scores[p.id])}</span><span>{p.weight}% weight</span></div></div>)}</div></CardContent></Card>
       <div className="grid xl:grid-cols-2 gap-5"><Card><CardHeader><CardTitle>Top problems</CardTitle></CardHeader><CardContent className="space-y-3">{starterProblems.map((p, i) => <div key={p.title} className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><div className="flex items-center gap-2"><span className="text-xs font-bold text-muted-foreground">0{i+1}</span><h3 className="font-semibold">{p.title}</h3></div><p className="text-sm text-muted-foreground mt-2">{p.detail}</p></div><EvidenceBadge type={p.evidence}/></div><div className="mt-3 p-3 rounded-lg bg-muted/60 text-sm"><b>Action:</b> {p.action}</div></div>)}</CardContent></Card><Card><CardHeader><CardTitle>Sales intelligence</CardTitle><CardDescription>Calculated only where source metrics exist.</CardDescription></CardHeader><CardContent className="space-y-4">{[["Lead → customer conversion", sales.conversion, "%"],["Qualified lead rate", sales.qualification, "%"],["Projected revenue from customer count", sales.revenue, "GHS"],["CAC", sales.cac, "GHS"]].map(([label,value,unit]) => <div key={String(label)} className="flex justify-between items-center border-b last:border-0 pb-3 last:pb-0"><span className="text-sm">{String(label)}</span><span className="font-semibold">{value === null ? "Unknown" : `${Number(value).toFixed(1)} ${unit}`} {value !== null && <EvidenceBadge type="CALCULATED"/>}</span></div>)}</CardContent></Card></div>
       <Card><CardHeader><CardTitle>Root-cause chain</CardTitle><CardDescription>Symptoms are kept separate from hypotheses.</CardDescription></CardHeader><CardContent><div className="grid md:grid-cols-5 gap-2 items-center">{["Observed Problem", "Evidence", "Possible Causes", "Root Cause", "Intervention"].map((x,i)=><div key={x} className="flex items-center gap-2"><div className="flex-1 border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">STEP {i+1}</div><div className="font-semibold mt-1">{x}</div><div className="text-xs text-muted-foreground mt-2">{i === 0 ? "Sales performance signal" : i === 1 ? "User data + calculations" : i === 2 ? "Qualification / follow-up / offer" : i === 3 ? "Validate with funnel evidence" : "Target the confirmed constraint"}</div></div>{i < 4 && <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0"/>}</div>)}</div></CardContent></Card>
       <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
+      <Card className="print:hidden"><CardHeader><CardTitle>Supporting documents & market research</CardTitle><CardDescription>Upload plans, financials or CRM exports. Research never fabricates competitor facts.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap gap-3 items-center"><label className="inline-flex items-center gap-2 text-sm border rounded-lg px-3 py-2 cursor-pointer hover:bg-muted"><input type="file" multiple className="hidden" onChange={e => handleDocumentUpload(e.target.files)} />{docBusy ? "Uploading…" : "Upload documents"}</label><Button variant="outline" onClick={runResearch}>Research company & competitors</Button></div>{uploadedDocs.length > 0 && <ul className="text-sm space-y-1">{uploadedDocs.map((d,i)=><li key={i} className="flex justify-between border-b py-1"><span>{d.name}</span><span className="text-muted-foreground">{Math.round(d.size/1024)} KB · USER PROVIDED</span></li>)}</ul>}{researchNotes && <pre className="text-xs bg-muted/50 p-3 rounded-lg overflow-auto max-h-48 whitespace-pre-wrap">{researchNotes}</pre>}</CardContent></Card>
       <div className="flex justify-end gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("profile")}>Edit inputs</Button><Button onClick={() => setStage("strategy")}>Build strategy <ArrowRight className="w-4 h-4 ml-2"/></Button></div>
     </div>
   );
