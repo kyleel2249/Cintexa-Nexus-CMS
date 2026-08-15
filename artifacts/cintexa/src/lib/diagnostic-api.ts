@@ -1,5 +1,6 @@
 export type DiagnosticProfilePayload = {
   companyName: string;
+  website?: string;
   industry?: string;
   subIndustry?: string;
   businessModel?: string;
@@ -62,12 +63,37 @@ export const diagnosticApi = {
   fullReport: (payload: Record<string, unknown>) =>
     request<Record<string, unknown>>("/diagnostics/report", { method: "POST", body: JSON.stringify(payload) }),
 
-  research: (payload: { companyName?: string; industry?: string; competitors?: string[] }) =>
-    request<Record<string, unknown>>("/diagnostics/research", { method: "POST", body: JSON.stringify(payload) }),
+  research: (payload: {
+    companyName?: string;
+    companyWebsite?: string;
+    industry?: string;
+    competitors?: Array<string | { name: string; website?: string }>;
+    sessionId?: number;
+    profileId?: number;
+  }) => request<Record<string, unknown>>("/diagnostics/research", { method: "POST", body: JSON.stringify(payload) }),
 
   uploadDocuments: (files: Array<{ name: string; mimeType?: string; size?: number; text?: string }>) =>
     request<Record<string, unknown>>("/diagnostics/documents", { method: "POST", body: JSON.stringify({ files }) }),
 
   benchmarks: (industry?: string) =>
     request<Record<string, unknown>>(`/diagnostics/benchmarks${industry ? `?industry=${encodeURIComponent(industry)}` : ""}`),
+
+  logTask: (payload: {
+    sessionId?: number;
+    profileId?: number;
+    taskType: string;
+    title: string;
+    detail?: string;
+    status?: string;
+    actor?: string;
+    metadata?: Record<string, unknown>;
+  }) => request<Record<string, unknown>>("/diagnostics/history", { method: "POST", body: JSON.stringify(payload) }),
+
+  listHistory: (params?: { sessionId?: number; profileId?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.sessionId) q.set("sessionId", String(params.sessionId));
+    if (params?.profileId) q.set("profileId", String(params.profileId));
+    const qs = q.toString();
+    return request<Array<Record<string, unknown>>>(`/diagnostics/history${qs ? `?${qs}` : ""}`);
+  },
 };

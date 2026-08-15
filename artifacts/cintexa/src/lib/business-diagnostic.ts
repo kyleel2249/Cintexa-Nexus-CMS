@@ -1,7 +1,7 @@
 export type EvidenceClass = "VERIFIED" | "USER PROVIDED" | "CALCULATED" | "BENCHMARKED" | "INFERRED" | "UNKNOWN";
 export type DiagnosticMode = "quick" | "standard" | "deep" | "executive" | "sales" | "marketing" | "competitive" | "digital";
 export type Metric = { id: string; label: string; value: number | null; unit: string; benchmark?: number | null };
-export type Competitor = { id: string; name: string; positioning: string; score: number; pricing: string; strengths: string[]; weaknesses: string[] };
+export type Competitor = { id: string; name: string; website?: string; positioning: string; score: number; pricing: string; strengths: string[]; weaknesses: string[] };
 export type Goal = { id: string; title: string; level: "strategic" | "tactical" | "operational"; owner: string; baseline: number | null; target: number | null; unit: string; deadline: string; status: string; smart: { specific: boolean; measurable: boolean; achievable: boolean; relevant: boolean; timeBound: boolean } };
 
 type DiagnosticQuestionType = "boolean" | "scale" | "select" | "text" | "number";

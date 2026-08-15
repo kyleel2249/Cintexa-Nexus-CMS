@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -85,12 +85,15 @@ export default function BusinessDiagnostic() {
   const [stage, setStage] = useState<"overview" | "profile" | "questions" | "results" | "strategy" | "execution">("overview");
   const [questionIndex, setQuestionIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, string | number | boolean>>({});
-  const [company, setCompany] = useState({ name: "", industry: "", subIndustry: "", model: "B2B", market: "", employees: "", revenue: "", objective: "" });
+  const [company, setCompany] = useState({ name: "", website: "", industry: "", subIndustry: "", model: "B2B", market: "", employees: "", revenue: "", objective: "" });
   const [metrics, setMetrics] = useState<Metric[]>(initialMetrics);
   const [scores, setScores] = useState(starterScores);
   const [competitors, setCompetitors] = useState<Competitor[]>([]);
   const [newCompetitor, setNewCompetitor] = useState("");
+  const [newCompetitorWebsite, setNewCompetitorWebsite] = useState("");
   const [goals, setGoals] = useState<Goal[]>([]);
+  const [taskHistory, setTaskHistory] = useState<Array<{ id: string; taskType: string; title: string; detail?: string; createdAt: string; status: string }>>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [uploadedDocs, setUploadedDocs] = useState<Array<{ name: string; size: number; mimeType: string; text?: string }>>([]);
   const [researchNotes, setResearchNotes] = useState<string | null>(null);
   const [reportBusy, setReportBusy] = useState(false);
@@ -129,8 +132,26 @@ export default function BusinessDiagnostic() {
   function addCompetitor() {
     const name = newCompetitor.trim();
     if (!name) return;
-    setCompetitors(prev => [...prev, { id: crypto.randomUUID(), name, positioning: "Unknown — research required", score: 0, pricing: "Unknown", strengths: [], weaknesses: [] }]);
+    const website = newCompetitorWebsite.trim();
+    setCompetitors(prev => [...prev, {
+      id: crypto.randomUUID(),
+      name,
+      website,
+      positioning: "User-provided competitor",
+      score: 0,
+      pricing: "",
+      strengths: [],
+      weaknesses: [],
+    } as any]);
     setNewCompetitor("");
+    setNewCompetitorWebsite("");
+    const entry = { id: crypto.randomUUID(), taskType: "competitor_added", title: `Added competitor: ${name}`, detail: website || undefined, status: "completed", createdAt: new Date().toISOString() };
+    setTaskHistory(prev => [entry, ...prev]);
+    try {
+      const key = "cintexa-diagnostic-task-history";
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      localStorage.setItem(key, JSON.stringify([entry, ...existing].slice(0, 200)));
+    } catch { /* ignore */ }
   }
 
   function addGoal(level: Goal["level"]) {
@@ -157,7 +178,7 @@ export default function BusinessDiagnostic() {
   if (stage === "profile") return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       <SectionTitle icon={Network} title="Company intelligence profile" description="Start with the operating context. Missing data stays missing instead of becoming an invented assumption." />
-      <Card><CardContent className="p-6"><div className="grid md:grid-cols-2 gap-5">{[["name","Company name"],["industry","Industry"],["subIndustry","Sub-industry"],["market","Geographic markets"],["employees","Employees"],["revenue","Revenue range"],["objective","Primary strategic objective"]].map(([key,label]) => <div key={key} className={key === "objective" ? "md:col-span-2" : ""}><Label>{label}</Label><Input className="mt-2" value={company[key as keyof typeof company]} onChange={e => setCompany({...company, [key]: e.target.value})} placeholder={`Enter ${label.toLowerCase()}`} /></div>)}<div><Label>Business model</Label><select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.model} onChange={e => setCompany({...company, model:e.target.value})}><option>B2B</option><option>B2C</option><option>B2B2C</option><option>Marketplace</option><option>Subscription</option></select></div></div></CardContent></Card>
+      <Card><CardContent className="p-6"><div className="grid md:grid-cols-2 gap-5">{[["name","Company name"],["website","Company website (optional)"],["industry","Industry"],["subIndustry","Sub-industry"],["market","Geographic markets"],["employees","Employees"],["revenue","Revenue range"],["objective","Primary strategic objective"]].map(([key,label]) => <div key={key} className={key === "objective" ? "md:col-span-2" : ""}><Label>{label}</Label><Input className="mt-2" value={company[key as keyof typeof company]} onChange={e => setCompany({...company, [key]: e.target.value})} placeholder={`Enter ${label.toLowerCase()}`} /></div>)}<div><Label>Business model</Label><select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.model} onChange={e => setCompany({...company, model:e.target.value})}><option>B2B</option><option>B2C</option><option>B2B2C</option><option>Marketplace</option><option>Subscription</option></select></div></div></CardContent></Card>
       <Card><CardHeader><CardTitle>Core business metrics</CardTitle><CardDescription>Numbers drive the calculations. Leave unavailable fields blank.</CardDescription></CardHeader><CardContent><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{metrics.map(m => <div key={m.id}><Label>{m.label} <span className="text-muted-foreground">({m.unit})</span></Label><Input className="mt-2" type="number" min="0" value={m.value ?? ""} onChange={e => updateMetric(m.id, e.target.value)} /></div>)}</div></CardContent></Card>
       <div className="flex justify-between"><Button variant="outline" onClick={() => setStage("overview")}><ChevronLeft className="w-4 h-4 mr-1"/> Back</Button><Button onClick={() => setStage("questions")}>Continue to adaptive diagnostic <ChevronRight className="w-4 h-4 ml-1"/></Button></div>
     </div>
@@ -179,6 +200,25 @@ export default function BusinessDiagnostic() {
   );
 
   
+  
+  const logTaskLocal = async (taskType: string, title: string, detail?: string, metadata?: Record<string, unknown>) => {
+    const entry = { id: crypto.randomUUID(), taskType, title, detail, status: "completed", createdAt: new Date().toISOString() };
+    setTaskHistory((prev) => [entry, ...prev]);
+    try {
+      const key = "cintexa-diagnostic-task-history";
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      localStorage.setItem(key, JSON.stringify([entry, ...existing].slice(0, 200)));
+    } catch { /* ignore */ }
+    try { await diagnosticApi.logTask({ taskType, title, detail, metadata, actor: "user" }); } catch { /* optional */ }
+  };
+
+  useEffect(() => {
+    try {
+      const existing = JSON.parse(localStorage.getItem("cintexa-diagnostic-task-history") || "[]");
+      if (Array.isArray(existing) && existing.length) setTaskHistory(existing);
+    } catch { /* ignore */ }
+  }, []);
+
   const downloadDetailedPdf = async () => {
     setReportBusy(true);
     try {
@@ -197,6 +237,7 @@ export default function BusinessDiagnostic() {
         competitors: competitors.map(c => ({ name: c.name, positioning: c.positioning, strengths: Array.isArray(c.strengths) ? c.strengths.join(", ") : "", weaknesses: Array.isArray(c.weaknesses) ? c.weaknesses.join(", ") : "" })),
       });
       downloadDiagnosticPdf(report as any);
+      await logTaskLocal("pdf_export", "Downloaded detailed diagnostic PDF", company.name || "Company");
     } catch (err) {
       console.error(err);
       window.print();
@@ -216,14 +257,21 @@ export default function BusinessDiagnostic() {
       }));
       setUploadedDocs(prev => [...prev, ...files]);
       await diagnosticApi.uploadDocuments(files);
+      await logTaskLocal("document_upload", `Uploaded ${files.length} document(s)`, files.map(f => f.name).join(", "));
     } catch (err) { console.error(err); }
     finally { setDocBusy(false); }
   };
 
   const runResearch = async () => {
     try {
-      const result = await diagnosticApi.research({ companyName: company.name, industry: company.industry, competitors: competitors.map(c => c.name) });
+      const result = await diagnosticApi.research({
+        companyName: company.name,
+        companyWebsite: (company as any).website,
+        industry: company.industry,
+        competitors: competitors.map(c => ({ name: c.name, website: (c as any).website || "" })),
+      });
       setResearchNotes(JSON.stringify(result, null, 2));
+      await logTaskLocal("research", "Company & competitor research", `Researched ${company.name || "company"} with ${competitors.length} competitor(s)`, { website: (company as any).website });
     } catch {
       setResearchNotes("Research endpoint unavailable. Competitor claims remain USER PROVIDED until sources are attached.");
     }
@@ -236,7 +284,8 @@ if (stage === "results") return (
       <Card><CardHeader><CardTitle>Diagnostic pillar scorecard</CardTitle><CardDescription>Scores are a working diagnostic model. They should strengthen as evidence is supplied.</CardDescription></CardHeader><CardContent><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{pillars.map(p => <div key={p.id} className="border rounded-xl p-4"><div className="flex justify-between mb-2"><span className="font-medium">{p.label}</span><span className="font-bold">{scores[p.id]}/100</span></div><Progress value={scores[p.id]} /><div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>{scoreSeverity(scores[p.id])}</span><span>{p.weight}% weight</span></div></div>)}</div></CardContent></Card>
       <div className="grid xl:grid-cols-2 gap-5"><Card><CardHeader><CardTitle>Top problems</CardTitle></CardHeader><CardContent className="space-y-3">{starterProblems.map((p, i) => <div key={p.title} className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><div className="flex items-center gap-2"><span className="text-xs font-bold text-muted-foreground">0{i+1}</span><h3 className="font-semibold">{p.title}</h3></div><p className="text-sm text-muted-foreground mt-2">{p.detail}</p></div><EvidenceBadge type={p.evidence}/></div><div className="mt-3 p-3 rounded-lg bg-muted/60 text-sm"><b>Action:</b> {p.action}</div></div>)}</CardContent></Card><Card><CardHeader><CardTitle>Sales intelligence</CardTitle><CardDescription>Calculated only where source metrics exist.</CardDescription></CardHeader><CardContent className="space-y-4">{[["Lead → customer conversion", sales.conversion, "%"],["Qualified lead rate", sales.qualification, "%"],["Projected revenue from customer count", sales.revenue, "GHS"],["CAC", sales.cac, "GHS"]].map(([label,value,unit]) => <div key={String(label)} className="flex justify-between items-center border-b last:border-0 pb-3 last:pb-0"><span className="text-sm">{String(label)}</span><span className="font-semibold">{value === null ? "Unknown" : `${Number(value).toFixed(1)} ${unit}`} {value !== null && <EvidenceBadge type="CALCULATED"/>}</span></div>)}</CardContent></Card></div>
       <Card><CardHeader><CardTitle>Root-cause chain</CardTitle><CardDescription>Symptoms are kept separate from hypotheses.</CardDescription></CardHeader><CardContent><div className="grid md:grid-cols-5 gap-2 items-center">{["Observed Problem", "Evidence", "Possible Causes", "Root Cause", "Intervention"].map((x,i)=><div key={x} className="flex items-center gap-2"><div className="flex-1 border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">STEP {i+1}</div><div className="font-semibold mt-1">{x}</div><div className="text-xs text-muted-foreground mt-2">{i === 0 ? "Sales performance signal" : i === 1 ? "User data + calculations" : i === 2 ? "Qualification / follow-up / offer" : i === 3 ? "Validate with funnel evidence" : "Target the confirmed constraint"}</div></div>{i < 4 && <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0"/>}</div>)}</div></CardContent></Card>
-      <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
+      <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
+      <Card className="print:hidden"><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Task history</CardTitle><CardDescription>Every diagnostic action is recorded and accessible here.</CardDescription></div><Button variant="outline" size="sm" onClick={() => setShowHistory(v => !v)}>{showHistory ? "Hide" : "Show"} history ({taskHistory.length})</Button></CardHeader>{showHistory && <CardContent><div className="space-y-2 max-h-72 overflow-y-auto">{taskHistory.length === 0 ? <p className="text-sm text-muted-foreground">No tasks recorded yet.</p> : taskHistory.map(t => <div key={t.id} className="border rounded-lg p-3 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-medium">{t.title}</div><div className="text-xs text-muted-foreground mt-0.5">{t.detail || t.taskType}</div></div><div className="text-xs text-muted-foreground shrink-0">{new Date(t.createdAt).toLocaleString()} · {t.status}</div></div>)}</div></CardContent>}</Card>
       <Card className="print:hidden"><CardHeader><CardTitle>Supporting documents & market research</CardTitle><CardDescription>Upload plans, financials or CRM exports. Research never fabricates competitor facts.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap gap-3 items-center"><label className="inline-flex items-center gap-2 text-sm border rounded-lg px-3 py-2 cursor-pointer hover:bg-muted"><input type="file" multiple className="hidden" onChange={e => handleDocumentUpload(e.target.files)} />{docBusy ? "Uploading…" : "Upload documents"}</label><Button variant="outline" onClick={runResearch}>Research company & competitors</Button></div>{uploadedDocs.length > 0 && <ul className="text-sm space-y-1">{uploadedDocs.map((d,i)=><li key={i} className="flex justify-between border-b py-1"><span>{d.name}</span><span className="text-muted-foreground">{Math.round(d.size/1024)} KB · USER PROVIDED</span></li>)}</ul>}{researchNotes && <pre className="text-xs bg-muted/50 p-3 rounded-lg overflow-auto max-h-48 whitespace-pre-wrap">{researchNotes}</pre>}</CardContent></Card>
       <div className="flex justify-end gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("profile")}>Edit inputs</Button><Button onClick={() => setStage("strategy")}>Build strategy <ArrowRight className="w-4 h-4 ml-2"/></Button></div>
     </div>
@@ -248,7 +297,7 @@ if (stage === "results") return (
 
 function TextAnswer({ number, onSubmit }: { number?: boolean; onSubmit: (v: string | number) => void }) { const [value,setValue]=useState(""); return <div className="flex gap-2"><Input type={number ? "number" : "text"} value={value} onChange={e=>setValue(e.target.value)} placeholder={number ? "Enter a number" : "Type your evidence-based answer"} /><Button disabled={!value} onClick={()=>onSubmit(number ? Number(value) : value)}>Continue <ArrowRight className="w-4 h-4 ml-2"/></Button></div>; }
 function Readout({ title, value, icon: Icon, tone }: { title:string; value:string; icon:React.ElementType; tone:string }) { return <div className="border rounded-xl p-4"><div className={cn("flex items-center gap-2 text-sm font-medium", tone === "risk" ? "text-orange-600" : tone === "good" ? "text-emerald-600" : "text-primary")}><Icon className="w-4 h-4"/>{title}</div><div className="font-semibold mt-2">{value}</div></div>; }
-function Competitive({ competitors,newCompetitor,setNewCompetitor,addCompetitor }: any) { return <Card><CardHeader><CardTitle>Competitive intelligence center</CardTitle><CardDescription>Manual competitor records are clearly marked until public evidence is attached.</CardDescription></CardHeader><CardContent><div className="flex gap-2 mb-5"><Input value={newCompetitor} onChange={e=>setNewCompetitor(e.target.value)} placeholder="Competitor name"/><Button onClick={addCompetitor}><Plus className="w-4 h-4 mr-2"/> Add</Button></div>{competitors.length===0 ? <div className="border border-dashed rounded-xl p-8 text-center text-muted-foreground">No competitors entered yet. Add direct competitors to activate the scorecard.</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-3">Company</th><th className="text-left p-3">Positioning</th><th className="text-left p-3">Score</th><th className="text-left p-3">Evidence</th></tr></thead><tbody>{competitors.map((c:Competitor)=><tr key={c.id} className="border-b last:border-0"><td className="p-3 font-medium">{c.name}</td><td className="p-3 text-muted-foreground">{c.positioning}</td><td className="p-3">{c.score || "Unknown"}</td><td className="p-3"><EvidenceBadge type="UNKNOWN"/></td></tr>)}</tbody></table></div>}</CardContent></Card>; }
+function Competitive({ competitors,newCompetitor,setNewCompetitor,addCompetitor,newCompetitorWebsite,setNewCompetitorWebsite }: any) { return <Card><CardHeader><CardTitle>Competitive intelligence center</CardTitle><CardDescription>Optionally add each competitor website to ground strategy and improvement recommendations.</CardDescription></CardHeader><CardContent><div className="flex flex-col sm:flex-row gap-2 mb-5"><Input value={newCompetitor} onChange={e=>setNewCompetitor(e.target.value)} placeholder="Competitor name"/><Input value={newCompetitorWebsite||""} onChange={e=>setNewCompetitorWebsite?.(e.target.value)} placeholder="Website (optional)"/><Button onClick={addCompetitor}><Plus className="w-4 h-4 mr-2"/> Add</Button></div>{competitors.length===0 ? <div className="border border-dashed rounded-xl p-8 text-center text-muted-foreground">No competitors entered yet. Add direct competitors to activate the scorecard.</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-3">Company</th><th className="text-left p-3">Website</th><th className="text-left p-3">Positioning</th><th className="text-left p-3">Score</th><th className="text-left p-3">Evidence</th></tr></thead><tbody>{competitors.map((c:Competitor)=><tr key={c.id} className="border-b last:border-0"><td className="p-3 font-medium">{c.name}</td><td className="p-3 text-muted-foreground text-xs">{(c as any).website || "—"}</td><td className="p-3 text-muted-foreground">{c.positioning}</td><td className="p-3">{c.score || "Unknown"}</td><td className="p-3"><EvidenceBadge type="UNKNOWN"/></td></tr>)}</tbody></table></div>}</CardContent></Card>; }
 function Benchmark({ scores }: { scores:Record<string,number> }) { return <Card><CardHeader><CardTitle>Benchmarking engine</CardTitle><CardDescription>Benchmark values are intentionally unavailable until a reliable source or administrator-entered benchmark exists.</CardDescription></CardHeader><CardContent className="space-y-3">{pillars.map(p=><div key={p.id} className="grid grid-cols-[1fr_80px_120px] gap-3 items-center"><span className="text-sm">{p.label}</span><span className="font-semibold">{scores[p.id]}</span><span><EvidenceBadge type="UNKNOWN"/></span></div>)}</CardContent></Card>; }
 function Scenario({monthlyLeads,customers,aov,conversion,setConversion,aovLift,setAovLift,projectedCustomers,projectedRevenue}:any) { return <Card><CardHeader><CardTitle>What-if strategy simulator</CardTitle><CardDescription>Scenarios are projections, not guarantees. Blank source data produces no invented financial result.</CardDescription></CardHeader><CardContent className="grid lg:grid-cols-2 gap-7"><div className="space-y-5"><div><Label>Lead-to-customer conversion: {conversion}%</Label><input className="w-full mt-3" type="range" min="1" max="30" value={conversion} onChange={e=>setConversion(Number(e.target.value))}/></div><div><Label>Average transaction value lift: +{aovLift}%</Label><input className="w-full mt-3" type="range" min="0" max="50" value={aovLift} onChange={e=>setAovLift(Number(e.target.value))}/></div><div className="text-xs text-muted-foreground">Inputs: {monthlyLeads || "Unknown"} leads/month, {customers || "Unknown"} customers/month, {aov || "Unknown"} GHS AOV.</div></div><div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-muted p-5"><div className="text-xs text-muted-foreground">Projected customers</div><div className="text-2xl font-bold mt-2">{projectedCustomers || "Unknown"}</div></div><div className="rounded-xl bg-muted p-5"><div className="text-xs text-muted-foreground">Projected monthly revenue</div><div className="text-2xl font-bold mt-2">{projectedRevenue ? `${Math.round(projectedRevenue).toLocaleString()} GHS` : "Unknown"}</div></div></div></CardContent></Card>; }
 function CaseIntelligence({ weakest }: { weakest:string }) { const cases:any = { Sales:"Sales funnel redesign and disciplined follow-up", Marketing:"Channel attribution and conversion optimization", Technology:"Integrated data and management information", Operations:"Process standardization and automation", Finance:"Unit economics and margin management" }; const lesson=cases[weakest] || "Evidence-led management and focused execution"; return <Card><CardHeader><CardTitle>Case study matching</CardTitle><CardDescription>Cases are lessons to adapt, not templates to copy.</CardDescription></CardHeader><CardContent><div className="border rounded-xl p-5"><div className="flex items-center gap-2 text-primary text-sm font-semibold"><Lightbulb className="w-4 h-4"/> MATCHED LESSON</div><h3 className="text-lg font-semibold mt-2">{lesson}</h3><p className="text-sm text-muted-foreground mt-2">CINTEXA will require a credible source before treating a company case as verified. The immediate client application is to validate the same operating constraint with internal evidence.</p><div className="mt-4"><EvidenceBadge type="UNKNOWN"/></div></div></CardContent></Card>; }

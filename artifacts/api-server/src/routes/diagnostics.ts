@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable } from "@workspace/db";
+import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable, diagnosticTaskHistoryTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { analyze, benchmarkGap, projectScenario, validateSmartGoal, buildFullReport, getBenchmarks, buildBenchmarkReport } from "../services/diagnostic-engine";
 
@@ -117,31 +117,90 @@ router.get("/benchmarks", async (req, res) => {
 router.post("/research", async (req, res) => {
   const body = req.body ?? {};
   const company = String(body.companyName ?? "").trim();
-  const competitors = Array.isArray(body.competitors) ? body.competitors.map((c: any) => String(c?.name ?? c).trim()).filter(Boolean) : [];
+  const companyWebsite = String(body.companyWebsite ?? body.website ?? "").trim();
   const industry = String(body.industry ?? "").trim();
-  // Structured research response — never fabricate competitor facts.
+  const competitors = Array.isArray(body.competitors)
+    ? body.competitors.map((c: any) => ({
+        name: String(c?.name ?? c ?? "").trim(),
+        website: String(c?.website ?? "").trim(),
+      })).filter((c: { name: string }) => c.name)
+    : [];
+
+  const companyInsights = [];
+  if (company) {
+    companyInsights.push({ claim: `Profile recorded for ${company}`, evidence: "USER PROVIDED", source: "Diagnostic profile", date: new Date().toISOString().slice(0, 10) });
+  }
+  if (companyWebsite) {
+    companyInsights.push({
+      claim: `Company website supplied: ${companyWebsite}`,
+      evidence: "USER PROVIDED",
+      source: companyWebsite,
+      date: new Date().toISOString().slice(0, 10),
+      suggestedReview: ["Positioning / hero message", "Product or service pages", "Pricing signals", "CTA and conversion path", "About / team signals"],
+    });
+  }
+  if (industry) {
+    companyInsights.push({ claim: `Industry context set to ${industry}`, evidence: "USER PROVIDED", source: "Diagnostic profile", date: new Date().toISOString().slice(0, 10) });
+  }
+
+  const competitorInsights = competitors.map((c: { name: string; website: string }) => ({
+    name: c.name,
+    website: c.website || null,
+    claims: [
+      { claim: `Competitor named ${c.name} was supplied by the user`, evidence: "USER PROVIDED", source: "User input", date: new Date().toISOString().slice(0, 10) },
+      c.website
+        ? { claim: `Competitor website supplied: ${c.website}`, evidence: "USER PROVIDED", source: c.website, date: new Date().toISOString().slice(0, 10) }
+        : { claim: "No competitor website supplied; public review not started", evidence: "UNKNOWN", source: null, date: null },
+      { claim: "Pricing, reviews and hiring signals remain UNKNOWN until dated public sources are attached", evidence: "UNKNOWN", source: null, date: null },
+    ],
+    recommendedNextStep: c.website
+      ? `Review ${c.website} for positioning, offers, CTA and proof points; attach source/date for every claim used in strategy.`
+      : `Add website for ${c.name}, then collect dated public sources: positioning, pricing, reviews and hiring signals.`,
+    strategyPrompts: [
+      `What customer problem does ${c.name} claim to solve?`,
+      `Where is ${c.name} weaker on service, speed, price or specialization?`,
+      `Which of their CTAs or offers could inform a controlled experiment?`,
+    ],
+  }));
+
+  const strategyHints = [
+    companyWebsite ? `Use ${companyWebsite} as the baseline for messaging and conversion-path review.` : "Add the company website to ground messaging and conversion analysis.",
+    "Map conversion, cycle time and CAC against industry benchmarks before changing spend.",
+    "Build a monthly competitor scorecard with source/date for every external claim.",
+    "Convert top findings into SMART goals with owners and 30/90/365 day checkpoints.",
+  ];
+
+  // Persist research task when session/profile provided
+  try {
+    if (body.sessionId || body.profileId) {
+      await db.insert(diagnosticTaskHistoryTable).values({
+        sessionId: body.sessionId != null ? Number(body.sessionId) : null,
+        profileId: body.profileId != null ? Number(body.profileId) : null,
+        taskType: "research",
+        title: "Company & competitor research",
+        detail: `Researched ${company || "company"} and ${competitors.length} competitor(s)`,
+        status: "completed",
+        actor: "user",
+        metadata: { company, companyWebsite, competitors, industry },
+      } as any);
+    }
+  } catch {
+    // History persistence is best-effort when DB schema is not yet migrated
+  }
+
   res.json({
     companyName: company || null,
+    companyWebsite: companyWebsite || null,
     industry: industry || null,
     researchedAt: new Date().toISOString(),
-    evidencePolicy: "Public claims require source and date. Without live web enrichment credentials, results remain USER PROVIDED or UNKNOWN.",
-    companyInsights: company ? [
-      { claim: `Profile recorded for ${company}`, evidence: "USER PROVIDED", source: "Diagnostic profile", date: new Date().toISOString().slice(0, 10) },
-      { claim: industry ? `Industry context set to ${industry}` : "Industry not specified", evidence: industry ? "USER PROVIDED" : "UNKNOWN", source: "Diagnostic profile", date: new Date().toISOString().slice(0, 10) },
-    ] : [],
-    competitorInsights: competitors.map((name: string) => ({
-      name,
-      claims: [
-        { claim: `Competitor named ${name} was supplied by the user`, evidence: "USER PROVIDED", source: "User input", date: new Date().toISOString().slice(0, 10) },
-        { claim: "Public positioning, pricing and review data not verified in this session", evidence: "UNKNOWN", source: null, date: null },
-      ],
-      recommendedNextStep: `Collect dated public sources for ${name}: website positioning, pricing pages, reviews and hiring signals.`,
-    })),
-    strategyHints: [
-      "Map conversion, cycle time and CAC against industry benchmarks before changing spend.",
-      "Build a monthly competitor scorecard with source/date for every external claim.",
-      "Convert top findings into SMART goals with owners and 30/90/365 day checkpoints.",
-    ],
+    evidencePolicy: "Public claims require source and date. Website URLs are USER PROVIDED context; content claims stay UNKNOWN until verified.",
+    companyInsights,
+    competitorInsights,
+    strategyHints,
+    profileEnhancements: {
+      messagingReview: companyWebsite ? `Review hero, value proposition and CTA on ${companyWebsite}` : null,
+      competitorWebsites: competitors.filter((c: any) => c.website).map((c: any) => ({ name: c.name, website: c.website })),
+    },
     benchmarks: getBenchmarks(industry || null),
   });
 });
@@ -172,5 +231,59 @@ router.post("/documents", async (req, res) => {
   });
 });
 
+
+router.post("/history", async (req, res) => {
+  const body = req.body ?? {};
+  if (!body.title || !body.taskType) return res.status(400).json({ error: "taskType and title are required" });
+  try {
+    const [row] = await db.insert(diagnosticTaskHistoryTable).values({
+      sessionId: body.sessionId != null ? Number(body.sessionId) : null,
+      profileId: body.profileId != null ? Number(body.profileId) : null,
+      taskType: String(body.taskType),
+      title: String(body.title),
+      detail: body.detail ?? null,
+      status: body.status ?? "completed",
+      actor: body.actor ?? "user",
+      metadata: body.metadata ?? {},
+    } as any).returning();
+    return res.status(201).json(row);
+  } catch (err: any) {
+    // Fallback in-memory style response if table missing
+    return res.status(201).json({
+      id: Date.now(),
+      sessionId: body.sessionId ?? null,
+      profileId: body.profileId ?? null,
+      taskType: body.taskType,
+      title: body.title,
+      detail: body.detail ?? null,
+      status: body.status ?? "completed",
+      actor: body.actor ?? "user",
+      metadata: body.metadata ?? {},
+      createdAt: new Date().toISOString(),
+      persisted: false,
+    });
+  }
+});
+
+router.get("/history", async (req, res) => {
+  const sessionId = req.query.sessionId ? Number(req.query.sessionId) : null;
+  const profileId = req.query.profileId ? Number(req.query.profileId) : null;
+  try {
+    let rows;
+    if (sessionId) {
+      rows = await db.select().from(diagnosticTaskHistoryTable).where(eq(diagnosticTaskHistoryTable.sessionId, sessionId)).orderBy(desc(diagnosticTaskHistoryTable.createdAt));
+    } else if (profileId) {
+      rows = await db.select().from(diagnosticTaskHistoryTable).where(eq(diagnosticTaskHistoryTable.profileId, profileId)).orderBy(desc(diagnosticTaskHistoryTable.createdAt));
+    } else {
+      rows = await db.select().from(diagnosticTaskHistoryTable).orderBy(desc(diagnosticTaskHistoryTable.createdAt)).limit(200);
+    }
+    return res.json(rows);
+  } catch {
+    return res.json([]);
+  }
+});
+
+
 export default router;
+
 

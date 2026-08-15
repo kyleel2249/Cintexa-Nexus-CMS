@@ -99,3 +99,19 @@ export type DiagnosticRecommendation = typeof diagnosticRecommendationsTable.$in
 export type DiagnosticInitiative = typeof diagnosticInitiativesTable.$inferSelect;
 export type DiagnosticScenario = typeof diagnosticScenariosTable.$inferSelect;
 export type DiagnosticReview = typeof diagnosticReviewsTable.$inferSelect;
+
+
+export const diagnosticTaskHistoryTable = pgTable("diagnostic_task_history", {
+  id: serial("id").primaryKey(),
+  sessionId: integer("session_id"),
+  profileId: integer("profile_id"),
+  taskType: text("task_type").notNull(),
+  title: text("title").notNull(),
+  detail: text("detail"),
+  status: text("status").notNull().default("completed"),
+  actor: text("actor").default("system"),
+  metadata: jsonb("metadata").default("{}"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type DiagnosticTaskHistory = typeof diagnosticTaskHistoryTable.$inferSelect;
