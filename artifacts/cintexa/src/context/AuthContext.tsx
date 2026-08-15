@@ -24,7 +24,6 @@ interface AuthContextValue extends AuthState {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-
 const TOKEN_KEY = "cintexa_token";
 
 function getStoredToken() {
@@ -35,15 +34,32 @@ function storeToken(t: string | null) {
   try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {}
 }
 
+async function readApiResponse(res: Response, fallback: string) {
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new Error(`${fallback} (server returned an empty response, HTTP ${res.status})`);
+  }
+
+  const contentType = res.headers.get("content-type") ?? "";
+  if (!contentType.toLowerCase().includes("application/json")) {
+    throw new Error(`${fallback} (server returned ${res.status} ${res.statusText || "a non-JSON response"})`);
+  }
+
+  try {
+    return JSON.parse(text) as Record<string, any>;
+  } catch {
+    throw new Error(`${fallback} (server returned invalid JSON, HTTP ${res.status})`);
+  }
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [state, setState] = useState<AuthState>({ user: null, token: getStoredToken(), isLoading: true });
 
   const apiFetch = useCallback(async (path: string, init?: RequestInit) => {
     const token = getStoredToken();
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
     if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(path, { ...init, headers: { ...headers, ...(init?.headers ?? {}) } });
-    return res;
+    return fetch(path, { ...init, headers: { ...headers, ...(init?.headers ?? {}) } });
   }, []);
 
   const refreshUser = useCallback(async () => {
@@ -52,8 +68,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     try {
       const res = await apiFetch("/api/auth/me");
       if (res.ok) {
-        const { user } = await res.json();
-        setState({ user, token, isLoading: false });
+        const data = await readApiResponse(res, "Unable to restore your session");
+        setState({ user: data.user, token, isLoading: false });
       } else {
         storeToken(null);
         setState({ user: null, token: null, isLoading: false });
@@ -66,17 +82,29 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => { refreshUser(); }, [refreshUser]);
 
   const login = useCallback(async (email: string, password: string) => {
-    const res = await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Login failed");
+    let res: Response;
+    try {
+      res = await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+    } catch {
+      throw new Error("Unable to connect to the authentication server. Start the API with npm run dev:api or npm run dev:all.");
+    }
+    const data = await readApiResponse(res, "Login failed");
+    if (!res.ok) throw new Error(data.error ?? `Login failed (HTTP ${res.status})`);
+    if (!data.token || !data.user) throw new Error("Login failed: the authentication server returned an incomplete response.");
     storeToken(data.token);
     setState({ user: data.user, token: data.token, isLoading: false });
   }, [apiFetch]);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
-    const res = await apiFetch("/api/auth/register", { method: "POST", body: JSON.stringify({ name, email, password }) });
-    const data = await res.json();
-    if (!res.ok) throw new Error(data.error ?? "Registration failed");
+    let res: Response;
+    try {
+      res = await apiFetch("/api/auth/register", { method: "POST", body: JSON.stringify({ name, email, password }) });
+    } catch {
+      throw new Error("Unable to connect to the authentication server. Start the API with npm run dev:api or npm run dev:all.");
+    }
+    const data = await readApiResponse(res, "Registration failed");
+    if (!res.ok) throw new Error(data.error ?? `Registration failed (HTTP ${res.status})`);
+    if (!data.token || !data.user) throw new Error("Registration failed: the authentication server returned an incomplete response.");
     storeToken(data.token);
     setState({ user: data.user, token: data.token, isLoading: false });
   }, [apiFetch]);
