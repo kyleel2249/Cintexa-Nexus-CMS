@@ -15,7 +15,8 @@
     "dev:all": "concurrently \"npm run dev --workspace=@workspace/cintexa\" \"npm run dev --workspace=@workspace/api-server\"",
     "build:app": "npm run build --workspace=@workspace/cintexa",
     "preview": "npm run serve --workspace=@workspace/cintexa",
-    "start:api": "npm run start --workspace=@workspace/api-server"
+    "start:api": "npm run start --workspace=@workspace/api-server",
+    "admin:create": "npm run admin:create --workspace=@workspace/scripts"
   },
   "engines": { "node": ">=20.19.0", "npm": ">=10.0.0" },
   "devDependencies": {
