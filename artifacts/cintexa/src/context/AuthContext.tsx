@@ -1,7 +1,20 @@
 import { createContext, useContext, useState, useEffect, useCallback, type ReactNode } from "react";
+import {
+  createUserWithEmailAndPassword,
+  onAuthStateChanged,
+  reauthenticateWithCredential,
+  EmailAuthProvider,
+  signInWithEmailAndPassword,
+  signOut,
+  updatePassword,
+  updateProfile,
+  type User as FirebaseUser,
+} from "firebase/auth";
+import { doc, getDoc, setDoc, serverTimestamp } from "firebase/firestore";
+import { firebaseAuth, firestore } from "@/lib/firebase";
 
 export interface AuthUser {
-  id: number;
+  id: string;
   name: string;
   email: string;
   role: "admin" | "editor" | string;
@@ -25,110 +38,114 @@ interface AuthContextValue extends AuthState {
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
-const TOKEN_KEY = "cintexa_token";
 
-function getStoredToken() {
-  try { return localStorage.getItem(TOKEN_KEY); } catch { return null; }
+function firebaseError(error: unknown, fallback: string) {
+  const code = typeof error === "object" && error && "code" in error ? String((error as { code?: string }).code) : "";
+  const messages: Record<string, string> = {
+    "auth/invalid-credential": "The email or password is incorrect.",
+    "auth/invalid-email": "Enter a valid email address.",
+    "auth/email-already-in-use": "An account with this email already exists.",
+    "auth/weak-password": "Choose a stronger password.",
+    "auth/user-disabled": "This account has been disabled.",
+    "auth/too-many-requests": "Too many attempts. Please wait and try again.",
+    "auth/network-request-failed": "Unable to reach Firebase. Check your internet connection.",
+    "auth/requires-recent-login": "For security, sign in again before changing your password.",
+  };
+  return new Error(messages[code] ?? fallback);
 }
 
-function storeToken(t: string | null) {
-  try { t ? localStorage.setItem(TOKEN_KEY, t) : localStorage.removeItem(TOKEN_KEY); } catch {}
-}
+async function toAuthUser(firebaseUser: FirebaseUser): Promise<AuthUser> {
+  const userRef = doc(firestore, "users", firebaseUser.uid);
+  const snapshot = await getDoc(userRef);
+  const profile = snapshot.exists() ? snapshot.data() : {};
 
-async function readApiResponse(res: Response, fallback: string) {
-  const text = await res.text();
-  if (!text.trim()) {
-    throw new Error(`${fallback} (server returned an empty response, HTTP ${res.status})`);
-  }
-
-  const contentType = res.headers.get("content-type") ?? "";
-  if (!contentType.toLowerCase().includes("application/json")) {
-    throw new Error(`${fallback} (server returned ${res.status} ${res.statusText || "a non-JSON response"})`);
-  }
-
-  try {
-    return JSON.parse(text) as Record<string, any>;
-  } catch {
-    throw new Error(`${fallback} (server returned invalid JSON, HTTP ${res.status})`);
-  }
+  return {
+    id: firebaseUser.uid,
+    name: String(profile.name ?? firebaseUser.displayName ?? firebaseUser.email?.split("@")[0] ?? "User"),
+    email: firebaseUser.email ?? "",
+    role: String(profile.role ?? "editor"),
+    avatar: firebaseUser.photoURL ?? (profile.avatar ? String(profile.avatar) : null),
+    status: String(profile.status ?? (firebaseUser.disabled ? "disabled" : "active")),
+    lastLoginAt: profile.lastLoginAt?.toDate?.()?.toISOString?.() ?? null,
+  };
 }
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [state, setState] = useState<AuthState>({ user: null, token: getStoredToken(), isLoading: true });
-
-  const apiFetch = useCallback(async (path: string, init?: RequestInit) => {
-    const token = getStoredToken();
-    const headers: Record<string, string> = { "Content-Type": "application/json", Accept: "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    return fetch(path, { ...init, headers: { ...headers, ...(init?.headers ?? {}) } });
-  }, []);
+  const [state, setState] = useState<AuthState>({ user: null, token: null, isLoading: true });
 
   const refreshUser = useCallback(async () => {
-    const token = getStoredToken();
-    if (!token) { setState({ user: null, token: null, isLoading: false }); return; }
+    const firebaseUser = firebaseAuth.currentUser;
+    if (!firebaseUser) {
+      setState({ user: null, token: null, isLoading: false });
+      return;
+    }
     try {
-      const res = await apiFetch("/api/auth/me");
-      if (res.ok) {
-        const data = await readApiResponse(res, "Unable to restore your session");
-        setState({ user: data.user, token, isLoading: false });
-      } else {
-        storeToken(null);
+      const token = await firebaseUser.getIdToken();
+      const user = await toAuthUser(firebaseUser);
+      setState({ user, token, isLoading: false });
+    } catch {
+      setState({ user: null, token: null, isLoading: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(firebaseAuth, async (firebaseUser) => {
+      if (!firebaseUser) {
+        setState({ user: null, token: null, isLoading: false });
+        return;
+      }
+      try {
+        const token = await firebaseUser.getIdToken();
+        const user = await toAuthUser(firebaseUser);
+        await setDoc(doc(firestore, "users", firebaseUser.uid), { lastLoginAt: serverTimestamp() }, { merge: true });
+        setState({ user, token, isLoading: false });
+      } catch {
         setState({ user: null, token: null, isLoading: false });
       }
-    } catch {
-      setState((s) => ({ ...s, isLoading: false }));
-    }
-  }, [apiFetch]);
-
-  useEffect(() => { refreshUser(); }, [refreshUser]);
+    });
+    return unsubscribe;
+  }, []);
 
   const login = useCallback(async (email: string, password: string) => {
-    let res: Response;
     try {
-      res = await apiFetch("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
-    } catch {
-      throw new Error("Unable to connect to the authentication server. Start the API with npm run dev:api or npm run dev:all.");
+      await signInWithEmailAndPassword(firebaseAuth, email.trim(), password);
+    } catch (error) {
+      throw firebaseError(error, "Login failed. Please check your credentials and try again.");
     }
-    const data = await readApiResponse(res, "Login failed");
-    if (!res.ok) throw new Error(data.error ?? `Login failed (HTTP ${res.status})`);
-    if (!data.token || !data.user) throw new Error("Login failed: the authentication server returned an incomplete response.");
-    storeToken(data.token);
-    setState({ user: data.user, token: data.token, isLoading: false });
-  }, [apiFetch]);
+  }, []);
 
   const register = useCallback(async (name: string, email: string, password: string) => {
-    let res: Response;
     try {
-      res = await apiFetch("/api/auth/register", { method: "POST", body: JSON.stringify({ name, email, password }) });
-    } catch {
-      throw new Error("Unable to connect to the authentication server. Start the API with npm run dev:api or npm run dev:all.");
+      const credential = await createUserWithEmailAndPassword(firebaseAuth, email.trim(), password);
+      await updateProfile(credential.user, { displayName: name.trim() });
+      await setDoc(doc(firestore, "users", credential.user.uid), {
+        name: name.trim(),
+        email: email.trim().toLowerCase(),
+        role: "editor",
+        status: "active",
+        createdAt: serverTimestamp(),
+        lastLoginAt: serverTimestamp(),
+      }, { merge: true });
+    } catch (error) {
+      throw firebaseError(error, "Registration failed. Please try again.");
     }
-    const data = await readApiResponse(res, "Registration failed");
-    if (!res.ok) throw new Error(data.error ?? `Registration failed (HTTP ${res.status})`);
-    if (!data.token || !data.user) throw new Error("Registration failed: the authentication server returned an incomplete response.");
-    storeToken(data.token);
-    setState({ user: data.user, token: data.token, isLoading: false });
-  }, [apiFetch]);
+  }, []);
 
   const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
-    let res: Response;
+    const user = firebaseAuth.currentUser;
+    if (!user || !user.email) throw new Error("You must be signed in to change your password.");
     try {
-      res = await apiFetch("/api/auth/change-password", {
-        method: "POST",
-        body: JSON.stringify({ currentPassword, newPassword }),
-      });
-    } catch {
-      throw new Error("Unable to connect to the authentication server. Start the API with npm run dev:api or npm run dev:all.");
+      const credential = EmailAuthProvider.credential(user.email, currentPassword);
+      await reauthenticateWithCredential(user, credential);
+      await updatePassword(user, newPassword);
+    } catch (error) {
+      throw firebaseError(error, "Password change failed. Please verify your current password.");
     }
-    const data = await readApiResponse(res, "Password change failed");
-    if (!res.ok) throw new Error(data.error ?? `Password change failed (HTTP ${res.status})`);
-  }, [apiFetch]);
+  }, []);
 
   const logout = useCallback(async () => {
-    await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
-    storeToken(null);
-    setState({ user: null, token: null, isLoading: false });
-  }, [apiFetch]);
+    await signOut(firebaseAuth);
+  }, []);
 
   return (
     <AuthContext.Provider value={{ ...state, login, register, logout, refreshUser, changePassword }}>
