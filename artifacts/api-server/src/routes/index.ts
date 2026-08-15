@@ -19,7 +19,7 @@ import subscribersRouter from "./subscribers";
 import postImagesRouter from "./post-images";
 import broadcastRouter from "./broadcast";
 import postCommentsRouter from "./post-comments";
-import diagnosticRouter from "./diagnostic";
+import diagnosticsRouter from "./diagnostics";
 
 const router: IRouter = Router();
 
@@ -43,6 +43,6 @@ router.use("/calendar", calendarRouter);
 router.use("/pipeline", pipelineRouter);
 router.use("/plugins", pluginsRouter);
 router.use("/subscribers", subscribersRouter);
-router.use("/diagnostics", diagnosticRouter);
+router.use("/diagnostics", diagnosticsRouter);
 
 export default router;
