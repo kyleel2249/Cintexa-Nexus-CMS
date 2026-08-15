@@ -21,6 +21,7 @@ interface AuthContextValue extends AuthState {
   register: (name: string, email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
   refreshUser: () => Promise<void>;
+  changePassword: (currentPassword: string, newPassword: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -109,6 +110,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setState({ user: data.user, token: data.token, isLoading: false });
   }, [apiFetch]);
 
+  const changePassword = useCallback(async (currentPassword: string, newPassword: string) => {
+    let res: Response;
+    try {
+      res = await apiFetch("/api/auth/change-password", {
+        method: "POST",
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+    } catch {
+      throw new Error("Unable to connect to the authentication server. Start the API with npm run dev:api or npm run dev:all.");
+    }
+    const data = await readApiResponse(res, "Password change failed");
+    if (!res.ok) throw new Error(data.error ?? `Password change failed (HTTP ${res.status})`);
+  }, [apiFetch]);
+
   const logout = useCallback(async () => {
     await apiFetch("/api/auth/logout", { method: "POST" }).catch(() => {});
     storeToken(null);
@@ -116,7 +131,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, [apiFetch]);
 
   return (
-    <AuthContext.Provider value={{ ...state, login, register, logout, refreshUser }}>
+    <AuthContext.Provider value={{ ...state, login, register, logout, refreshUser, changePassword }}>
       {children}
     </AuthContext.Provider>
   );
