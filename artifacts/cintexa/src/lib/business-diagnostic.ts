@@ -1,9 +1,17 @@
 export type EvidenceClass = "VERIFIED" | "USER PROVIDED" | "CALCULATED" | "BENCHMARKED" | "INFERRED" | "UNKNOWN";
 export type DiagnosticMode = "quick" | "standard" | "deep" | "executive" | "sales" | "marketing" | "competitive" | "digital";
-
 export type Metric = { id: string; label: string; value: number | null; unit: string; benchmark?: number | null };
 export type Competitor = { id: string; name: string; positioning: string; score: number; pricing: string; strengths: string[]; weaknesses: string[] };
 export type Goal = { id: string; title: string; level: "strategic" | "tactical" | "operational"; owner: string; baseline: number | null; target: number | null; unit: string; deadline: string; status: string; smart: { specific: boolean; measurable: boolean; achievable: boolean; relevant: boolean; timeBound: boolean } };
+
+type DiagnosticQuestionType = "boolean" | "scale" | "select" | "text" | "number";
+export type DiagnosticQuestion = {
+  id: string;
+  pillar: string;
+  text: string;
+  type: DiagnosticQuestionType;
+  options?: readonly string[];
+};
 
 export const pillars = [
   { id: "strategy", label: "Strategy", weight: 12 },
@@ -32,7 +40,7 @@ export const initialMetrics: Metric[] = [
   { id: "salesCycle", label: "Average sales cycle", value: null, unit: "days" },
 ];
 
-export const questionBank = [
+export const questionBank: DiagnosticQuestion[] = [
   { id: "s1", pillar: "strategy", text: "Are your top three business priorities documented with owners and measurable outcomes?", type: "boolean" },
   { id: "s2", pillar: "strategy", text: "How clear is your market positioning?", type: "scale" },
   { id: "sales1", pillar: "sales", text: "Where is your sales funnel weakest today?", type: "select", options: ["Lead volume", "Lead quality", "Qualification", "Follow-up", "Proposal", "Closing", "Retention"] },
@@ -45,7 +53,7 @@ export const questionBank = [
   { id: "technology1", pillar: "technology", text: "Are CRM, finance, commerce, support and analytics systems connected?", type: "boolean" },
   { id: "automation1", pillar: "automation", text: "How many recurring workflows could be automated within 90 days?", type: "number" },
   { id: "competitive1", pillar: "competitive", text: "Do you maintain a documented competitor scorecard with dated evidence?", type: "boolean" },
-] as const;
+];
 
 export function scoreSeverity(score: number) {
   if (score <= 20) return "Critical";
@@ -67,17 +75,17 @@ export function calculateSalesMetrics(metrics: Metric[]) {
   const qualified = get("qualifiedLeads");
   const aov = get("aov");
   const cac = get("cac");
-  const conversion = leads && customers ? (customers / leads) * 100 : null;
-  const qualification = leads && qualified ? (qualified / leads) * 100 : null;
-  const revenue = customers && aov ? customers * aov : null;
-  return { conversion, qualification, revenue, cac, salesVelocity: revenue && cac ? revenue / cac : null };
+  const conversion = leads !== null && leads > 0 && customers !== null ? (customers / leads) * 100 : null;
+  const qualification = leads !== null && leads > 0 && qualified !== null ? (qualified / leads) * 100 : null;
+  const revenue = customers !== null && aov !== null ? customers * aov : null;
+  return { conversion, qualification, revenue, cac, salesVelocity: revenue !== null && cac !== null && cac > 0 ? revenue / cac : null };
 }
 
-export function buildAdaptiveQuestions(answers: Record<string, string | number | boolean>) {
-  const questions = [...questionBank];
+export function buildAdaptiveQuestions(answers: Record<string, string | number | boolean>): DiagnosticQuestion[] {
+  const questions: DiagnosticQuestion[] = [...questionBank];
   const weakest = answers.sales1;
-  if (weakest === "Follow-up") questions.push({ id: "sales-followup", pillar: "sales", text: "How quickly are qualified leads contacted after they enter the pipeline?", type: "text" } as never);
-  if (weakest === "Closing") questions.push({ id: "sales-closing", pillar: "sales", text: "What are the three most common reasons qualified deals are lost?", type: "text" } as never);
-  if (answers.technology1 === false) questions.push({ id: "tech-silos", pillar: "technology", text: "Which two systems create the most duplicate data entry?", type: "text" } as never);
+  if (weakest === "Follow-up") questions.push({ id: "sales-followup", pillar: "sales", text: "How quickly are qualified leads contacted after they enter the pipeline?", type: "text" });
+  if (weakest === "Closing") questions.push({ id: "sales-closing", pillar: "sales", text: "What are the three most common reasons qualified deals are lost?", type: "text" });
+  if (answers.technology1 === false) questions.push({ id: "tech-silos", pillar: "technology", text: "Which two systems create the most duplicate data entry?", type: "text" });
   return questions;
 }
