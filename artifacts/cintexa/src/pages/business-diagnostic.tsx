@@ -17,7 +17,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import {
   buildAdaptiveQuestions, calculateBusinessHealth, calculateSalesMetrics, initialMetrics,
-  pillars, questionBank, scoreSeverity, type Competitor, type DiagnosticMode, type Goal, type Metric,
+  pillars, questionBank, scoreSeverity, initialSocialPlatforms, analyzeSocialPlatforms,
+  type Competitor, type DiagnosticMode, type Goal, type Metric, type SocialAdPlatform,
 } from "@/lib/business-diagnostic";
 import { diagnosticApi } from "@/lib/diagnostic-api";
 import { downloadDiagnosticPdf } from "@/lib/diagnostic-report-pdf";
@@ -98,6 +99,7 @@ export default function BusinessDiagnostic() {
   const [researchNotes, setResearchNotes] = useState<string | null>(null);
   const [reportBusy, setReportBusy] = useState(false);
   const [docBusy, setDocBusy] = useState(false);
+  const [socialPlatforms, setSocialPlatforms] = useState<SocialAdPlatform[]>(initialSocialPlatforms);
   const [scenarioConversion, setScenarioConversion] = useState(12);
   const [scenarioAov, setScenarioAov] = useState(10);
 
@@ -108,11 +110,16 @@ export default function BusinessDiagnostic() {
   const sales = calculateSalesMetrics(metrics);
   const strongest = [...pillars].sort((a, b) => (scores[b.id] ?? 0) - (scores[a.id] ?? 0))[0];
   const weakest = [...pillars].sort((a, b) => (scores[a.id] ?? 0) - (scores[b.id] ?? 0))[0];
+  const socialAnalysis = useMemo(() => analyzeSocialPlatforms(socialPlatforms), [socialPlatforms]);
   const monthlyLeads = metrics.find(m => m.id === "monthlyLeads")?.value ?? 0;
   const customers = metrics.find(m => m.id === "customers")?.value ?? 0;
   const aov = metrics.find(m => m.id === "aov")?.value ?? 0;
   const scenarioCustomers = monthlyLeads ? Math.round(monthlyLeads * scenarioConversion / 100) : 0;
   const scenarioRevenue = scenarioCustomers * (aov ? aov * (1 + scenarioAov / 100) : 0);
+
+  function updateSocialPlatform(id: string, patch: Partial<SocialAdPlatform>) {
+    setSocialPlatforms(prev => prev.map(p => p.id === id ? { ...p, ...patch } : p));
+  }
 
   function updateMetric(id: string, raw: string) {
     setMetrics(prev => prev.map(m => m.id === id ? { ...m, value: raw === "" ? null : Number(raw) } : m));
@@ -127,6 +134,7 @@ export default function BusinessDiagnostic() {
     setScores(prev => ({ ...prev, [pillar]: Math.min(100, Math.max(0, (prev[pillar] ?? 50) + positive - (value === false ? 7 : 0))) }));
     if (questionIndex < questions.length - 1) setQuestionIndex(i => i + 1);
     else setStage("results");
+      void logTaskLocal("social_platforms", `Diagnosed ${socialPlatforms.filter(p=>p.enabled).length} paid social platform(s)`, socialPlatforms.filter(p=>p.enabled).map(p=>p.label).join(", "));
   }
 
   function addCompetitor() {
@@ -180,6 +188,53 @@ export default function BusinessDiagnostic() {
       <SectionTitle icon={Network} title="Company intelligence profile" description="Start with the operating context. Missing data stays missing instead of becoming an invented assumption." />
       <Card><CardContent className="p-6"><div className="grid md:grid-cols-2 gap-5">{[["name","Company name"],["website","Company website (optional)"],["industry","Industry"],["subIndustry","Sub-industry"],["market","Geographic markets"],["employees","Employees"],["revenue","Revenue range"],["objective","Primary strategic objective"]].map(([key,label]) => <div key={key} className={key === "objective" ? "md:col-span-2" : ""}><Label>{label}</Label><Input className="mt-2" value={company[key as keyof typeof company]} onChange={e => setCompany({...company, [key]: e.target.value})} placeholder={`Enter ${label.toLowerCase()}`} /></div>)}<div><Label>Business model</Label><select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.model} onChange={e => setCompany({...company, model:e.target.value})}><option>B2B</option><option>B2C</option><option>B2B2C</option><option>Marketplace</option><option>Subscription</option></select></div></div></CardContent></Card>
       <Card><CardHeader><CardTitle>Core business metrics</CardTitle><CardDescription>Numbers drive the calculations. Leave unavailable fields blank.</CardDescription></CardHeader><CardContent><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{metrics.map(m => <div key={m.id}><Label>{m.label} <span className="text-muted-foreground">({m.unit})</span></Label><Input className="mt-2" type="number" min="0" value={m.value ?? ""} onChange={e => updateMetric(m.id, e.target.value)} /></div>)}</div></CardContent></Card>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Paid social & ad boost platforms</CardTitle>
+          <CardDescription>Enable each platform you use for paid boosts separately. Enter spend and outcomes so diagnosis, recommendations and strategy stay platform-specific.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {socialPlatforms.map((p) => (
+            <div key={p.id} className={cn("border rounded-xl p-4 transition-colors", p.enabled ? "border-primary/40 bg-primary/5" : "border-border/60")}>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <label className="flex items-center gap-2 font-medium text-sm cursor-pointer">
+                  <input type="checkbox" checked={p.enabled} onChange={(e) => updateSocialPlatform(p.id, { enabled: e.target.checked })} className="rounded border" />
+                  {p.label}
+                  <span className="text-xs text-muted-foreground font-normal">({p.channel})</span>
+                </label>
+              </div>
+              {p.enabled && (
+                <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-3 mt-4">
+                  {[
+                    ["monthlySpend", "Monthly spend"],
+                    ["impressions", "Impressions"],
+                    ["clicks", "Clicks"],
+                    ["leads", "Leads"],
+                    ["conversions", "Conversions"],
+                    ["roas", "ROAS (x)"],
+                    ["cpc", "CPC"],
+                    ["cpl", "CPL"],
+                  ].map(([key, label]) => (
+                    <div key={key}>
+                      <Label className="text-xs">{label}</Label>
+                      <Input className="mt-1 h-9" type="number" min="0" step="any"
+                        value={(p as any)[key] ?? ""}
+                        onChange={(e) => updateSocialPlatform(p.id, { [key]: e.target.value === "" ? null : Number(e.target.value) } as any)}
+                      />
+                    </div>
+                  ))}
+                  <div className="sm:col-span-2 lg:col-span-4">
+                    <Label className="text-xs">Notes</Label>
+                    <Input className="mt-1 h-9" value={p.notes} onChange={(e) => updateSocialPlatform(p.id, { notes: e.target.value })} placeholder="Campaign focus, audience, creative type…" />
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
       <div className="flex justify-between"><Button variant="outline" onClick={() => setStage("overview")}><ChevronLeft className="w-4 h-4 mr-1"/> Back</Button><Button onClick={() => setStage("questions")}>Continue to adaptive diagnostic <ChevronRight className="w-4 h-4 ml-1"/></Button></div>
     </div>
   );
@@ -282,6 +337,88 @@ if (stage === "results") return (
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={downloadDetailedPdf} disabled={reportBusy}><Download className="w-4 h-4 mr-2"/> {reportBusy ? "Building PDF…" : "Download detailed PDF"}</Button><Button variant="outline" onClick={printReport}>Print</Button></div></div>
       <div className="grid lg:grid-cols-[auto_1fr] gap-5"><Card><CardContent className="p-8 flex flex-col items-center justify-center min-w-[180px]"><ScoreRing score={health} label="Business Health" size="lg"/><Badge className="mt-8">{severity}</Badge></CardContent></Card><Card><CardHeader><CardTitle>Executive readout</CardTitle><CardDescription>What CINTEXA would put in front of leadership first.</CardDescription></CardHeader><CardContent className="grid sm:grid-cols-2 gap-4"><Readout title="Strongest pillar" value={`${strongest.label} — ${scores[strongest.id]}/100`} icon={TrendingUp} tone="good" /><Readout title="Priority pillar" value={`${weakest.label} — ${scores[weakest.id]}/100`} icon={AlertTriangle} tone="risk" /><Readout title="Biggest revenue leak" value="Sales funnel conversion requires validation" icon={BarChart3} tone="risk" /><Readout title="Evidence gap" value="Competitor benchmarks need dated sources" icon={ShieldAlert} tone="neutral" /></CardContent></Card></div>
       <Card><CardHeader><CardTitle>Diagnostic pillar scorecard</CardTitle><CardDescription>Scores are a working diagnostic model. They should strengthen as evidence is supplied.</CardDescription></CardHeader><CardContent><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{pillars.map(p => <div key={p.id} className="border rounded-xl p-4"><div className="flex justify-between mb-2"><span className="font-medium">{p.label}</span><span className="font-bold">{scores[p.id]}/100</span></div><Progress value={scores[p.id]} /><div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>{scoreSeverity(scores[p.id])}</span><span>{p.weight}% weight</span></div></div>)}</div></CardContent></Card>
+      
+      <Card className="overflow-hidden">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">Paid social diagnosis <span className="text-xs font-normal text-muted-foreground">(each platform separate)</span></CardTitle>
+          <CardDescription>Visual health, platform metrics and strategies derived from the platforms you enabled for ad boosts.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
+          {socialAnalysis.active.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No paid social platforms enabled. Return to the profile and enable platforms used for ad boosts.</p>
+          ) : (
+            <>
+              <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {socialAnalysis.insights.map((insight, i) => (
+                  <motion.div
+                    key={insight.platformId}
+                    initial={{ opacity: 0, y: 16, scale: 0.96 }}
+                    animate={{ opacity: 1, y: 0, scale: 1 }}
+                    transition={{ delay: 0.08 * i, type: "spring", stiffness: 320, damping: 24 }}
+                    whileHover={{ y: -4 }}
+                    className="border rounded-xl p-4 bg-card/50 relative overflow-hidden"
+                  >
+                    <motion.div
+                      className="absolute inset-x-0 bottom-0 h-1 bg-primary/80 origin-left"
+                      initial={{ scaleX: 0 }}
+                      animate={{ scaleX: insight.healthScore / 100 }}
+                      transition={{ delay: 0.2 + i * 0.08, duration: 0.8 }}
+                    />
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <div className="font-semibold text-sm">{insight.label}</div>
+                        <div className="text-xs text-muted-foreground mt-0.5">{insight.severity}</div>
+                      </div>
+                      <motion.div
+                        className="text-2xl font-bold tabular-nums"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                        transition={{ delay: 0.3 + i * 0.05 }}
+                      >
+                        {insight.healthScore}
+                      </motion.div>
+                    </div>
+                    <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                      <div className="rounded-lg bg-muted/50 p-2">ROAS<br/><span className="font-semibold text-sm">{insight.metrics.roas ?? "—"}</span></div>
+                      <div className="rounded-lg bg-muted/50 p-2">CPL<br/><span className="font-semibold text-sm">{insight.metrics.cpl != null ? insight.metrics.cpl.toFixed(1) : "—"}</span></div>
+                      <div className="rounded-lg bg-muted/50 p-2">CTR<br/><span className="font-semibold text-sm">{insight.metrics.ctr != null ? `${insight.metrics.ctr.toFixed(2)}%` : "—"}</span></div>
+                      <div className="rounded-lg bg-muted/50 p-2">Spend<br/><span className="font-semibold text-sm">{insight.metrics.spend ?? "—"}</span></div>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-3 leading-relaxed"><span className="font-medium text-foreground">Strategy:</span> {insight.strategy}</p>
+                    <ul className="mt-2 space-y-1">
+                      {insight.recommendations.slice(0, 2).map((r, ri) => (
+                        <li key={ri} className="text-xs flex gap-1.5"><span className="text-primary">→</span><span>{r}</span></li>
+                      ))}
+                    </ul>
+                  </motion.div>
+                ))}
+              </div>
+              <motion.div
+                initial={{ opacity: 0, y: 12 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.35 }}
+                className="rounded-xl border border-primary/20 bg-primary/5 p-4"
+              >
+                <div className="text-sm font-semibold mb-2">Portfolio recommendations</div>
+                <ul className="space-y-1.5">
+                  {socialAnalysis.portfolioRecommendations.map((r, i) => (
+                    <li key={i} className="text-sm text-muted-foreground flex gap-2"><span className="text-primary font-bold">{i + 1}.</span>{r}</li>
+                  ))}
+                </ul>
+                {socialAnalysis.topPerformer && (
+                  <p className="text-xs mt-3 text-muted-foreground">
+                    Leading platform: <span className="text-foreground font-medium">{socialAnalysis.topPerformer.label}</span>
+                    {socialAnalysis.weakest && socialAnalysis.weakest.platformId !== socialAnalysis.topPerformer.platformId && (
+                      <> · Needs attention: <span className="text-foreground font-medium">{socialAnalysis.weakest.label}</span></>
+                    )}
+                  </p>
+                )}
+              </motion.div>
+            </>
+          )}
+        </CardContent>
+      </Card>
+
       <div className="grid xl:grid-cols-2 gap-5"><Card><CardHeader><CardTitle>Top problems</CardTitle></CardHeader><CardContent className="space-y-3">{starterProblems.map((p, i) => <div key={p.title} className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><div className="flex items-center gap-2"><span className="text-xs font-bold text-muted-foreground">0{i+1}</span><h3 className="font-semibold">{p.title}</h3></div><p className="text-sm text-muted-foreground mt-2">{p.detail}</p></div><EvidenceBadge type={p.evidence}/></div><div className="mt-3 p-3 rounded-lg bg-muted/60 text-sm"><b>Action:</b> {p.action}</div></div>)}</CardContent></Card><Card><CardHeader><CardTitle>Sales intelligence</CardTitle><CardDescription>Calculated only where source metrics exist.</CardDescription></CardHeader><CardContent className="space-y-4">{[["Lead → customer conversion", sales.conversion, "%"],["Qualified lead rate", sales.qualification, "%"],["Projected revenue from customer count", sales.revenue, "GHS"],["CAC", sales.cac, "GHS"]].map(([label,value,unit]) => <div key={String(label)} className="flex justify-between items-center border-b last:border-0 pb-3 last:pb-0"><span className="text-sm">{String(label)}</span><span className="font-semibold">{value === null ? "Unknown" : `${Number(value).toFixed(1)} ${unit}`} {value !== null && <EvidenceBadge type="CALCULATED"/>}</span></div>)}</CardContent></Card></div>
       <Card><CardHeader><CardTitle>Root-cause chain</CardTitle><CardDescription>Symptoms are kept separate from hypotheses.</CardDescription></CardHeader><CardContent><div className="grid md:grid-cols-5 gap-2 items-center">{["Observed Problem", "Evidence", "Possible Causes", "Root Cause", "Intervention"].map((x,i)=><div key={x} className="flex items-center gap-2"><div className="flex-1 border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">STEP {i+1}</div><div className="font-semibold mt-1">{x}</div><div className="text-xs text-muted-foreground mt-2">{i === 0 ? "Sales performance signal" : i === 1 ? "User data + calculations" : i === 2 ? "Qualification / follow-up / offer" : i === 3 ? "Validate with funnel evidence" : "Target the confirmed constraint"}</div></div>{i < 4 && <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0"/>}</div>)}</div></CardContent></Card>
       <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
@@ -291,7 +428,7 @@ if (stage === "results") return (
     </div>
   );
 
-  if (stage === "strategy") return <Strategy goals={goals} addGoal={addGoal} onBack={() => setStage("results")} onNext={() => setStage("execution")} />;
+  if (stage === "strategy") return <Strategy goals={goals} addGoal={addGoal} onBack={() => setStage("results")} onNext={() => setStage("execution")} socialInsights={socialAnalysis.insights} portfolio={socialAnalysis.portfolioRecommendations} />;
   return <Execution goals={goals} onBack={() => setStage("strategy")} health={health} />;
 }
 
@@ -301,5 +438,5 @@ function Competitive({ competitors,newCompetitor,setNewCompetitor,addCompetitor,
 function Benchmark({ scores }: { scores:Record<string,number> }) { return <Card><CardHeader><CardTitle>Benchmarking engine</CardTitle><CardDescription>Benchmark values are intentionally unavailable until a reliable source or administrator-entered benchmark exists.</CardDescription></CardHeader><CardContent className="space-y-3">{pillars.map(p=><div key={p.id} className="grid grid-cols-[1fr_80px_120px] gap-3 items-center"><span className="text-sm">{p.label}</span><span className="font-semibold">{scores[p.id]}</span><span><EvidenceBadge type="UNKNOWN"/></span></div>)}</CardContent></Card>; }
 function Scenario({monthlyLeads,customers,aov,conversion,setConversion,aovLift,setAovLift,projectedCustomers,projectedRevenue}:any) { return <Card><CardHeader><CardTitle>What-if strategy simulator</CardTitle><CardDescription>Scenarios are projections, not guarantees. Blank source data produces no invented financial result.</CardDescription></CardHeader><CardContent className="grid lg:grid-cols-2 gap-7"><div className="space-y-5"><div><Label>Lead-to-customer conversion: {conversion}%</Label><input className="w-full mt-3" type="range" min="1" max="30" value={conversion} onChange={e=>setConversion(Number(e.target.value))}/></div><div><Label>Average transaction value lift: +{aovLift}%</Label><input className="w-full mt-3" type="range" min="0" max="50" value={aovLift} onChange={e=>setAovLift(Number(e.target.value))}/></div><div className="text-xs text-muted-foreground">Inputs: {monthlyLeads || "Unknown"} leads/month, {customers || "Unknown"} customers/month, {aov || "Unknown"} GHS AOV.</div></div><div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-muted p-5"><div className="text-xs text-muted-foreground">Projected customers</div><div className="text-2xl font-bold mt-2">{projectedCustomers || "Unknown"}</div></div><div className="rounded-xl bg-muted p-5"><div className="text-xs text-muted-foreground">Projected monthly revenue</div><div className="text-2xl font-bold mt-2">{projectedRevenue ? `${Math.round(projectedRevenue).toLocaleString()} GHS` : "Unknown"}</div></div></div></CardContent></Card>; }
 function CaseIntelligence({ weakest }: { weakest:string }) { const cases:any = { Sales:"Sales funnel redesign and disciplined follow-up", Marketing:"Channel attribution and conversion optimization", Technology:"Integrated data and management information", Operations:"Process standardization and automation", Finance:"Unit economics and margin management" }; const lesson=cases[weakest] || "Evidence-led management and focused execution"; return <Card><CardHeader><CardTitle>Case study matching</CardTitle><CardDescription>Cases are lessons to adapt, not templates to copy.</CardDescription></CardHeader><CardContent><div className="border rounded-xl p-5"><div className="flex items-center gap-2 text-primary text-sm font-semibold"><Lightbulb className="w-4 h-4"/> MATCHED LESSON</div><h3 className="text-lg font-semibold mt-2">{lesson}</h3><p className="text-sm text-muted-foreground mt-2">CINTEXA will require a credible source before treating a company case as verified. The immediate client application is to validate the same operating constraint with internal evidence.</p><div className="mt-4"><EvidenceBadge type="UNKNOWN"/></div></div></CardContent></Card>; }
-function Strategy({goals,addGoal,onBack,onNext}:{goals:Goal[];addGoal:(l:Goal["level"])=>void;onBack:()=>void;onNext:()=>void}) { return <div className="space-y-7 pb-12"><SectionTitle icon={Target} title="Strategy-to-execution planner" description="Turn diagnosis into a visible hierarchy of strategy, tactics, operations and KPIs."/><Card><CardHeader><CardTitle>Goal cascade</CardTitle><CardDescription>Every level must connect to the level above it.</CardDescription></CardHeader><CardContent><div className="space-y-4">{goals.length===0 && <div className="border border-dashed rounded-xl p-8 text-center text-muted-foreground">No goals yet. Create one at each level.</div>}{goals.map(g=><div key={g.id} className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-4"><Badge variant={g.level === "strategic" ? "default" : "secondary"}>{g.level}</Badge><div className="flex-1"><div className="font-semibold">{g.title}</div><div className="text-xs text-muted-foreground mt-1">Owner: {g.owner} · Deadline: {g.deadline} · Target: {g.target} {g.unit}</div></div><div className="flex gap-1">{Object.entries(g.smart).map(([k,v])=><Badge key={k} variant="outline" className={v ? "text-emerald-600" : "text-orange-600"}>{k}: {v ? "✓" : "validate"}</Badge>)}</div></div>)}</div><div className="flex flex-wrap gap-2 mt-5"><Button variant="outline" onClick={()=>addGoal("strategic")}><Plus className="w-4 h-4 mr-1"/> Strategic goal</Button><Button variant="outline" onClick={()=>addGoal("tactical")}><Plus className="w-4 h-4 mr-1"/> Tactical goal</Button><Button variant="outline" onClick={()=>addGoal("operational")}><Plus className="w-4 h-4 mr-1"/> Operational goal</Button></div></CardContent></Card><div className="grid md:grid-cols-4 gap-3">{["VISION", "STRATEGIC GOALS", "TACTICAL INITIATIVES", "OPERATIONAL TASKS"].map((x,i)=><div key={x} className="border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">LEVEL {i+1}</div><div className="font-semibold mt-2">{x}</div>{i<3&&<ArrowRight className="w-4 h-4 mx-auto mt-3 text-muted-foreground"/>}</div>)}</div><div className="flex justify-between"><Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1"/> Diagnosis</Button><Button onClick={onNext}>Open execution roadmap <ArrowRight className="w-4 h-4 ml-2"/></Button></div></div>; }
+function Strategy({goals,addGoal,onBack,onNext,socialInsights,portfolio}:{goals:Goal[];addGoal:(l:Goal["level"])=>void;onBack:()=>void;onNext:()=>void;socialInsights?: any[];portfolio?: string[]}) { return <div className="space-y-7 pb-12"><SectionTitle icon={Target} title="Strategy-to-execution planner" description="Turn diagnosis into a visible hierarchy of strategy, tactics, operations and KPIs."/>{(socialInsights && socialInsights.length > 0) && <Card className="mb-5"><CardHeader><CardTitle>Platform-based strategies</CardTitle><CardDescription>Strategies derived from each paid social platform in the diagnosis.</CardDescription></CardHeader><CardContent className="space-y-3">{socialInsights.map((s:any)=><motion.div key={s.platformId} initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} className="border rounded-xl p-4"><div className="flex justify-between gap-2"><span className="font-semibold text-sm">{s.label}</span><Badge variant="outline">{s.healthScore}/100</Badge></div><p className="text-sm mt-2">{s.strategy}</p><ul className="mt-2 space-y-1">{(s.recommendations||[]).map((r:string,i:number)=><li key={i} className="text-xs text-muted-foreground">→ {r}</li>)}</ul></motion.div>)}{(portfolio||[]).length>0 && <div className="rounded-lg bg-muted/50 p-3 text-sm"><div className="font-medium mb-1">Portfolio moves</div><ul className="space-y-1">{portfolio!.map((r,i)=><li key={i}>{i+1}. {r}</li>)}</ul></div>}</CardContent></Card>}<Card><CardHeader><CardTitle>Goal cascade</CardTitle><CardDescription>Every level must connect to the level above it.</CardDescription></CardHeader><CardContent><div className="space-y-4">{goals.length===0 && <div className="border border-dashed rounded-xl p-8 text-center text-muted-foreground">No goals yet. Create one at each level.</div>}{goals.map(g=><div key={g.id} className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-4"><Badge variant={g.level === "strategic" ? "default" : "secondary"}>{g.level}</Badge><div className="flex-1"><div className="font-semibold">{g.title}</div><div className="text-xs text-muted-foreground mt-1">Owner: {g.owner} · Deadline: {g.deadline} · Target: {g.target} {g.unit}</div></div><div className="flex gap-1">{Object.entries(g.smart).map(([k,v])=><Badge key={k} variant="outline" className={v ? "text-emerald-600" : "text-orange-600"}>{k}: {v ? "✓" : "validate"}</Badge>)}</div></div>)}</div><div className="flex flex-wrap gap-2 mt-5"><Button variant="outline" onClick={()=>addGoal("strategic")}><Plus className="w-4 h-4 mr-1"/> Strategic goal</Button><Button variant="outline" onClick={()=>addGoal("tactical")}><Plus className="w-4 h-4 mr-1"/> Tactical goal</Button><Button variant="outline" onClick={()=>addGoal("operational")}><Plus className="w-4 h-4 mr-1"/> Operational goal</Button></div></CardContent></Card><div className="grid md:grid-cols-4 gap-3">{["VISION", "STRATEGIC GOALS", "TACTICAL INITIATIVES", "OPERATIONAL TASKS"].map((x,i)=><div key={x} className="border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">LEVEL {i+1}</div><div className="font-semibold mt-2">{x}</div>{i<3&&<ArrowRight className="w-4 h-4 mx-auto mt-3 text-muted-foreground"/>}</div>)}</div><div className="flex justify-between"><Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1"/> Diagnosis</Button><Button onClick={onNext}>Open execution roadmap <ArrowRight className="w-4 h-4 ml-2"/></Button></div></div>; }
 function Execution({goals,onBack,health}:{goals:Goal[];onBack:()=>void;health:number}) { const phases=["First 7 Days","First 30 Days","Days 31–90","Months 4–6","Months 7–12"]; return <div className="space-y-7 pb-12"><SectionTitle icon={Zap} title="Execution roadmap" description="The diagnostic becomes useful when ownership, deadlines and measurement are visible."/><div className="grid md:grid-cols-5 gap-3">{phases.map((p,i)=><Card key={p}><CardContent className="p-4"><div className="text-xs text-primary font-semibold">PHASE {i+1}</div><h3 className="font-semibold mt-2">{p}</h3><p className="text-xs text-muted-foreground mt-2">{i===0?"Validate evidence and assign owners.":i===1?"Execute quick wins.":i===2?"Implement core improvements.":i===3?"Scale strategic initiatives.":"Optimize and institutionalize."}</p></CardContent></Card>)}</div><Card><CardHeader><CardTitle>Accountability board</CardTitle><CardDescription>Each initiative needs owner, baseline, target, deadline, KPI and status.</CardDescription></CardHeader><CardContent>{goals.length===0?<div className="p-8 text-center text-muted-foreground">Create goals in the strategy planner first.</div>:<div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-3">Goal</th><th className="text-left p-3">Owner</th><th className="text-left p-3">Baseline</th><th className="text-left p-3">Target</th><th className="text-left p-3">Deadline</th><th className="text-left p-3">Status</th></tr></thead><tbody>{goals.map(g=><tr key={g.id} className="border-b last:border-0"><td className="p-3 font-medium">{g.title}</td><td className="p-3">{g.owner}</td><td className="p-3">{g.baseline} {g.unit}</td><td className="p-3">{g.target} {g.unit}</td><td className="p-3">{g.deadline}</td><td className="p-3"><Badge variant="outline">{g.status}</Badge></td></tr>)}</tbody></table></div>}</CardContent></Card><div className="grid md:grid-cols-3 gap-4"><Card><CardContent className="p-5"><div className="text-sm text-muted-foreground">Execution health</div><div className="text-3xl font-bold mt-1">{goals.length ? Math.min(100, health + 5) : 0}/100</div><Progress className="mt-3" value={goals.length ? Math.min(100, health + 5) : 0}/></CardContent></Card><Card><CardContent className="p-5"><div className="text-sm text-muted-foreground">Goal coverage</div><div className="text-3xl font-bold mt-1">{goals.length}/3+</div><p className="text-xs text-muted-foreground mt-1">Strategic, tactical and operational levels</p></CardContent></Card><Card><CardContent className="p-5"><div className="text-sm text-muted-foreground">Review cadence</div><div className="text-3xl font-bold mt-1">Weekly</div><p className="text-xs text-muted-foreground mt-1">Monthly, quarterly and annual reviews should update the plan.</p></CardContent></Card></div><div className="flex justify-between"><Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1"/> Strategy</Button><Link href="/"><Button>Return to Nexus dashboard</Button></Link></div></div>; }

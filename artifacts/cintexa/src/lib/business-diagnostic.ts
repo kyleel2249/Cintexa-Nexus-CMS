@@ -89,3 +89,157 @@ export function buildAdaptiveQuestions(answers: Record<string, string | number |
   if (answers.technology1 === false) questions.push({ id: "tech-silos", pillar: "technology", text: "Which two systems create the most duplicate data entry?", type: "text" });
   return questions;
 }
+
+/** Social platforms tracked separately for paid ad boosts. */
+export type SocialAdPlatformId =
+  | "meta"
+  | "instagram"
+  | "facebook"
+  | "tiktok"
+  | "youtube"
+  | "google"
+  | "linkedin"
+  | "twitter"
+  | "snapchat"
+  | "pinterest"
+  | "other";
+
+export type SocialAdPlatform = {
+  id: SocialAdPlatformId;
+  label: string;
+  channel: string;
+  enabled: boolean;
+  monthlySpend: number | null;
+  impressions: number | null;
+  clicks: number | null;
+  leads: number | null;
+  conversions: number | null;
+  roas: number | null;
+  cpc: number | null;
+  cpl: number | null;
+  notes: string;
+};
+
+export const SOCIAL_AD_PLATFORMS: Array<{ id: SocialAdPlatformId; label: string; channel: string }> = [
+  { id: "meta", label: "Meta Ads (combined)", channel: "Meta" },
+  { id: "facebook", label: "Facebook Ads", channel: "Meta" },
+  { id: "instagram", label: "Instagram Ads", channel: "Meta" },
+  { id: "tiktok", label: "TikTok Ads", channel: "TikTok" },
+  { id: "youtube", label: "YouTube Ads", channel: "Google" },
+  { id: "google", label: "Google Ads (Search/Display)", channel: "Google" },
+  { id: "linkedin", label: "LinkedIn Ads", channel: "LinkedIn" },
+  { id: "twitter", label: "X (Twitter) Ads", channel: "X" },
+  { id: "snapchat", label: "Snapchat Ads", channel: "Snapchat" },
+  { id: "pinterest", label: "Pinterest Ads", channel: "Pinterest" },
+  { id: "other", label: "Other paid social", channel: "Other" },
+];
+
+export function initialSocialPlatforms(): SocialAdPlatform[] {
+  return SOCIAL_AD_PLATFORMS.map((p) => ({
+    id: p.id,
+    label: p.label,
+    channel: p.channel,
+    enabled: false,
+    monthlySpend: null,
+    impressions: null,
+    clicks: null,
+    leads: null,
+    conversions: null,
+    roas: null,
+    cpc: null,
+    cpl: null,
+    notes: "",
+  }));
+}
+
+export type SocialPlatformInsight = {
+  platformId: SocialAdPlatformId;
+  label: string;
+  healthScore: number;
+  severity: string;
+  metrics: { cpc: number | null; cpl: number | null; ctr: number | null; roas: number | null; spend: number | null };
+  evidence: EvidenceClass;
+  findings: string[];
+  recommendations: string[];
+  strategy: string;
+};
+
+export function analyzeSocialPlatforms(platforms: SocialAdPlatform[]): {
+  active: SocialAdPlatform[];
+  totalSpend: number;
+  insights: SocialPlatformInsight[];
+  topPerformer: SocialPlatformInsight | null;
+  weakest: SocialPlatformInsight | null;
+  portfolioRecommendations: string[];
+} {
+  const active = platforms.filter((p) => p.enabled);
+  const totalSpend = active.reduce((s, p) => s + (p.monthlySpend ?? 0), 0);
+  const insights: SocialPlatformInsight[] = active.map((p) => {
+    const ctr = p.impressions && p.impressions > 0 && p.clicks != null ? (p.clicks / p.impressions) * 100 : null;
+    const cpc = p.cpc ?? (p.clicks && p.clicks > 0 && p.monthlySpend != null ? p.monthlySpend / p.clicks : null);
+    const cpl = p.cpl ?? (p.leads && p.leads > 0 && p.monthlySpend != null ? p.monthlySpend / p.leads : null);
+    const roas = p.roas;
+    let health = 55;
+    const findings: string[] = [];
+    const recommendations: string[] = [];
+    if (roas != null) {
+      if (roas >= 3) { health += 20; findings.push(`ROAS ${roas.toFixed(1)}x is strong relative to a 3x working threshold.`); }
+      else if (roas >= 1.5) { health += 5; findings.push(`ROAS ${roas.toFixed(1)}x is acceptable but below a 3x stretch target.`); recommendations.push(`Tighten creative and audience exclusion on ${p.label} to lift ROAS toward 3x.`); }
+      else { health -= 20; findings.push(`ROAS ${roas.toFixed(1)}x is below payback comfort.`); recommendations.push(`Pause lowest-ROAS ad sets on ${p.label} and reallocate to proven creatives.`); }
+    }
+    if (ctr != null) {
+      if (ctr < 0.8) { health -= 10; findings.push(`CTR ${ctr.toFixed(2)}% is weak for paid social.`); recommendations.push(`Refresh hooks and first 3 seconds of creative on ${p.label}.`); }
+      else if (ctr >= 1.5) { health += 8; findings.push(`CTR ${ctr.toFixed(2)}% indicates creative resonance.`); }
+    }
+    if (cpl != null && p.monthlySpend && p.monthlySpend > 0) {
+      findings.push(`Cost per lead approximately ${cpl.toFixed(2)}.`);
+      recommendations.push(`Benchmark CPL for ${p.label} against your blended CAC before scaling spend.`); }
+    if (!findings.length) {
+      findings.push("Limited platform metrics supplied — scores are provisional.");
+      recommendations.push(`Connect ${p.label} ad account metrics (spend, CTR, CPL, ROAS) for evidence-led scaling.`);
+    }
+    const strategyByPlatform: Record<string, string> = {
+      meta: "Use Meta Advantage+ for proven offers; isolate prospecting vs retargeting budgets.",
+      facebook: "Prioritize conversion campaigns with strong social proof; exclude recent converters.",
+      instagram: "Lead with short-form creative and UGC-style assets; test Reels placements separately.",
+      tiktok: "Optimize for thumb-stop creative in 1–3s; use Spark Ads with creator content when available.",
+      youtube: "Use in-feed and Shorts for mid-funnel education; protect brand search separately on Google.",
+      google: "Separate brand, non-brand and competitor search; protect ROAS with strict query intent.",
+      linkedin: "Keep audiences tight (title + industry); favor conversation/lead gen forms for B2B.",
+      twitter: "Use X for timely offers and consideration; keep frequency caps low.",
+      snapchat: "Focus on younger cohorts and vertical creative; measure assisted conversions carefully.",
+      pinterest: "Align creatives to high-intent search terms and seasonal demand.",
+      other: "Document the channel’s role in the funnel before increasing budget.",
+    };
+    health = Math.max(0, Math.min(100, Math.round(health)));
+    return {
+      platformId: p.id,
+      label: p.label,
+      healthScore: health,
+      severity: scoreSeverity(health),
+      metrics: { cpc, cpl, ctr, roas, spend: p.monthlySpend },
+      evidence: (roas != null || ctr != null || cpl != null ? "CALCULATED" : "USER PROVIDED") as EvidenceClass,
+      findings,
+      recommendations,
+      strategy: strategyByPlatform[p.id] ?? strategyByPlatform.other,
+    };
+  });
+
+  const sorted = [...insights].sort((a, b) => b.healthScore - a.healthScore);
+  const topPerformer = sorted[0] ?? null;
+  const weakest = sorted.length ? sorted[sorted.length - 1] : null;
+  const portfolioRecommendations: string[] = [];
+  if (topPerformer && weakest && topPerformer.platformId !== weakest.platformId) {
+    portfolioRecommendations.push(
+      `Shift incremental test budget from ${weakest.label} toward ${topPerformer.label} while holding a controlled experiment on ${weakest.label}.`,
+    );
+  }
+  if (totalSpend > 0 && active.length >= 2) {
+    portfolioRecommendations.push("Review platform mix monthly: spend share vs lead share vs revenue share.");
+  }
+  if (!active.length) {
+    portfolioRecommendations.push("Enable at least one paid social platform with spend and outcome metrics to unlock platform-level diagnosis.");
+  }
+  portfolioRecommendations.push("Keep creative fatigue checks weekly on every active ad platform.");
+  return { active, totalSpend, insights, topPerformer, weakest, portfolioRecommendations };
+}

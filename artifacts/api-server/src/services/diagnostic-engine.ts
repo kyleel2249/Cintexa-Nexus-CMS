@@ -280,6 +280,7 @@ export function buildFullReport(input: {
   metrics?: MetricInput;
   pillarScores?: Record<string, number | null | undefined>;
   competitors?: Array<{ name: string; positioning?: string; strengths?: string; weaknesses?: string }>;
+  socialPlatforms?: Array<Record<string, unknown>>;
 }) {
   const metrics = input.metrics ?? {};
   const scores = input.pillarScores ?? {};
@@ -316,11 +317,17 @@ export function buildFullReport(input: {
       evidence: "USER PROVIDED" as EvidenceType,
       note: "External research claims require source and date before they are treated as VERIFIED.",
     })),
+    socialAds: {
+      platforms: (input.socialPlatforms ?? []).filter((p: any) => p && p.enabled),
+      note: "Each enabled ad platform is diagnosed separately. Recommendations are platform-specific.",
+    },
     kpis: [
       { name: "Lead-to-customer conversion", baseline: analysis.sales.conversion, target: "Industry benchmark or +3pp", owner: "Sales + Marketing" },
       { name: "Sales cycle days", baseline: analysis.sales.salesCycle, target: "Reduce toward industry median", owner: "Sales" },
       { name: "Business health score", baseline: analysis.health, target: Math.min(100, analysis.health + 10), owner: "Executive team" },
       { name: "Qualified pipeline coverage", baseline: null, target: "3–4x quota", owner: "Sales Ops" },
+      { name: "Paid social ROAS (by platform)", baseline: null, target: "≥ 3x on scaled platforms", owner: "Marketing" },
+      { name: "Blended CPL across ad platforms", baseline: null, target: "Below target CAC threshold", owner: "Marketing" },
     ],
   };
 }

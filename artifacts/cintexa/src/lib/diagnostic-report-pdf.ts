@@ -11,6 +11,8 @@ type Report = {
   kpis?: Array<{ name: string; baseline: number | null; target: string | number; owner: string }>;
   swot?: { strengths: any[]; weaknesses: any[]; opportunities: any[]; threats: any[] };
   competitors?: Array<{ name: string; positioning?: string; strengths?: string; weaknesses?: string }>;
+  socialAds?: { platforms: any[]; note?: string };
+  socialInsights?: any[];
   sales?: Record<string, number | null>;
 };
 
@@ -212,6 +214,30 @@ export function downloadDiagnosticPdf(report: Report) {
 
   doc.addPage();
   y = 16;
+  
+  if ((report as any).socialInsights?.length || report.socialAds?.platforms?.length) {
+    if (y > 240) { doc.addPage(); y = 16; }
+    doc.setFont("helvetica", "bold");
+    doc.setFontSize(13);
+    doc.text("Paid social platforms (separate diagnosis)", margin, y);
+    y += 4;
+    const rows = (report as any).socialInsights?.map((s: any) => [
+      s.label,
+      String(s.healthScore ?? "—"),
+      s.metrics?.roas != null ? String(s.metrics.roas) : "—",
+      s.metrics?.cpl != null ? String(Number(s.metrics.cpl).toFixed(2)) : "—",
+      (s.recommendations?.[0] ?? s.strategy ?? "—").slice(0, 80),
+    ]) ?? (report.socialAds?.platforms ?? []).map((p: any) => [p.label || p.id, p.enabled ? "Active" : "Off", p.roas ?? "—", p.monthlySpend ?? "—", ""]);
+    autoTable(doc, {
+      startY: y,
+      head: [["Platform", "Health / Status", "ROAS", "CPL / Spend", "Recommendation"]],
+      body: rows,
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 8 },
+    });
+    y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+  }
+
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
   doc.text("10. Evidence Policy & Next Steps", margin, y);
