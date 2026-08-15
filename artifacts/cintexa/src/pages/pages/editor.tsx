@@ -30,7 +30,7 @@ export default function PageEditor() {
   const queryClient = useQueryClient();
 
   const { data: page, isLoading } = useGetPage(Number(id), {
-    query: { enabled: !isNew && !!id },
+    query: { enabled: !isNew && !!id } as any,
   });
 
   const createMutation = useCreatePage();

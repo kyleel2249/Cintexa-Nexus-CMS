@@ -47,7 +47,7 @@ function AppearanceCard() {
           <div className="grid grid-cols-6 gap-2">
             {ACCENT_OPTIONS.map(({ value, label, color }) => (
               <button key={value} title={label} onClick={() => setAccent(value)} className={cn("group relative flex flex-col items-center gap-1.5 p-2 rounded-xl border-2 transition-all", accent === value ? "border-foreground/40 scale-105 shadow-md" : "border-transparent hover:border-border")}>
-                <span className="w-8 h-8 rounded-full ring-2 ring-offset-2 ring-offset-card transition-all" style={{ backgroundColor: color, ringColor: accent === value ? color : "transparent" }} />
+                <span className="w-8 h-8 rounded-full ring-2 ring-offset-2 ring-offset-card transition-all" style={{ backgroundColor: color, ["--tw-ring-color" as any]: accent === value ? color : "transparent" } as React.CSSProperties} />
                 <span className="text-[9px] font-medium text-muted-foreground group-hover:text-foreground transition-colors leading-none">{label}</span>
                 {accent === value && <span className="absolute -top-1 -right-1 w-3.5 h-3.5 rounded-full bg-foreground flex items-center justify-center"><svg viewBox="0 0 10 10" className="w-2 h-2 text-background fill-current"><path d="M2 5 L4 7 L8 3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/></svg></span>}
               </button>

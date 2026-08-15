@@ -69,13 +69,13 @@ export async function generateImagesForPost(postId: number): Promise<void> {
 }
 
 router.get("/", async (req, res) => {
-  const postId = parseInt(req.params.id);
+  const postId = parseInt((req.params as Record<string, string>).id);
   const images = await db.select().from(postImagesTable).where(eq(postImagesTable.postId, postId)).orderBy(postImagesTable.createdAt);
   res.json(images.map((img) => ({ ...img, createdAt: img.createdAt.toISOString() })));
 });
 
 router.post("/generate", async (req, res) => {
-  const postId = parseInt(req.params.id);
+  const postId = parseInt((req.params as Record<string, string>).id);
   const [post] = await db.select().from(postsTable).where(eq(postsTable.id, postId));
   if (!post) return res.status(404).json({ error: "Post not found" });
 
@@ -87,8 +87,8 @@ router.post("/generate", async (req, res) => {
 });
 
 router.patch("/:imgId", async (req, res) => {
-  const postId = parseInt(req.params.id);
-  const imgId = parseInt(req.params.imgId);
+  const postId = parseInt((req.params as Record<string, string>).id);
+  const imgId = parseInt((req.params as Record<string, string>).imgId);
   const { isPrimary, isThumbnail, altText } = req.body;
 
   if (isPrimary) {
@@ -109,7 +109,7 @@ router.patch("/:imgId", async (req, res) => {
 });
 
 router.delete("/:imgId", async (req, res) => {
-  const imgId = parseInt(req.params.imgId);
+  const imgId = parseInt((req.params as Record<string, string>).imgId);
   await db.delete(postImagesTable).where(eq(postImagesTable.id, imgId));
   res.status(204).send();
 });

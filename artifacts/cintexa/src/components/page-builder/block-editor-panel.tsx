@@ -23,9 +23,9 @@ function Field({ label, children }: { label: string; children: React.ReactNode }
 function useDebouncedCallback<T extends (...args: any[]) => void>(fn: T, delay: number): T {
   const fnRef = useRef(fn);
   useLayoutEffect(() => { fnRef.current = fn; });
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   return useCallback((...args: any[]) => {
-    clearTimeout(timerRef.current);
+    if (timerRef.current !== undefined) clearTimeout(timerRef.current);
     timerRef.current = setTimeout(() => fnRef.current(...args), delay);
   }, [delay]) as T;
 }
@@ -95,15 +95,22 @@ export function BlockEditorPanel({ block, onChange }: BlockEditorPanelProps) {
   }
 
   if (block.type === "feature") {
+    const featureBlock = block;
     function updateFeature(i: number, patch: Partial<FeatureItem>) {
-      const features = block.features.map((f, idx) => idx === i ? { ...f, ...patch } : f);
-      debouncedOnChange({ ...block, features });
+      const features = featureBlock.features.map((f: FeatureItem, idx: number) => idx === i ? { ...f, ...patch } : f);
+      debouncedOnChange({ ...featureBlock, features });
     }
     function addFeature() {
-      updateImmediate({ features: [...block.features, { icon: "✨", title: "New Feature", description: "Describe this feature." }] } as any);
+      onChange({
+        ...featureBlock,
+        features: [...featureBlock.features, { icon: "✨", title: "New Feature", description: "Describe this feature." }],
+      });
     }
     function removeFeature(i: number) {
-      updateImmediate({ features: block.features.filter((_, idx) => idx !== i) } as any);
+      onChange({
+        ...featureBlock,
+        features: featureBlock.features.filter((_: FeatureItem, idx: number) => idx !== i),
+      });
     }
 
     return (

@@ -97,7 +97,10 @@ export default function Subscribers() {
       const [email, name] = line.split(",").map((s) => s.trim());
       return { email, name: name || undefined };
     }).filter((s) => s.email && s.email.includes("@"));
-    if (subs.length === 0) return toast({ title: "No valid emails found", variant: "destructive" });
+    if (subs.length === 0) {
+      toast({ title: "No valid emails found", variant: "destructive" });
+      return;
+    }
     importMutation.mutate(subs);
   };
 

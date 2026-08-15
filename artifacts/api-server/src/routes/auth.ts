@@ -102,7 +102,7 @@ router.get("/me", async (req, res) => {
   if (!raw) return res.status(401).json({ error: "Not authenticated" });
 
   try {
-    const payload = jwt.verify(raw, JWT_SECRET) as { sub: number };
+    const payload = jwt.verify(raw, JWT_SECRET) as unknown as { sub: number };
     const [user] = await db.select().from(usersTable).where(eq(usersTable.id, payload.sub));
     if (!user) return res.status(401).json({ error: "User not found" });
     res.json({ user: safeUser(user) });
@@ -120,7 +120,7 @@ router.post("/change-password", async (req, res) => {
 
   let payload: { sub: number };
   try {
-    payload = jwt.verify(raw, JWT_SECRET) as { sub: number };
+    payload = jwt.verify(raw, JWT_SECRET) as unknown as { sub: number };
   } catch {
     return res.status(401).json({ error: "Invalid token" });
   }

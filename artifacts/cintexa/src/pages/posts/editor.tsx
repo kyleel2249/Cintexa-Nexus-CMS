@@ -123,7 +123,7 @@ export default function PostEditor() {
   const isNew = !id || id === "new";
 
   const { data: post, isLoading } = useGetPost(Number(id), {
-    query: { enabled: !isNew && !!id },
+    query: { enabled: !isNew && !!id } as any,
   });
 
   const createMutation = useCreatePost();
@@ -216,7 +216,7 @@ export default function PostEditor() {
     setPublishing(true);
     try {
       // Save latest first
-      await updateMutation.mutateAsync({ id: Number(id), data: { ...formData, citationLinks: citations, keywords: formData.keywords } });
+      await updateMutation.mutateAsync({ id: Number(id), data: { ...formData } as any });
 
       const res = await fetch(`/api/posts/${id}/publish`, { method: "POST" });
       if (!res.ok) {

@@ -65,7 +65,7 @@ async function toAuthUser(firebaseUser: FirebaseUser): Promise<AuthUser> {
     email: firebaseUser.email ?? "",
     role: String(profile.role ?? "editor"),
     avatar: firebaseUser.photoURL ?? (profile.avatar ? String(profile.avatar) : null),
-    status: String(profile.status ?? (firebaseUser.disabled ? "disabled" : "active")),
+    status: String(profile.status ?? ((firebaseUser as { disabled?: boolean }).disabled ? "disabled" : "active")),
     lastLoginAt: profile.lastLoginAt?.toDate?.()?.toISOString?.() ?? null,
   };
 }

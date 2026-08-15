@@ -98,11 +98,12 @@ export async function broadcastPost(postId: number): Promise<void> {
   ];
 
   for (const { name, fn } of platforms) {
-    const [existing] = await db.insert(socialBroadcastsTable).values({
+    const inserted = await db.insert(socialBroadcastsTable).values({
       postId,
       platform: name,
       status: "pending",
     }).returning();
+    const existing = inserted[0] as { id: number };
 
     const result = await fn();
     await db.update(socialBroadcastsTable).set({
@@ -115,7 +116,7 @@ export async function broadcastPost(postId: number): Promise<void> {
 }
 
 router.get("/", async (req, res) => {
-  const postId = parseInt(req.params.id);
+  const postId = parseInt((req.params as Record<string, string>).id);
   const rows = await db.select().from(socialBroadcastsTable).where(eq(socialBroadcastsTable.postId, postId)).orderBy(socialBroadcastsTable.createdAt);
   res.json(rows.map((r) => ({
     ...r,
@@ -125,7 +126,7 @@ router.get("/", async (req, res) => {
 });
 
 router.post("/", async (req, res) => {
-  const postId = parseInt(req.params.id);
+  const postId = parseInt((req.params as Record<string, string>).id);
   const [post] = await db.select().from(postsTable).where(eq(postsTable.id, postId));
   if (!post) return res.status(404).json({ error: "Post not found" });
   res.json({ message: "Broadcast started" });

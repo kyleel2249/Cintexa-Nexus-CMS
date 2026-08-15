@@ -1,6 +1,6 @@
 /**
  * CINTEXA CMS — Database Seed Script
- * Run: pnpm --filter @workspace/scripts run seed
+ * Run: npm run seed --workspace=@workspace/scripts
  *
  * Creates a full demo dataset:
  *   - 1 admin + 3 team members
@@ -548,7 +548,7 @@ Writing the API spec first forces you to think about the interface before the im
 
 After any spec change, run:
 \`\`\`
-pnpm --filter @workspace/api-spec run codegen
+npm run codegen --workspace=@workspace/api-spec
 \`\`\`
 This regenerates all hooks and validators. TypeScript then catches any component that uses a deprecated or renamed field at compile time.`,
     authorId: admin.id,
