@@ -14,3 +14,4 @@ export * from "./plugins";
 export * from "./post-images";
 export * from "./social-broadcasts";
 export * from "./post-comments";
+export * from "./diagnostic";
