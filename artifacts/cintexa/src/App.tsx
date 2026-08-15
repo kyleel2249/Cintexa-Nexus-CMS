@@ -29,6 +29,7 @@ const ContentCalendar = lazy(() => import("@/pages/calendar"));
 const ContentPipeline = lazy(() => import("@/pages/pipeline"));
 const Plugins = lazy(() => import("@/pages/plugins"));
 const Subscribers = lazy(() => import("@/pages/subscribers"));
+const BusinessDiagnostic = lazy(() => import("@/pages/business-diagnostic"));
 
 const queryClient = new QueryClient();
 
@@ -57,15 +58,14 @@ function ProtectedRoutes() {
     );
   }
 
-  if (!user) {
-    return <Redirect to="/login" />;
-  }
+  if (!user) return <Redirect to="/login" />;
 
   return (
     <AppLayout>
       <Suspense fallback={<PageLoader />}>
         <Switch>
           <Route path="/" component={Dashboard} />
+          <Route path="/diagnostics" component={BusinessDiagnostic} />
           <Route path="/sites" component={Sites} />
           <Route path="/pages" component={Pages} />
           <Route path="/pages/new" component={PageEditor} />
@@ -94,10 +94,8 @@ function ProtectedRoutes() {
 
 function AuthRoutes() {
   const { user, isLoading } = useAuth();
-
   if (isLoading) return null;
   if (user) return <Redirect to="/" />;
-
   return (
     <Switch>
       <Route path="/login" component={Login} />
@@ -110,7 +108,6 @@ function AuthRoutes() {
 function Router() {
   const [location] = useLocation();
   const isAuthPage = location === "/login" || location === "/register";
-
   return isAuthPage ? <AuthRoutes /> : <ProtectedRoutes />;
 }
 
