@@ -472,3 +472,112 @@ export function autofillDemoProfile(industry = "SaaS B2B") {
     } as Record<string, number>,
   };
 }
+
+export const INDUSTRY_OPTIONS = [
+  "SaaS / Software",
+  "E-commerce / Retail",
+  "Digital Agency / Marketing",
+  "Professional Services",
+  "Healthcare",
+  "Fintech / Financial Services",
+  "Education / EdTech",
+  "Manufacturing",
+  "Hospitality / Travel",
+  "Real Estate / PropTech",
+  "Logistics / Supply Chain",
+  "Media / Entertainment",
+  "Non-profit / NGO",
+  "Other / General",
+] as const;
+
+export const SUB_INDUSTRY_BY_INDUSTRY: Record<string, string[]> = {
+  "SaaS / Software": ["B2B SaaS", "B2C Apps", "Developer Tools", "Vertical SaaS", "Infrastructure"],
+  "E-commerce / Retail": ["DTC Brand", "Marketplace", "Fashion", "Electronics", "Grocery"],
+  "Digital Agency / Marketing": ["Performance Media", "Creative", "SEO/Content", "Full-service", "Social"],
+  "Professional Services": ["Consulting", "Legal", "Accounting", "HR / Recruiting", "IT Services"],
+  "Healthcare": ["Clinics", "Telehealth", "Pharma", "Healthtech", "Wellness"],
+  "Fintech / Financial Services": ["Payments", "Lending", "Insurance", "Wealth", "Banking"],
+  "Education / EdTech": ["K-12", "Higher Ed", "Corporate Training", "Consumer Learning"],
+  "Manufacturing": ["Industrial", "Consumer Goods", "Automotive", "Food Processing"],
+  "Hospitality / Travel": ["Hotels", "Restaurants", "Travel Tech", "Events"],
+  "Real Estate / PropTech": ["Residential", "Commercial", "Property Management", "Construction"],
+  "Logistics / Supply Chain": ["Freight", "Last-mile", "Warehousing", "Fleet"],
+  "Media / Entertainment": ["Publishing", "Streaming", "Gaming", "Creator Economy"],
+  "Non-profit / NGO": ["Advocacy", "Community", "International Development"],
+  "Other / General": ["General Business", "Local Services", "Hybrid"],
+};
+
+export const MARKET_OPTIONS = [
+  "Ghana",
+  "Nigeria",
+  "Kenya",
+  "South Africa",
+  "West Africa",
+  "East Africa",
+  "Africa (pan-regional)",
+  "United Kingdom",
+  "Europe",
+  "United States",
+  "North America",
+  "Middle East",
+  "Asia-Pacific",
+  "Global / Remote",
+  "Local city / regional only",
+] as const;
+
+export const OBJECTIVE_OPTIONS = [
+  "Increase qualified revenue and conversion efficiency",
+  "Reduce customer acquisition cost (CAC)",
+  "Improve retention and reduce churn",
+  "Launch or scale a new product line",
+  "Enter a new geographic market",
+  "Strengthen competitive differentiation",
+  "Improve operational efficiency and margins",
+  "Build a predictable sales pipeline",
+  "Scale paid social and digital acquisition profitably",
+  "Digitize core processes with AI and automation",
+  "Raise brand awareness in the category",
+  "Improve customer experience and NPS",
+] as const;
+
+/** Infer industry / market hints from company name + website host. */
+export function inferProfileFromIdentity(name: string, website: string): {
+  industry?: string;
+  subIndustry?: string;
+  market?: string;
+  objective?: string;
+} {
+  const blob = `${name} ${website}`.toLowerCase();
+  let industry: string | undefined;
+  let subIndustry: string | undefined;
+  if (/saas|software|app|cloud|tech|platform|cms|nexus/.test(blob)) {
+    industry = "SaaS / Software";
+    subIndustry = "B2B SaaS";
+  } else if (/shop|store|commerce|retail|fashion/.test(blob)) {
+    industry = "E-commerce / Retail";
+    subIndustry = "DTC Brand";
+  } else if (/agency|marketing|media|ads/.test(blob)) {
+    industry = "Digital Agency / Marketing";
+    subIndustry = "Performance Media";
+  } else if (/bank|fin|pay|insur|lend/.test(blob)) {
+    industry = "Fintech / Financial Services";
+  } else if (/health|clinic|med|pharma/.test(blob)) {
+    industry = "Healthcare";
+  } else if (/school|edu|learn|course/.test(blob)) {
+    industry = "Education / EdTech";
+  }
+
+  let market: string | undefined;
+  if (/ghana|\.gh\b/.test(blob)) market = "Ghana";
+  else if (/nigeria|\.ng\b/.test(blob)) market = "Nigeria";
+  else if (/kenya|\.ke\b/.test(blob)) market = "Kenya";
+  else if (/africa/.test(blob)) market = "Africa (pan-regional)";
+  else if (/\.uk\b|london|britain/.test(blob)) market = "United Kingdom";
+  else if (/\.com\b|global|worldwide/.test(blob)) market = "Global / Remote";
+
+  const objective = industry
+    ? OBJECTIVE_OPTIONS.find((o) => /revenue|conversion|pipeline|acquisition/i.test(o)) || OBJECTIVE_OPTIONS[0]
+    : OBJECTIVE_OPTIONS[0];
+
+  return { industry, subIndustry, market, objective };
+}

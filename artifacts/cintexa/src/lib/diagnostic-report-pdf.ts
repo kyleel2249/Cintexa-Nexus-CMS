@@ -173,7 +173,9 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
   if (report.profile?.employees) y = line(doc, `Company size: ${report.profile.employees}`, margin, y);
   if (report.profile?.revenue) y = line(doc, `Revenue range: ${report.profile.revenue}`, margin, y);
   if (report.profile?.objective) y = line(doc, `Strategic objective: ${report.profile.objective}`, margin, y);
-  y = line(doc, `Generated: ${generated}`, margin, y);
+  const genDate = new Date(report.meta.generatedAt || Date.now());
+  y = line(doc, `Report date: ${genDate.toLocaleDateString(undefined, { year: "numeric", month: "long", day: "numeric" })}`, margin, y);
+  y = line(doc, `Report time: ${genDate.toLocaleTimeString()}`, margin, y);
   y += 3;
   doc.setFontSize(9);
   doc.setTextColor(80, 80, 80);
@@ -491,8 +493,31 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
   y = line(doc, "This PDF is a standalone strategic document. It does not include application navigation or interface chrome.", margin, y);
   y = line(doc, "CINTEXA Nexus — diagnose → prioritize → execute → measure → adapt.", margin, y);
 
+  // —— Footer: date/time, copyright, powered by ——
+  y = ensureSpace(doc, y, 36);
+  y += 6;
+  doc.setDrawColor(30, 107, 255);
+  doc.setLineWidth(0.3);
+  doc.line(margin, y, 210 - margin, y);
+  y += 7;
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(9);
+  doc.setTextColor(40, 40, 40);
+  const reportWhen = new Date(report.meta.generatedAt || Date.now());
+  const dateStr = reportWhen.toLocaleDateString(undefined, { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+  const timeStr = reportWhen.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  y = line(doc, `Report date: ${dateStr}`, margin, y);
+  y = line(doc, `Report time: ${timeStr}`, margin, y);
+  y += 2;
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(9);
+  y = line(doc, "© " + reportWhen.getFullYear() + " Cintexa Technologies. All rights reserved.", margin, y);
+  doc.setFont("helvetica", "normal");
+  y = line(doc, "Powered by Cintexa Technologies · https://cintexa.com", margin, y);
+  y = line(doc, "CINTEXA Nexus Business Diagnostic & Strategic Execution Engine", margin, y);
+
   const safeName = company.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "Company";
-  const filename = `CINTEXA-${safeName}-Diagnostic-Strategy-Execution-${new Date().toISOString().slice(0, 10)}.pdf`;
+  const filename = `CINTEXA-${safeName}-Diagnostic-Strategy-Execution-${reportWhen.toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
   return filename;
 }

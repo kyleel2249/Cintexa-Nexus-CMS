@@ -21,6 +21,7 @@ import {
   pillars, questionBank, scoreSeverity, initialSocialPlatforms, analyzeSocialPlatforms,
   autofillDemoProfile, seedCompetitorsForNiche, seedCaseStudies, generateDailyContentPack,
   INDUSTRY_BENCHMARKS, resolveIndustryKey, AI_EMPLOYEES,
+  INDUSTRY_OPTIONS, SUB_INDUSTRY_BY_INDUSTRY, MARKET_OPTIONS, OBJECTIVE_OPTIONS, inferProfileFromIdentity,
   type Competitor, type DiagnosticMode, type Goal, type Metric, type SocialAdPlatform,
   type AiEmployee, type CaseStudySeed, type ContentPackItem,
 } from "@/lib/business-diagnostic";
@@ -385,19 +386,62 @@ export default function BusinessDiagnostic() {
 
 
   function applyAutofill() {
-    const demo = autofillDemoProfile(company.industry || "SaaS B2B");
-    setCompany({ ...company, ...demo.company });
+    const inferred = inferProfileFromIdentity(company.name || "", company.website || "");
+    const demo = autofillDemoProfile(inferred.industry || company.industry || "SaaS B2B");
+    setCompany({
+      ...company,
+      ...demo.company,
+      name: company.name || demo.company.name,
+      website: company.website || demo.company.website,
+      industry: company.industry || inferred.industry || demo.company.industry,
+      subIndustry: company.subIndustry || inferred.subIndustry || demo.company.subIndustry,
+      market: company.market || inferred.market || demo.company.market,
+      objective: company.objective || inferred.objective || demo.company.objective,
+    });
     setMetrics(prev => prev.map(m => ({ ...m, value: demo.metrics[m.id] ?? m.value })));
-    void logTaskLocal("autofill", "Autofilled demo company profile and metrics");
+    void logTaskLocal("autofill", "Autofilled profile fields from identity / demo defaults");
+  }
+
+  /** When name/website change, suggest industry, market and objective if still empty. */
+  function suggestFromIdentity() {
+    const inferred = inferProfileFromIdentity(company.name || "", company.website || "");
+    setCompany(prev => ({
+      ...prev,
+      industry: prev.industry || inferred.industry || prev.industry,
+      subIndustry: prev.subIndustry || inferred.subIndustry || prev.subIndustry,
+      market: prev.market || inferred.market || prev.market,
+      objective: prev.objective || inferred.objective || prev.objective,
+    }));
   }
 
   async function runAiEmployees() {
+    const companyName = (company.name || "").trim();
+    const companyWebsite = (company.website || "").trim();
+    if (!companyName && !companyWebsite) {
+      alert("Enter company name and/or website in the Company intelligence profile so AI employees can research the right entity.");
+      return;
+    }
+    // Auto-fill missing industry / market / objective from name + website
+    const inferred = inferProfileFromIdentity(companyName, companyWebsite);
+    const nextCompany = {
+      ...company,
+      industry: company.industry || inferred.industry || company.industry,
+      subIndustry: company.subIndustry || inferred.subIndustry || company.subIndustry,
+      market: company.market || inferred.market || company.market,
+      objective: company.objective || inferred.objective || company.objective,
+    };
+    setCompany(nextCompany);
+
     setAiBusy(true);
-    const niche = company.industry || "general";
+    const niche = nextCompany.industry || inferred.industry || "general";
     setAiEmployees(prev => prev.map(e => ({ ...e, status: "working" as const, lastAction: "Working…" })));
     await new Promise(r => setTimeout(r, 500));
-    setAiEmployees(prev => prev.map(e => e.id === "scout" ? { ...e, status: "done" as const, lastAction: `Researched niche: ${niche}` } : e));
-    const seeds = seedCompetitorsForNiche(niche, company.name || "Company");
+    setAiEmployees(prev => prev.map(e => e.id === "scout" ? {
+      ...e,
+      status: "done" as const,
+      lastAction: `Researched ${companyName || "company"}${companyWebsite ? ` (${companyWebsite})` : ""} · niche: ${niche}`,
+    } : e));
+    const seeds = seedCompetitorsForNiche(niche, companyName || "Company");
     setCompetitors(seeds.map(s => ({
       id: createId(),
       name: s.name,
@@ -418,20 +462,20 @@ export default function BusinessDiagnostic() {
     setCaseStudies(cases);
     setAiEmployees(prev => prev.map(e => e.id === "case" ? { ...e, status: "done" as const, lastAction: `Matched ${cases.length} case sources` } : e));
     const pack = generateDailyContentPack({
-      companyName: company.name || "Company",
+      companyName: companyName || "Company",
       industry: niche,
-      website: company.website,
+      website: companyWebsite || nextCompany.website,
       weakestPillar: weakest.label,
       strongestPillar: strongest.label,
-      objective: company.objective,
+      objective: nextCompany.objective,
       goals: goals.map(g => g.title),
     });
     setContentPack(pack);
     setAiEmployees(prev => prev.map(e => e.id === "copy" ? { ...e, status: "done" as const, lastAction: `Generated ${pack.length} SEO/ad assets` } : e));
     try {
       await diagnosticApi.research({
-        companyName: company.name,
-        companyWebsite: company.website,
+        companyName: companyName,
+        companyWebsite: companyWebsite,
         industry: niche,
         competitors: seeds.map(s => ({ name: s.name, website: s.website })),
       });
@@ -461,7 +505,64 @@ export default function BusinessDiagnostic() {
         <Button type="button" disabled={aiBusy} onClick={() => void runAiEmployees()}>{aiBusy ? "AI working…" : "Run AI employees"}</Button>
       </div>
       <SectionTitle icon={Network} title="Company intelligence profile" description="Start with the operating context. Missing data stays missing instead of becoming an invented assumption." />
-      <Card><CardContent className="p-6"><div className="grid md:grid-cols-2 gap-5">{[["name","Company name"],["website","Company website (optional)"],["industry","Industry"],["subIndustry","Sub-industry"],["market","Geographic markets"],["employees","Employees"],["revenue","Revenue range"],["objective","Primary strategic objective"]].map(([key,label]) => <div key={key} className={key === "objective" ? "md:col-span-2" : ""}><Label>{label}</Label><Input className="mt-2" value={company[key as keyof typeof company]} onChange={e => setCompany({...company, [key]: e.target.value})} placeholder={`Enter ${label.toLowerCase()}`} /></div>)}<div><Label>Business model</Label><select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.model} onChange={e => setCompany({...company, model:e.target.value})}><option>B2B</option><option>B2C</option><option>B2B2C</option><option>Marketplace</option><option>Subscription</option></select></div></div></CardContent></Card>
+      <Card><CardContent className="p-6"><div className="grid md:grid-cols-2 gap-5">
+        <div>
+          <Label>Company name</Label>
+          <Input className="mt-2" value={company.name} onChange={e => setCompany({ ...company, name: e.target.value })} onBlur={suggestFromIdentity} placeholder="Legal or trading name" />
+        </div>
+        <div>
+          <Label>Company website</Label>
+          <Input className="mt-2" value={company.website} onChange={e => setCompany({ ...company, website: e.target.value })} onBlur={suggestFromIdentity} placeholder="https://example.com" />
+          <p className="text-[11px] text-muted-foreground mt-1">AI employees use name + website for research. Blur suggests industry and market.</p>
+        </div>
+        <div>
+          <Label>Industry type</Label>
+          <select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.industry} onChange={e => setCompany({ ...company, industry: e.target.value, subIndustry: "" })}>
+            <option value="">Select industry…</option>
+            {INDUSTRY_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div>
+          <Label>Sub-industry</Label>
+          <select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.subIndustry} onChange={e => setCompany({ ...company, subIndustry: e.target.value })}>
+            <option value="">Select sub-industry…</option>
+            {(SUB_INDUSTRY_BY_INDUSTRY[company.industry] || SUB_INDUSTRY_BY_INDUSTRY["Other / General"]).map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div>
+          <Label>Geographic markets</Label>
+          <select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.market} onChange={e => setCompany({ ...company, market: e.target.value })}>
+            <option value="">Select market…</option>
+            {MARKET_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+          </select>
+        </div>
+        <div>
+          <Label>Employees</Label>
+          <Input className="mt-2" value={company.employees} onChange={e => setCompany({ ...company, employees: e.target.value })} placeholder="e.g. 25–50" />
+        </div>
+        <div>
+          <Label>Revenue range</Label>
+          <Input className="mt-2" value={company.revenue} onChange={e => setCompany({ ...company, revenue: e.target.value })} placeholder="e.g. GHS 50k–150k / mo" />
+        </div>
+        <div>
+          <Label>Business model</Label>
+          <select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.model} onChange={e => setCompany({ ...company, model: e.target.value })}>
+            <option>B2B</option><option>B2C</option><option>B2B2C</option><option>Marketplace</option><option>Subscription</option>
+          </select>
+        </div>
+        <div className="md:col-span-2">
+          <Label>Primary strategic objective</Label>
+          <select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={OBJECTIVE_OPTIONS.includes(company.objective as any) ? company.objective : (company.objective ? "__custom__" : "")} onChange={e => {
+            if (e.target.value === "__custom__") return;
+            setCompany({ ...company, objective: e.target.value });
+          }}>
+            <option value="">Select or suggest an objective…</option>
+            {OBJECTIVE_OPTIONS.map(o => <option key={o} value={o}>{o}</option>)}
+            {company.objective && !OBJECTIVE_OPTIONS.includes(company.objective as any) ? <option value="__custom__">{company.objective}</option> : null}
+          </select>
+          <Input className="mt-2" value={company.objective} onChange={e => setCompany({ ...company, objective: e.target.value })} placeholder="Or type a custom strategic objective" />
+        </div>
+      </div></CardContent></Card>
       <Card><CardHeader><CardTitle>Core business metrics</CardTitle><CardDescription>Numbers drive the calculations. Leave unavailable fields blank.</CardDescription></CardHeader><CardContent><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{metrics.map(m => <div key={m.id}><Label>{m.label} <span className="text-muted-foreground">({m.unit})</span></Label><Input className="mt-2" type="number" min="0" value={m.value ?? ""} onChange={e => updateMetric(m.id, e.target.value)} /></div>)}</div></CardContent></Card>
       
       <Card>
