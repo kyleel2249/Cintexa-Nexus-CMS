@@ -125,6 +125,17 @@ export default function BusinessDiagnostic() {
     setMetrics(prev => prev.map(m => m.id === id ? { ...m, value: raw === "" ? null : Number(raw) } : m));
   }
 
+  const logTaskLocal = async (taskType: string, title: string, detail?: string, metadata?: Record<string, unknown>) => {
+    const entry = { id: crypto.randomUUID(), taskType, title, detail, status: "completed", createdAt: new Date().toISOString() };
+    setTaskHistory((prev) => [entry, ...prev]);
+    try {
+      const key = "cintexa-diagnostic-task-history";
+      const existing = JSON.parse(localStorage.getItem(key) || "[]");
+      localStorage.setItem(key, JSON.stringify([entry, ...existing].slice(0, 200)));
+    } catch { /* ignore */ }
+    try { await diagnosticApi.logTask({ taskType, title, detail, metadata, actor: "user" }); } catch { /* optional */ }
+  };
+
   function answerQuestion(value: string | number | boolean) {
     if (!currentQuestion) return;
     const next = { ...answers, [currentQuestion.id]: value };
@@ -132,9 +143,16 @@ export default function BusinessDiagnostic() {
     const pillar = currentQuestion.pillar;
     const positive = value === true || value === 5 || value === "Closing" || value === "Lead volume" ? 10 : 0;
     setScores(prev => ({ ...prev, [pillar]: Math.min(100, Math.max(0, (prev[pillar] ?? 50) + positive - (value === false ? 7 : 0))) }));
-    if (questionIndex < questions.length - 1) setQuestionIndex(i => i + 1);
-    else setStage("results");
-      void logTaskLocal("social_platforms", `Diagnosed ${socialPlatforms.filter(p=>p.enabled).length} paid social platform(s)`, socialPlatforms.filter(p=>p.enabled).map(p=>p.label).join(", "));
+    if (questionIndex < questions.length - 1) {
+      setQuestionIndex(i => i + 1);
+    } else {
+      setStage("results");
+      void logTaskLocal(
+        "social_platforms",
+        `Diagnosed ${socialPlatforms.filter(p => p.enabled).length} paid social platform(s)`,
+        socialPlatforms.filter(p => p.enabled).map(p => p.label).join(", "),
+      );
+    }
   }
 
   function addCompetitor() {
@@ -256,17 +274,6 @@ export default function BusinessDiagnostic() {
 
   
   
-  const logTaskLocal = async (taskType: string, title: string, detail?: string, metadata?: Record<string, unknown>) => {
-    const entry = { id: crypto.randomUUID(), taskType, title, detail, status: "completed", createdAt: new Date().toISOString() };
-    setTaskHistory((prev) => [entry, ...prev]);
-    try {
-      const key = "cintexa-diagnostic-task-history";
-      const existing = JSON.parse(localStorage.getItem(key) || "[]");
-      localStorage.setItem(key, JSON.stringify([entry, ...existing].slice(0, 200)));
-    } catch { /* ignore */ }
-    try { await diagnosticApi.logTask({ taskType, title, detail, metadata, actor: "user" }); } catch { /* optional */ }
-  };
-
   useEffect(() => {
     try {
       const existing = JSON.parse(localStorage.getItem("cintexa-diagnostic-task-history") || "[]");
