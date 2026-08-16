@@ -655,7 +655,7 @@ export default function BusinessDiagnostic() {
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
       <div className="flex flex-wrap gap-2 justify-end print:hidden">
         <Button type="button" variant="secondary" onClick={applyAutofill}>Autofill demo profile</Button>
-        <Button type="button" disabled={aiBusy} onClick={() => void runAiEmployees()}>{aiBusy ? "AI working…" : "Run AI employees"}</Button>
+        <Button type="button" disabled={aiBusy} onClick={() => void runAiEmployees()}>{aiBusy ? "Searching…" : "Run Search"}</Button>
       </div>
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader>
@@ -977,7 +977,7 @@ export default function BusinessDiagnostic() {
             <CardTitle>AI employees</CardTitle>
             <CardDescription>Automated research agents for niche, competitors, benchmarks, cases and growth content.</CardDescription>
           </div>
-          <Button size="sm" disabled={aiBusy} onClick={() => void runAiEmployees()}>{aiBusy ? "Running…" : "Run AI team"}</Button>
+          <Button size="sm" disabled={aiBusy} onClick={() => void runAiEmployees()}>{aiBusy ? "Searching…" : "Run Search"}</Button>
         </CardHeader>
         <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
           {aiEmployees.map((e, i) => (
