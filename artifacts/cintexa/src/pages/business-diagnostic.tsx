@@ -188,6 +188,71 @@ export default function BusinessDiagnostic() {
 
   function printReport() { window.print(); }
 
+  useEffect(() => {
+    try {
+      const existing = JSON.parse(localStorage.getItem("cintexa-diagnostic-task-history") || "[]");
+      if (Array.isArray(existing) && existing.length) setTaskHistory(existing);
+    } catch { /* ignore */ }
+  }, []);
+
+  const downloadDetailedPdf = async () => {
+    setReportBusy(true);
+    try {
+      const report = await diagnosticApi.fullReport({
+        companyName: company.name || "Company",
+        industry: company.industry,
+        metrics: {
+          monthlyLeads: metrics.find(m => m.id === "monthlyLeads")?.value,
+          monthlyQualifiedLeads: metrics.find(m => m.id === "qualifiedLeads")?.value,
+          monthlyCustomers: metrics.find(m => m.id === "customers")?.value,
+          avgTransactionValue: metrics.find(m => m.id === "aov")?.value,
+          customerAcquisitionCost: metrics.find(m => m.id === "cac")?.value,
+          salesCycleDays: metrics.find(m => m.id === "salesCycle")?.value,
+        },
+        pillarScores: scores,
+        competitors: competitors.map(c => ({ name: c.name, positioning: c.positioning, strengths: Array.isArray(c.strengths) ? c.strengths.join(", ") : "", weaknesses: Array.isArray(c.weaknesses) ? c.weaknesses.join(", ") : "" })),
+      });
+      downloadDiagnosticPdf(report as any);
+      await logTaskLocal("pdf_export", "Downloaded detailed diagnostic PDF", company.name || "Company");
+    } catch (err) {
+      console.error(err);
+      window.print();
+    } finally {
+      setReportBusy(false);
+    }
+  };
+
+  const handleDocumentUpload = async (fileList: FileList | null) => {
+    if (!fileList?.length) return;
+    setDocBusy(true);
+    try {
+      const files = await Promise.all(Array.from(fileList).map(async (file) => {
+        let text: string | undefined;
+        if (file.type.startsWith("text/") || /\.(md|csv|json|txt)$/i.test(file.name)) text = await file.text();
+        return { name: file.name, size: file.size, mimeType: file.type || "application/octet-stream", text };
+      }));
+      setUploadedDocs(prev => [...prev, ...files]);
+      await diagnosticApi.uploadDocuments(files);
+      await logTaskLocal("document_upload", `Uploaded ${files.length} document(s)`, files.map(f => f.name).join(", "));
+    } catch (err) { console.error(err); }
+    finally { setDocBusy(false); }
+  };
+
+  const runResearch = async () => {
+    try {
+      const result = await diagnosticApi.research({
+        companyName: company.name,
+        companyWebsite: (company as any).website,
+        industry: company.industry,
+        competitors: competitors.map(c => ({ name: c.name, website: (c as any).website || "" })),
+      });
+      setResearchNotes(JSON.stringify(result, null, 2));
+      await logTaskLocal("research", "Company & competitor research", `Researched ${company.name || "company"} with ${competitors.length} competitor(s)`, { website: (company as any).website });
+    } catch {
+      setResearchNotes("Research endpoint unavailable. Competitor claims remain USER PROVIDED until sources are attached.");
+    }
+  };
+
   if (stage === "overview") return (
     <div className="space-y-7 pb-12">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
@@ -275,72 +340,9 @@ export default function BusinessDiagnostic() {
 
   
   
-  useEffect(() => {
-    try {
-      const existing = JSON.parse(localStorage.getItem("cintexa-diagnostic-task-history") || "[]");
-      if (Array.isArray(existing) && existing.length) setTaskHistory(existing);
-    } catch { /* ignore */ }
-  }, []);
 
-  const downloadDetailedPdf = async () => {
-    setReportBusy(true);
-    try {
-      const report = await diagnosticApi.fullReport({
-        companyName: company.name || "Company",
-        industry: company.industry,
-        metrics: {
-          monthlyLeads: metrics.find(m => m.id === "monthlyLeads")?.value,
-          monthlyQualifiedLeads: metrics.find(m => m.id === "qualifiedLeads")?.value,
-          monthlyCustomers: metrics.find(m => m.id === "customers")?.value,
-          avgTransactionValue: metrics.find(m => m.id === "aov")?.value,
-          customerAcquisitionCost: metrics.find(m => m.id === "cac")?.value,
-          salesCycleDays: metrics.find(m => m.id === "salesCycle")?.value,
-        },
-        pillarScores: scores,
-        competitors: competitors.map(c => ({ name: c.name, positioning: c.positioning, strengths: Array.isArray(c.strengths) ? c.strengths.join(", ") : "", weaknesses: Array.isArray(c.weaknesses) ? c.weaknesses.join(", ") : "" })),
-      });
-      downloadDiagnosticPdf(report as any);
-      await logTaskLocal("pdf_export", "Downloaded detailed diagnostic PDF", company.name || "Company");
-    } catch (err) {
-      console.error(err);
-      window.print();
-    } finally {
-      setReportBusy(false);
-    }
-  };
 
-  const handleDocumentUpload = async (fileList: FileList | null) => {
-    if (!fileList?.length) return;
-    setDocBusy(true);
-    try {
-      const files = await Promise.all(Array.from(fileList).map(async (file) => {
-        let text: string | undefined;
-        if (file.type.startsWith("text/") || /\.(md|csv|json|txt)$/i.test(file.name)) text = await file.text();
-        return { name: file.name, size: file.size, mimeType: file.type || "application/octet-stream", text };
-      }));
-      setUploadedDocs(prev => [...prev, ...files]);
-      await diagnosticApi.uploadDocuments(files);
-      await logTaskLocal("document_upload", `Uploaded ${files.length} document(s)`, files.map(f => f.name).join(", "));
-    } catch (err) { console.error(err); }
-    finally { setDocBusy(false); }
-  };
-
-  const runResearch = async () => {
-    try {
-      const result = await diagnosticApi.research({
-        companyName: company.name,
-        companyWebsite: (company as any).website,
-        industry: company.industry,
-        competitors: competitors.map(c => ({ name: c.name, website: (c as any).website || "" })),
-      });
-      setResearchNotes(JSON.stringify(result, null, 2));
-      await logTaskLocal("research", "Company & competitor research", `Researched ${company.name || "company"} with ${competitors.length} competitor(s)`, { website: (company as any).website });
-    } catch {
-      setResearchNotes("Research endpoint unavailable. Competitor claims remain USER PROVIDED until sources are attached.");
-    }
-  };
-
-if (stage === "results") return (
+  if (stage === "results") return (
     <div className="space-y-7 pb-12 print:pb-0">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={downloadDetailedPdf} disabled={reportBusy}><Download className="w-4 h-4 mr-2"/> {reportBusy ? "Building PDF…" : "Download detailed PDF"}</Button><Button variant="outline" onClick={printReport}>Print</Button></div></div>
       <div className="grid lg:grid-cols-[auto_1fr] gap-5"><Card><CardContent className="p-8 flex flex-col items-center justify-center min-w-[180px]"><ScoreRing score={health} label="Business Health" size="lg"/><Badge className="mt-8">{severity}</Badge></CardContent></Card><Card><CardHeader><CardTitle>Executive readout</CardTitle><CardDescription>What CINTEXA would put in front of leadership first.</CardDescription></CardHeader><CardContent className="grid sm:grid-cols-2 gap-4"><Readout title="Strongest pillar" value={`${strongest.label} — ${scores[strongest.id]}/100`} icon={TrendingUp} tone="good" /><Readout title="Priority pillar" value={`${weakest.label} — ${scores[weakest.id]}/100`} icon={AlertTriangle} tone="risk" /><Readout title="Biggest revenue leak" value="Sales funnel conversion requires validation" icon={BarChart3} tone="risk" /><Readout title="Evidence gap" value="Competitor benchmarks need dated sources" icon={ShieldAlert} tone="neutral" /></CardContent></Card></div>
