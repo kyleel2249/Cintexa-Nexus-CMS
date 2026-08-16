@@ -1,4 +1,5 @@
 import { useMemo, useState, useEffect } from "react";
+import { createId } from "@/lib/id";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -126,7 +127,7 @@ export default function BusinessDiagnostic() {
   }
 
   const logTaskLocal = async (taskType: string, title: string, detail?: string, metadata?: Record<string, unknown>) => {
-    const entry = { id: crypto.randomUUID(), taskType, title, detail, status: "completed", createdAt: new Date().toISOString() };
+    const entry = { id: createId(), taskType, title, detail, status: "completed", createdAt: new Date().toISOString() };
     setTaskHistory((prev) => [entry, ...prev]);
     try {
       const key = "cintexa-diagnostic-task-history";
@@ -160,7 +161,7 @@ export default function BusinessDiagnostic() {
     if (!name) return;
     const website = newCompetitorWebsite.trim();
     setCompetitors(prev => [...prev, {
-      id: crypto.randomUUID(),
+      id: createId(),
       name,
       website,
       positioning: "User-provided competitor",
@@ -171,7 +172,7 @@ export default function BusinessDiagnostic() {
     } as any]);
     setNewCompetitor("");
     setNewCompetitorWebsite("");
-    const entry = { id: crypto.randomUUID(), taskType: "competitor_added", title: `Added competitor: ${name}`, detail: website || undefined, status: "completed", createdAt: new Date().toISOString() };
+    const entry = { id: createId(), taskType: "competitor_added", title: `Added competitor: ${name}`, detail: website || undefined, status: "completed", createdAt: new Date().toISOString() };
     setTaskHistory(prev => [entry, ...prev]);
     try {
       const key = "cintexa-diagnostic-task-history";
@@ -181,7 +182,7 @@ export default function BusinessDiagnostic() {
   }
 
   function addGoal(level: Goal["level"]) {
-    const goal: Goal = { id: crypto.randomUUID(), title: level === "strategic" ? "Increase qualified revenue" : level === "tactical" ? "Increase qualified opportunities" : "Complete qualified prospect meetings weekly", level, owner: level === "strategic" ? "CEO / Founder" : level === "tactical" ? "Department Lead" : "Sales Team", baseline: level === "strategic" ? 100 : 8, target: level === "strategic" ? 140 : level === "tactical" ? 12 : 20, unit: level === "operational" ? "meetings/week" : "%", deadline: "2026-12-31", status: "Not Started", smart: { specific: true, measurable: true, achievable: false, relevant: true, timeBound: true } };
+    const goal: Goal = { id: createId(), title: level === "strategic" ? "Increase qualified revenue" : level === "tactical" ? "Increase qualified opportunities" : "Complete qualified prospect meetings weekly", level, owner: level === "strategic" ? "CEO / Founder" : level === "tactical" ? "Department Lead" : "Sales Team", baseline: level === "strategic" ? 100 : 8, target: level === "strategic" ? 140 : level === "tactical" ? 12 : 20, unit: level === "operational" ? "meetings/week" : "%", deadline: "2026-12-31", status: "Not Started", smart: { specific: true, measurable: true, achievable: false, relevant: true, timeBound: true } };
     setGoals(prev => [...prev, goal]);
   }
 
