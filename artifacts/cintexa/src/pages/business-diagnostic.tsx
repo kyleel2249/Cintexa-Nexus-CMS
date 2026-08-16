@@ -19,7 +19,10 @@ import { cn } from "@/lib/utils";
 import {
   buildAdaptiveQuestions, calculateBusinessHealth, calculateSalesMetrics, initialMetrics,
   pillars, questionBank, scoreSeverity, initialSocialPlatforms, analyzeSocialPlatforms,
+  autofillDemoProfile, seedCompetitorsForNiche, seedCaseStudies, generateDailyContentPack,
+  INDUSTRY_BENCHMARKS, resolveIndustryKey, AI_EMPLOYEES,
   type Competitor, type DiagnosticMode, type Goal, type Metric, type SocialAdPlatform,
+  type AiEmployee, type CaseStudySeed, type ContentPackItem,
 } from "@/lib/business-diagnostic";
 import { diagnosticApi } from "@/lib/diagnostic-api";
 import { downloadDiagnosticPdf } from "@/lib/diagnostic-report-pdf";
@@ -103,6 +106,11 @@ export default function BusinessDiagnostic() {
   const [socialPlatforms, setSocialPlatforms] = useState<SocialAdPlatform[]>(initialSocialPlatforms);
   const [scenarioConversion, setScenarioConversion] = useState(12);
   const [scenarioAov, setScenarioAov] = useState(10);
+  const [aiEmployees, setAiEmployees] = useState<AiEmployee[]>(AI_EMPLOYEES.map(e => ({ ...e })));
+  const [caseStudies, setCaseStudies] = useState<CaseStudySeed[]>([]);
+  const [contentPack, setContentPack] = useState<ContentPackItem[]>([]);
+  const [pillarBenchmarks, setPillarBenchmarks] = useState<Record<string, number>>({ ...INDUSTRY_BENCHMARKS.default });
+  const [aiBusy, setAiBusy] = useState(false);
 
   const questions = useMemo(() => buildAdaptiveQuestions(answers), [answers]);
   const currentQuestion = questions[questionIndex];
@@ -253,6 +261,63 @@ export default function BusinessDiagnostic() {
     }
   };
 
+
+  function applyAutofill() {
+    const demo = autofillDemoProfile(company.industry || "SaaS B2B");
+    setCompany({ ...company, ...demo.company });
+    setMetrics(prev => prev.map(m => ({ ...m, value: demo.metrics[m.id] ?? m.value })));
+    void logTaskLocal("autofill", "Autofilled demo company profile and metrics");
+  }
+
+  async function runAiEmployees() {
+    setAiBusy(true);
+    const niche = company.industry || "general";
+    setAiEmployees(prev => prev.map(e => ({ ...e, status: "working" as const, lastAction: "Working…" })));
+    await new Promise(r => setTimeout(r, 500));
+    setAiEmployees(prev => prev.map(e => e.id === "scout" ? { ...e, status: "done" as const, lastAction: `Researched niche: ${niche}` } : e));
+    const seeds = seedCompetitorsForNiche(niche, company.name || "Company");
+    setCompetitors(seeds.map(s => ({
+      id: createId(),
+      name: s.name,
+      website: s.website,
+      positioning: s.positioning,
+      score: 0,
+      pricing: "Research required",
+      strengths: s.strengths,
+      weaknesses: s.weaknesses,
+    })));
+    setAiEmployees(prev => prev.map(e => e.id === "rival" ? { ...e, status: "done" as const, lastAction: `Added ${seeds.length} competitors with websites` } : e));
+    await new Promise(r => setTimeout(r, 350));
+    const key = resolveIndustryKey(niche);
+    const band = INDUSTRY_BENCHMARKS[key] || INDUSTRY_BENCHMARKS.default;
+    setPillarBenchmarks({ ...band });
+    setAiEmployees(prev => prev.map(e => e.id === "benchmark" ? { ...e, status: "done" as const, lastAction: `Loaded ${key} benchmark band` } : e));
+    const cases = seedCaseStudies(niche, weakest.label);
+    setCaseStudies(cases);
+    setAiEmployees(prev => prev.map(e => e.id === "case" ? { ...e, status: "done" as const, lastAction: `Matched ${cases.length} case sources` } : e));
+    const pack = generateDailyContentPack({
+      companyName: company.name || "Company",
+      industry: niche,
+      website: company.website,
+      weakestPillar: weakest.label,
+      strongestPillar: strongest.label,
+      objective: company.objective,
+      goals: goals.map(g => g.title),
+    });
+    setContentPack(pack);
+    setAiEmployees(prev => prev.map(e => e.id === "copy" ? { ...e, status: "done" as const, lastAction: `Generated ${pack.length} SEO/ad assets` } : e));
+    try {
+      await diagnosticApi.research({
+        companyName: company.name,
+        companyWebsite: company.website,
+        industry: niche,
+        competitors: seeds.map(s => ({ name: s.name, website: s.website })),
+      });
+    } catch { /* optional */ }
+    void logTaskLocal("ai_employees", "AI employees completed research, benchmarks, cases and content pack", niche);
+    setAiBusy(false);
+  }
+
   if (stage === "overview") return (
     <div className="space-y-7 pb-12">
       <div className="flex flex-col lg:flex-row lg:items-end justify-between gap-5">
@@ -269,6 +334,10 @@ export default function BusinessDiagnostic() {
 
   if (stage === "profile") return (
     <div className="max-w-5xl mx-auto space-y-6 pb-12">
+      <div className="flex flex-wrap gap-2 justify-end print:hidden">
+        <Button type="button" variant="secondary" onClick={applyAutofill}>Autofill demo profile</Button>
+        <Button type="button" disabled={aiBusy} onClick={() => void runAiEmployees()}>{aiBusy ? "AI working…" : "Run AI employees"}</Button>
+      </div>
       <SectionTitle icon={Network} title="Company intelligence profile" description="Start with the operating context. Missing data stays missing instead of becoming an invented assumption." />
       <Card><CardContent className="p-6"><div className="grid md:grid-cols-2 gap-5">{[["name","Company name"],["website","Company website (optional)"],["industry","Industry"],["subIndustry","Sub-industry"],["market","Geographic markets"],["employees","Employees"],["revenue","Revenue range"],["objective","Primary strategic objective"]].map(([key,label]) => <div key={key} className={key === "objective" ? "md:col-span-2" : ""}><Label>{label}</Label><Input className="mt-2" value={company[key as keyof typeof company]} onChange={e => setCompany({...company, [key]: e.target.value})} placeholder={`Enter ${label.toLowerCase()}`} /></div>)}<div><Label>Business model</Label><select className="mt-2 w-full h-10 rounded-md border bg-background px-3 text-sm" value={company.model} onChange={e => setCompany({...company, model:e.target.value})}><option>B2B</option><option>B2C</option><option>B2B2C</option><option>Marketplace</option><option>Subscription</option></select></div></div></CardContent></Card>
       <Card><CardHeader><CardTitle>Core business metrics</CardTitle><CardDescription>Numbers drive the calculations. Leave unavailable fields blank.</CardDescription></CardHeader><CardContent><div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">{metrics.map(m => <div key={m.id}><Label>{m.label} <span className="text-muted-foreground">({m.unit})</span></Label><Input className="mt-2" type="number" min="0" value={m.value ?? ""} onChange={e => updateMetric(m.id, e.target.value)} /></div>)}</div></CardContent></Card>
@@ -346,7 +415,33 @@ export default function BusinessDiagnostic() {
     <div className="space-y-7 pb-12 print:pb-0">
       <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={downloadDetailedPdf} disabled={reportBusy}><Download className="w-4 h-4 mr-2"/> {reportBusy ? "Building PDF…" : "Download detailed PDF"}</Button><Button variant="outline" onClick={printReport}>Print</Button></div></div>
       <div className="grid lg:grid-cols-[auto_1fr] gap-5"><Card><CardContent className="p-8 flex flex-col items-center justify-center min-w-[180px]"><ScoreRing score={health} label="Business Health" size="lg"/><Badge className="mt-8">{severity}</Badge></CardContent></Card><Card><CardHeader><CardTitle>Executive readout</CardTitle><CardDescription>What CINTEXA would put in front of leadership first.</CardDescription></CardHeader><CardContent className="grid sm:grid-cols-2 gap-4"><Readout title="Strongest pillar" value={`${strongest.label} — ${scores[strongest.id]}/100`} icon={TrendingUp} tone="good" /><Readout title="Priority pillar" value={`${weakest.label} — ${scores[weakest.id]}/100`} icon={AlertTriangle} tone="risk" /><Readout title="Biggest revenue leak" value="Sales funnel conversion requires validation" icon={BarChart3} tone="risk" /><Readout title="Evidence gap" value="Competitor benchmarks need dated sources" icon={ShieldAlert} tone="neutral" /></CardContent></Card></div>
-      <Card><CardHeader><CardTitle>Diagnostic pillar scorecard</CardTitle><CardDescription>Scores are a working diagnostic model. They should strengthen as evidence is supplied.</CardDescription></CardHeader><CardContent><div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-4">{pillars.map(p => <div key={p.id} className="border rounded-xl p-4"><div className="flex justify-between mb-2"><span className="font-medium">{p.label}</span><span className="font-bold">{scores[p.id]}/100</span></div><Progress value={scores[p.id]} /><div className="mt-2 flex justify-between text-xs text-muted-foreground"><span>{scoreSeverity(scores[p.id])}</span><span>{p.weight}% weight</span></div></div>)}</div></CardContent></Card>
+      <Card><Card className="overflow-hidden"><CardHeader><CardTitle>Diagnostic pillar scorecard</CardTitle><CardDescription>Colour and motion encode health vs industry benchmark band.</CardDescription></CardHeader><CardContent>
+        <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {pillars.map((p, i) => {
+            const score = scores[p.id] ?? 0;
+            const bench = pillarBenchmarks[p.id] ?? 70;
+            const gap = score - bench;
+            const color = score >= 75 ? "from-emerald-500 to-teal-400" : score >= 55 ? "from-amber-500 to-orange-400" : "from-rose-500 to-pink-500";
+            const bar = score >= 75 ? "bg-emerald-500" : score >= 55 ? "bg-amber-500" : "bg-rose-500";
+            return (
+              <motion.div key={p.id} initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} whileHover={{ scale: 1.02 }} className="rounded-xl border p-4 bg-card/60 relative overflow-hidden">
+                <div className={"absolute inset-x-0 top-0 h-1 bg-gradient-to-r " + color} />
+                <div className="flex justify-between items-start gap-2">
+                  <div className="text-sm font-semibold">{p.label}</div>
+                  <motion.span className="text-xl font-bold tabular-nums" initial={{ scale: 0.8 }} animate={{ scale: 1 }} transition={{ delay: 0.15 + i * 0.04 }}>{score}</motion.span>
+                </div>
+                <div className="mt-3 h-2 rounded-full bg-muted overflow-hidden">
+                  <motion.div className={"h-full rounded-full " + bar} initial={{ width: 0 }} animate={{ width: score + "%" }} transition={{ duration: 0.8, delay: 0.1 + i * 0.05 }} />
+                </div>
+                <div className="mt-2 flex justify-between text-[11px] text-muted-foreground">
+                  <span>Benchmark {bench}</span>
+                  <span className={gap >= 0 ? "text-emerald-500" : "text-rose-500"}>{gap >= 0 ? "+" : ""}{gap} vs bench</span>
+                </div>
+              </motion.div>
+            );
+          })}
+        </div>
+      </CardContent></Card>
       
       <Card className="overflow-hidden">
         <CardHeader>
@@ -431,8 +526,92 @@ export default function BusinessDiagnostic() {
 
       <div className="grid xl:grid-cols-2 gap-5"><Card><CardHeader><CardTitle>Top problems</CardTitle></CardHeader><CardContent className="space-y-3">{starterProblems.map((p, i) => <div key={p.title} className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><div className="flex items-center gap-2"><span className="text-xs font-bold text-muted-foreground">0{i+1}</span><h3 className="font-semibold">{p.title}</h3></div><p className="text-sm text-muted-foreground mt-2">{p.detail}</p></div><EvidenceBadge type={p.evidence}/></div><div className="mt-3 p-3 rounded-lg bg-muted/60 text-sm"><b>Action:</b> {p.action}</div></div>)}</CardContent></Card><Card><CardHeader><CardTitle>Sales intelligence</CardTitle><CardDescription>Calculated only where source metrics exist.</CardDescription></CardHeader><CardContent className="space-y-4">{[["Lead → customer conversion", sales.conversion, "%"],["Qualified lead rate", sales.qualification, "%"],["Projected revenue from customer count", sales.revenue, "GHS"],["CAC", sales.cac, "GHS"]].map(([label,value,unit]) => <div key={String(label)} className="flex justify-between items-center border-b last:border-0 pb-3 last:pb-0"><span className="text-sm">{String(label)}</span><span className="font-semibold">{value === null ? "Unknown" : `${Number(value).toFixed(1)} ${unit}`} {value !== null && <EvidenceBadge type="CALCULATED"/>}</span></div>)}</CardContent></Card></div>
       <Card><CardHeader><CardTitle>Root-cause chain</CardTitle><CardDescription>Symptoms are kept separate from hypotheses.</CardDescription></CardHeader><CardContent><div className="grid md:grid-cols-5 gap-2 items-center">{["Observed Problem", "Evidence", "Possible Causes", "Root Cause", "Intervention"].map((x,i)=><div key={x} className="flex items-center gap-2"><div className="flex-1 border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">STEP {i+1}</div><div className="font-semibold mt-1">{x}</div><div className="text-xs text-muted-foreground mt-2">{i === 0 ? "Sales performance signal" : i === 1 ? "User data + calculations" : i === 2 ? "Qualification / follow-up / offer" : i === 3 ? "Validate with funnel evidence" : "Target the confirmed constraint"}</div></div>{i < 4 && <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0"/>}</div>)}</div></CardContent></Card>
-      <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
-      <Card className="print:hidden"><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Task history</CardTitle><CardDescription>Every diagnostic action is recorded and accessible here.</CardDescription></div><Button variant="outline" size="sm" onClick={() => setShowHistory(v => !v)}>{showHistory ? "Hide" : "Show"} history ({taskHistory.length})</Button></CardHeader>{showHistory && <CardContent><div className="space-y-2 max-h-72 overflow-y-auto">{taskHistory.length === 0 ? <p className="text-sm text-muted-foreground">No tasks recorded yet.</p> : taskHistory.map(t => <div key={t.id} className="border rounded-lg p-3 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-medium">{t.title}</div><div className="text-xs text-muted-foreground mt-0.5">{t.detail || t.taskType}</div></div><div className="text-xs text-muted-foreground shrink-0">{new Date(t.createdAt).toLocaleString()} · {t.status}</div></div>)}</div></CardContent>}</Card>
+      <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores} benchmarks={pillarBenchmarks}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
+      
+      <Card>
+        <CardHeader>
+          <CardTitle>Intelligence report — how to implement successfully</CardTitle>
+          <CardDescription>Diagnosis only creates value when it becomes sequenced execution.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <ol className="list-decimal pl-5 space-y-2 text-muted-foreground">
+            <li><span className="text-foreground font-medium">Confirm evidence.</span> Treat USER PROVIDED and UNKNOWN items as hypotheses until you attach sources or internal data.</li>
+            <li><span className="text-foreground font-medium">Protect the strongest pillar</span> ({strongest.label}) while funding the priority pillar ({weakest.label}).</li>
+            <li><span className="text-foreground font-medium">Translate findings into SMART goals</span> with owner, baseline, target and deadline on the Strategy step.</li>
+            <li><span className="text-foreground font-medium">Run a 30 / 90 / 365 day roadmap</span> — quick wins first, then systems, then scale.</li>
+            <li><span className="text-foreground font-medium">Instrument KPIs weekly</span> and adapt; the diagnostic is continuous, not a one-time PDF.</li>
+            <li><span className="text-foreground font-medium">Use AI employees</span> to refresh competitor sites, benchmarks and daily SEO/ad content aligned to goals.</li>
+          </ol>
+          <div className="rounded-lg bg-primary/5 border border-primary/20 p-3">
+            Success rule: no initiative without owner + metric + review date. No external claim without source + date.
+          </div>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="flex flex-row items-center justify-between gap-3">
+          <div>
+            <CardTitle>AI employees</CardTitle>
+            <CardDescription>Automated research agents for niche, competitors, benchmarks, cases and growth content.</CardDescription>
+          </div>
+          <Button size="sm" disabled={aiBusy} onClick={() => void runAiEmployees()}>{aiBusy ? "Running…" : "Run AI team"}</Button>
+        </CardHeader>
+        <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+          {aiEmployees.map((e, i) => (
+            <motion.div key={e.id} initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: i * 0.05 }} className="border rounded-xl p-4">
+              <div className="flex items-center justify-between gap-2">
+                <div className="font-semibold text-sm">{e.name}</div>
+                <Badge variant={e.status === "done" ? "default" : e.status === "working" ? "secondary" : "outline"}>{e.status}</Badge>
+              </div>
+              <p className="text-xs text-muted-foreground mt-1">{e.role}</p>
+              <p className="text-xs mt-3">{e.lastAction}</p>
+            </motion.div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {caseStudies.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle>Case studies & sources</CardTitle><CardDescription>Reliable starting sources matched to niche and priority pillar. Verify before executive use.</CardDescription></CardHeader>
+          <CardContent className="space-y-3">
+            {caseStudies.map(c => (
+              <div key={c.title} className="border rounded-xl p-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="font-semibold text-sm">{c.title}</h3>
+                  <EvidenceBadge type={c.evidence} />
+                </div>
+                <p className="text-sm text-muted-foreground mt-2">{c.lesson}</p>
+                <a className="text-xs text-primary mt-2 inline-block" href={c.sourceUrl} target="_blank" rel="noreferrer">{c.source} →</a>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {contentPack.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Daily growth content studio</CardTitle>
+            <CardDescription>SEO-optimized posts, ads and copy generated from this diagnostic to advance your goals.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 max-h-[480px] overflow-y-auto">
+            {contentPack.map((item, i) => (
+              <motion.div key={item.id} initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: Math.min(i * 0.02, 0.4) }} className="border rounded-xl p-4">
+                <div className="flex flex-wrap items-center gap-2 justify-between">
+                  <Badge variant="outline">{item.channel}</Badge>
+                  <span className="text-[11px] text-muted-foreground">Day {item.day}</span>
+                </div>
+                <h4 className="font-semibold text-sm mt-2">{item.title}</h4>
+                <p className="text-sm text-muted-foreground mt-2 whitespace-pre-wrap">{item.body}</p>
+                <p className="text-xs mt-2"><span className="font-medium">CTA:</span> {item.cta}</p>
+                <p className="text-[11px] text-muted-foreground mt-1">SEO: {item.seoKeywords.slice(0, 4).join(" · ")}</p>
+              </motion.div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+<Card className="print:hidden"><CardHeader className="flex flex-row items-center justify-between"><div><CardTitle>Task history</CardTitle><CardDescription>Every diagnostic action is recorded and accessible here.</CardDescription></div><Button variant="outline" size="sm" onClick={() => setShowHistory(v => !v)}>{showHistory ? "Hide" : "Show"} history ({taskHistory.length})</Button></CardHeader>{showHistory && <CardContent><div className="space-y-2 max-h-72 overflow-y-auto">{taskHistory.length === 0 ? <p className="text-sm text-muted-foreground">No tasks recorded yet.</p> : taskHistory.map(t => <div key={t.id} className="border rounded-lg p-3 text-sm flex flex-col sm:flex-row sm:items-center justify-between gap-2"><div><div className="font-medium">{t.title}</div><div className="text-xs text-muted-foreground mt-0.5">{t.detail || t.taskType}</div></div><div className="text-xs text-muted-foreground shrink-0">{new Date(t.createdAt).toLocaleString()} · {t.status}</div></div>)}</div></CardContent>}</Card>
       <Card className="print:hidden"><CardHeader><CardTitle>Supporting documents & market research</CardTitle><CardDescription>Upload plans, financials or CRM exports. Research never fabricates competitor facts.</CardDescription></CardHeader><CardContent className="space-y-4"><div className="flex flex-wrap gap-3 items-center"><label className="inline-flex items-center gap-2 text-sm border rounded-lg px-3 py-2 cursor-pointer hover:bg-muted"><input type="file" multiple className="hidden" onChange={e => handleDocumentUpload(e.target.files)} />{docBusy ? "Uploading…" : "Upload documents"}</label><Button variant="outline" onClick={runResearch}>Research company & competitors</Button></div>{uploadedDocs.length > 0 && <ul className="text-sm space-y-1">{uploadedDocs.map((d,i)=><li key={i} className="flex justify-between border-b py-1"><span>{d.name}</span><span className="text-muted-foreground">{Math.round(d.size/1024)} KB · USER PROVIDED</span></li>)}</ul>}{researchNotes && <pre className="text-xs bg-muted/50 p-3 rounded-lg overflow-auto max-h-48 whitespace-pre-wrap">{researchNotes}</pre>}</CardContent></Card>
       <div className="flex justify-end gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("profile")}>Edit inputs</Button><Button onClick={() => setStage("strategy")}>Build strategy <ArrowRight className="w-4 h-4 ml-2"/></Button></div>
     </div>
@@ -445,7 +624,7 @@ export default function BusinessDiagnostic() {
 function TextAnswer({ number, onSubmit }: { number?: boolean; onSubmit: (v: string | number) => void }) { const [value,setValue]=useState(""); return <div className="flex gap-2"><Input type={number ? "number" : "text"} value={value} onChange={e=>setValue(e.target.value)} placeholder={number ? "Enter a number" : "Type your evidence-based answer"} /><Button disabled={!value} onClick={()=>onSubmit(number ? Number(value) : value)}>Continue <ArrowRight className="w-4 h-4 ml-2"/></Button></div>; }
 function Readout({ title, value, icon: Icon, tone }: { title:string; value:string; icon:React.ElementType; tone:string }) { return <div className="border rounded-xl p-4"><div className={cn("flex items-center gap-2 text-sm font-medium", tone === "risk" ? "text-orange-600" : tone === "good" ? "text-emerald-600" : "text-primary")}><Icon className="w-4 h-4"/>{title}</div><div className="font-semibold mt-2">{value}</div></div>; }
 function Competitive({ competitors,newCompetitor,setNewCompetitor,addCompetitor,newCompetitorWebsite,setNewCompetitorWebsite }: any) { return <Card><CardHeader><CardTitle>Competitive intelligence center</CardTitle><CardDescription>Optionally add each competitor website to ground strategy and improvement recommendations.</CardDescription></CardHeader><CardContent><div className="flex flex-col sm:flex-row gap-2 mb-5"><Input value={newCompetitor} onChange={e=>setNewCompetitor(e.target.value)} placeholder="Competitor name"/><Input value={newCompetitorWebsite||""} onChange={e=>setNewCompetitorWebsite?.(e.target.value)} placeholder="Website (optional)"/><Button onClick={addCompetitor}><Plus className="w-4 h-4 mr-2"/> Add</Button></div>{competitors.length===0 ? <div className="border border-dashed rounded-xl p-8 text-center text-muted-foreground">No competitors entered yet. Add direct competitors to activate the scorecard.</div> : <div className="overflow-x-auto"><table className="w-full text-sm"><thead><tr className="border-b"><th className="text-left p-3">Company</th><th className="text-left p-3">Website</th><th className="text-left p-3">Positioning</th><th className="text-left p-3">Score</th><th className="text-left p-3">Evidence</th></tr></thead><tbody>{competitors.map((c:Competitor)=><tr key={c.id} className="border-b last:border-0"><td className="p-3 font-medium">{c.name}</td><td className="p-3 text-muted-foreground text-xs">{(c as any).website || "—"}</td><td className="p-3 text-muted-foreground">{c.positioning}</td><td className="p-3">{c.score || "Unknown"}</td><td className="p-3"><EvidenceBadge type="UNKNOWN"/></td></tr>)}</tbody></table></div>}</CardContent></Card>; }
-function Benchmark({ scores }: { scores:Record<string,number> }) { return <Card><CardHeader><CardTitle>Benchmarking engine</CardTitle><CardDescription>Benchmark values are intentionally unavailable until a reliable source or administrator-entered benchmark exists.</CardDescription></CardHeader><CardContent className="space-y-3">{pillars.map(p=><div key={p.id} className="grid grid-cols-[1fr_80px_120px] gap-3 items-center"><span className="text-sm">{p.label}</span><span className="font-semibold">{scores[p.id]}</span><span><EvidenceBadge type="UNKNOWN"/></span></div>)}</CardContent></Card>; }
+function Benchmark({ scores, benchmarks }: { scores:Record<string,number>; benchmarks?: Record<string,number> }) { return <Card><CardHeader><CardTitle>Benchmarking engine</CardTitle><CardDescription>AI Benchmark Curator loads industry bands; attach primary sources before treating as VERIFIED.</CardDescription></CardHeader><CardContent className="space-y-3">{pillars.map(p=><div key={p.id} className="grid grid-cols-[1fr_70px_70px_100px] gap-3 items-center"><span className="text-sm">{p.label}</span><span className="font-semibold">{scores[p.id]}</span><span className="text-muted-foreground text-sm">{benchmarks?.[p.id] ?? "—"}</span><span><EvidenceBadge type={benchmarks?.[p.id] != null ? "BENCHMARKED" : "UNKNOWN"}/></span></div>)}</CardContent></Card>; }
 function Scenario({monthlyLeads,customers,aov,conversion,setConversion,aovLift,setAovLift,projectedCustomers,projectedRevenue}:any) { return <Card><CardHeader><CardTitle>What-if strategy simulator</CardTitle><CardDescription>Scenarios are projections, not guarantees. Blank source data produces no invented financial result.</CardDescription></CardHeader><CardContent className="grid lg:grid-cols-2 gap-7"><div className="space-y-5"><div><Label>Lead-to-customer conversion: {conversion}%</Label><input className="w-full mt-3" type="range" min="1" max="30" value={conversion} onChange={e=>setConversion(Number(e.target.value))}/></div><div><Label>Average transaction value lift: +{aovLift}%</Label><input className="w-full mt-3" type="range" min="0" max="50" value={aovLift} onChange={e=>setAovLift(Number(e.target.value))}/></div><div className="text-xs text-muted-foreground">Inputs: {monthlyLeads || "Unknown"} leads/month, {customers || "Unknown"} customers/month, {aov || "Unknown"} GHS AOV.</div></div><div className="grid grid-cols-2 gap-3"><div className="rounded-xl bg-muted p-5"><div className="text-xs text-muted-foreground">Projected customers</div><div className="text-2xl font-bold mt-2">{projectedCustomers || "Unknown"}</div></div><div className="rounded-xl bg-muted p-5"><div className="text-xs text-muted-foreground">Projected monthly revenue</div><div className="text-2xl font-bold mt-2">{projectedRevenue ? `${Math.round(projectedRevenue).toLocaleString()} GHS` : "Unknown"}</div></div></div></CardContent></Card>; }
 function CaseIntelligence({ weakest }: { weakest:string }) { const cases:any = { Sales:"Sales funnel redesign and disciplined follow-up", Marketing:"Channel attribution and conversion optimization", Technology:"Integrated data and management information", Operations:"Process standardization and automation", Finance:"Unit economics and margin management" }; const lesson=cases[weakest] || "Evidence-led management and focused execution"; return <Card><CardHeader><CardTitle>Case study matching</CardTitle><CardDescription>Cases are lessons to adapt, not templates to copy.</CardDescription></CardHeader><CardContent><div className="border rounded-xl p-5"><div className="flex items-center gap-2 text-primary text-sm font-semibold"><Lightbulb className="w-4 h-4"/> MATCHED LESSON</div><h3 className="text-lg font-semibold mt-2">{lesson}</h3><p className="text-sm text-muted-foreground mt-2">CINTEXA will require a credible source before treating a company case as verified. The immediate client application is to validate the same operating constraint with internal evidence.</p><div className="mt-4"><EvidenceBadge type="UNKNOWN"/></div></div></CardContent></Card>; }
 function Strategy({goals,addGoal,onBack,onNext,socialInsights,portfolio}:{goals:Goal[];addGoal:(l:Goal["level"])=>void;onBack:()=>void;onNext:()=>void;socialInsights?: any[];portfolio?: string[]}) { return <div className="space-y-7 pb-12"><SectionTitle icon={Target} title="Strategy-to-execution planner" description="Turn diagnosis into a visible hierarchy of strategy, tactics, operations and KPIs."/>{(socialInsights && socialInsights.length > 0) && <Card className="mb-5"><CardHeader><CardTitle>Platform-based strategies</CardTitle><CardDescription>Strategies derived from each paid social platform in the diagnosis.</CardDescription></CardHeader><CardContent className="space-y-3">{socialInsights.map((s:any)=><motion.div key={s.platformId} initial={{opacity:0,x:-8}} animate={{opacity:1,x:0}} className="border rounded-xl p-4"><div className="flex justify-between gap-2"><span className="font-semibold text-sm">{s.label}</span><Badge variant="outline">{s.healthScore}/100</Badge></div><p className="text-sm mt-2">{s.strategy}</p><ul className="mt-2 space-y-1">{(s.recommendations||[]).map((r:string,i:number)=><li key={i} className="text-xs text-muted-foreground">→ {r}</li>)}</ul></motion.div>)}{(portfolio||[]).length>0 && <div className="rounded-lg bg-muted/50 p-3 text-sm"><div className="font-medium mb-1">Portfolio moves</div><ul className="space-y-1">{portfolio!.map((r,i)=><li key={i}>{i+1}. {r}</li>)}</ul></div>}</CardContent></Card>}<Card><CardHeader><CardTitle>Goal cascade</CardTitle><CardDescription>Every level must connect to the level above it.</CardDescription></CardHeader><CardContent><div className="space-y-4">{goals.length===0 && <div className="border border-dashed rounded-xl p-8 text-center text-muted-foreground">No goals yet. Create one at each level.</div>}{goals.map(g=><div key={g.id} className="border rounded-xl p-4 flex flex-col md:flex-row md:items-center gap-4"><Badge variant={g.level === "strategic" ? "default" : "secondary"}>{g.level}</Badge><div className="flex-1"><div className="font-semibold">{g.title}</div><div className="text-xs text-muted-foreground mt-1">Owner: {g.owner} · Deadline: {g.deadline} · Target: {g.target} {g.unit}</div></div><div className="flex gap-1">{Object.entries(g.smart).map(([k,v])=><Badge key={k} variant="outline" className={v ? "text-emerald-600" : "text-orange-600"}>{k}: {v ? "✓" : "validate"}</Badge>)}</div></div>)}</div><div className="flex flex-wrap gap-2 mt-5"><Button variant="outline" onClick={()=>addGoal("strategic")}><Plus className="w-4 h-4 mr-1"/> Strategic goal</Button><Button variant="outline" onClick={()=>addGoal("tactical")}><Plus className="w-4 h-4 mr-1"/> Tactical goal</Button><Button variant="outline" onClick={()=>addGoal("operational")}><Plus className="w-4 h-4 mr-1"/> Operational goal</Button></div></CardContent></Card><div className="grid md:grid-cols-4 gap-3">{["VISION", "STRATEGIC GOALS", "TACTICAL INITIATIVES", "OPERATIONAL TASKS"].map((x,i)=><div key={x} className="border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">LEVEL {i+1}</div><div className="font-semibold mt-2">{x}</div>{i<3&&<ArrowRight className="w-4 h-4 mx-auto mt-3 text-muted-foreground"/>}</div>)}</div><div className="flex justify-between"><Button variant="outline" onClick={onBack}><ChevronLeft className="w-4 h-4 mr-1"/> Diagnosis</Button><Button onClick={onNext}>Open execution roadmap <ArrowRight className="w-4 h-4 ml-2"/></Button></div></div>; }

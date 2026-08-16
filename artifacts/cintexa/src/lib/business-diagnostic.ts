@@ -243,3 +243,232 @@ export function analyzeSocialPlatforms(platforms: SocialAdPlatform[]): {
   portfolioRecommendations.push("Keep creative fatigue checks weekly on every active ad platform.");
   return { active, totalSpend, insights, topPerformer, weakest, portfolioRecommendations };
 }
+
+/** Niche-based industry benchmark seeds (administrator-style defaults until live sources attach). */
+export const INDUSTRY_BENCHMARKS: Record<string, Record<string, number>> = {
+  default: { strategy: 72, sales: 65, marketing: 68, customer: 70, operations: 66, finance: 74, technology: 62, automation: 55, competitive: 64 },
+  saas: { strategy: 78, sales: 70, marketing: 72, customer: 80, operations: 74, finance: 76, technology: 82, automation: 78, competitive: 70 },
+  ecommerce: { strategy: 70, sales: 68, marketing: 76, customer: 72, operations: 70, finance: 72, technology: 68, automation: 64, competitive: 68 },
+  agency: { strategy: 74, sales: 72, marketing: 78, customer: 75, operations: 68, finance: 70, technology: 66, automation: 60, competitive: 72 },
+  retail: { strategy: 68, sales: 66, marketing: 70, customer: 68, operations: 72, finance: 70, technology: 58, automation: 52, competitive: 66 },
+  b2b: { strategy: 76, sales: 72, marketing: 68, customer: 74, operations: 70, finance: 75, technology: 70, automation: 62, competitive: 70 },
+  healthcare: { strategy: 74, sales: 60, marketing: 62, customer: 78, operations: 76, finance: 72, technology: 64, automation: 58, competitive: 62 },
+  fintech: { strategy: 80, sales: 72, marketing: 70, customer: 76, operations: 78, finance: 82, technology: 85, automation: 80, competitive: 74 },
+};
+
+export function resolveIndustryKey(industry: string): string {
+  const s = industry.toLowerCase();
+  if (/saas|software|cloud/.test(s)) return "saas";
+  if (/e-?commerce|shop|store/.test(s)) return "ecommerce";
+  if (/agency|marketing|creative/.test(s)) return "agency";
+  if (/retail|fashion|consumer/.test(s)) return "retail";
+  if (/health|clinic|pharma|med/.test(s)) return "healthcare";
+  if (/fintech|bank|finance|insur/.test(s)) return "fintech";
+  if (/b2b|enterprise|industrial/.test(s)) return "b2b";
+  return "default";
+}
+
+export type AiEmployeeId = "scout" | "rival" | "benchmark" | "case" | "copy";
+
+export type AiEmployee = {
+  id: AiEmployeeId;
+  name: string;
+  role: string;
+  status: "idle" | "working" | "done";
+  lastAction: string;
+};
+
+export const AI_EMPLOYEES: AiEmployee[] = [
+  { id: "scout", name: "Nexus Scout", role: "Company & niche researcher", status: "idle", lastAction: "Waiting for profile" },
+  { id: "rival", name: "Rival Analyst", role: "Competitor intelligence", status: "idle", lastAction: "Waiting for niche" },
+  { id: "benchmark", name: "Benchmark Curator", role: "Industry benchmark librarian", status: "idle", lastAction: "No benchmarks loaded" },
+  { id: "case", name: "Case Librarian", role: "Case study & source matcher", status: "idle", lastAction: "No cases matched" },
+  { id: "copy", name: "Growth Copywriter", role: "SEO & paid social content", status: "idle", lastAction: "Waiting for report" },
+];
+
+export type CompetitorSeed = { name: string; website: string; positioning: string; strengths: string[]; weaknesses: string[] };
+
+/** Niche → typical competitor seeds (USER PROVIDED / BENCHMARKED style seeds, not live web facts). */
+export function seedCompetitorsForNiche(industry: string, companyName: string): CompetitorSeed[] {
+  const key = resolveIndustryKey(industry);
+  const pools: Record<string, CompetitorSeed[]> = {
+    saas: [
+      { name: "Category Leader SaaS", website: "https://www.salesforce.com", positioning: "Enterprise platform breadth", strengths: ["Brand", "Integrations"], weaknesses: ["Price", "Complexity"] },
+      { name: "Mid-market Challenger", website: "https://www.hubspot.com", positioning: "SMB growth suite", strengths: ["Ease of use", "Inbound"], weaknesses: ["Deep enterprise"] },
+      { name: "Specialist Niche Tool", website: "https://www.notion.so", positioning: "Focused workflow product", strengths: ["UX", "Speed"], weaknesses: ["Breadth"] },
+    ],
+    ecommerce: [
+      { name: "Marketplace Giant", website: "https://www.amazon.com", positioning: "Selection + logistics", strengths: ["Reach", "Fulfillment"], weaknesses: ["Fees"] },
+      { name: "DTC Brand Rival", website: "https://www.shopify.com", positioning: "Owned-channel commerce", strengths: ["Brand control"], weaknesses: ["Traffic cost"] },
+      { name: "Regional Online Retailer", website: "https://www.jumia.com", positioning: "Local marketplace", strengths: ["Local trust"], weaknesses: ["Catalog depth"] },
+    ],
+    agency: [
+      { name: "Full-service Network", website: "https://www.ogilvy.com", positioning: "Global creative + media", strengths: ["Talent", "Reach"], weaknesses: ["Cost"] },
+      { name: "Performance Specialist", website: "https://www.tinuiti.com", positioning: "Paid media excellence", strengths: ["ROAS focus"], weaknesses: ["Brand work"] },
+      { name: "Local Boutique Agency", website: "https://www.agency.com", positioning: "Relationship-led delivery", strengths: ["Agility"], weaknesses: ["Scale"] },
+    ],
+    default: [
+      { name: "National Category Leader", website: "https://www.example.com", positioning: "Broad market coverage", strengths: ["Brand awareness"], weaknesses: ["Speed to innovate"] },
+      { name: "Regional Challenger", website: "https://www.example.org", positioning: "Local relevance", strengths: ["Proximity"], weaknesses: ["Resources"] },
+      { name: "Digital-native Disruptor", website: "https://www.example.net", positioning: "Low-cost online model", strengths: ["Efficiency"], weaknesses: ["Trust"] },
+    ],
+  };
+  const list = pools[key] ?? pools.default;
+  return list.map((c, i) => ({
+    ...c,
+    name: c.name.includes("example") ? `${industry || "Market"} Competitor ${i + 1}` : c.name,
+    positioning: `${c.positioning} (niche: ${industry || "general"} vs ${companyName || "your company"})`,
+  }));
+}
+
+export type CaseStudySeed = {
+  title: string;
+  niche: string;
+  lesson: string;
+  source: string;
+  sourceUrl: string;
+  evidence: EvidenceClass;
+};
+
+export function seedCaseStudies(industry: string, weakestPillar: string): CaseStudySeed[] {
+  const key = resolveIndustryKey(industry);
+  const pillarLesson: Record<string, string> = {
+    sales: "Tighten qualification, shorten follow-up SLA, and instrument stage conversion weekly.",
+    marketing: "Consolidate channels around measurable CAC and creative testing cadence.",
+    technology: "Integrate core systems so management information is trusted and timely.",
+    operations: "Standardize the top 3 revenue processes before adding headcount.",
+    finance: "Publish unit economics (CAC, LTV, contribution margin) to every growth decision.",
+    automation: "Automate handoffs between marketing, sales and success before buying new tools.",
+    competitive: "Run a monthly competitor scorecard with dated public sources on each claim.",
+    strategy: "Limit to 3 company priorities with owners, KPIs and quarterly review.",
+    customer: "Close the loop from support tickets to product and sales enablement.",
+  };
+  const sources = [
+    { title: "HBR — Competing on Analytics", source: "Harvard Business Review", sourceUrl: "https://hbr.org", lesson: pillarLesson[weakestPillar] || pillarLesson.strategy },
+    { title: "McKinsey — Growth practices overview", source: "McKinsey & Company", sourceUrl: "https://www.mckinsey.com", lesson: "Sequence growth bets: fix conversion before scaling spend." },
+    { title: `${key.toUpperCase()} operator playbook pattern`, source: "Industry pattern library (seed)", sourceUrl: "https://www.cintexa.com", lesson: `Apply ${key} peer patterns to ${weakestPillar} with local evidence first.` },
+  ];
+  return sources.map((s) => ({
+    title: s.title,
+    niche: industry || key,
+    lesson: s.lesson,
+    source: s.source,
+    sourceUrl: s.sourceUrl,
+    evidence: "BENCHMARKED" as EvidenceClass,
+  }));
+}
+
+export type ContentPackItem = {
+  id: string;
+  channel: "seo_blog" | "linkedin" | "instagram" | "facebook" | "tiktok" | "google_ad" | "meta_ad" | "email";
+  title: string;
+  body: string;
+  cta: string;
+  seoKeywords: string[];
+  goalLink: string;
+  day: number;
+};
+
+export function generateDailyContentPack(input: {
+  companyName: string;
+  industry: string;
+  website?: string;
+  weakestPillar: string;
+  strongestPillar: string;
+  objective?: string;
+  goals?: string[];
+}): ContentPackItem[] {
+  const brand = input.companyName || "Your brand";
+  const niche = input.industry || "your industry";
+  const weak = input.weakestPillar || "growth";
+  const strong = input.strongestPillar || "delivery";
+  const objective = input.objective || `improve ${weak}`;
+  const site = input.website || "your website";
+  const kw = [niche, brand, `${niche} solutions`, `best ${niche} in 2026`, objective.toLowerCase()];
+  const pack: ContentPackItem[] = [];
+  for (let day = 1; day <= 7; day++) {
+    pack.push({
+      id: `seo-${day}`,
+      channel: "seo_blog",
+      title: `Day ${day}: ${brand} guide — ${kw[day % kw.length]} for better ${weak}`,
+      body: `Discover how ${brand} helps ${niche} teams improve ${weak} without guesswork. This SEO-optimized article covers practical steps, benchmarks and a clear CTA to ${site}. Focus keyword: ${kw[day % kw.length]}.`,
+      cta: `Learn how ${brand} improves ${weak} →`,
+      seoKeywords: kw,
+      goalLink: objective,
+      day,
+    });
+    pack.push({
+      id: `li-${day}`,
+      channel: "linkedin",
+      title: `LinkedIn post — Day ${day}`,
+      body: `Most ${niche} leaders underinvest in ${weak}.\n\nAt ${brand}, we lean on our strength in ${strong} while systematically closing gaps in ${weak}.\n\nToday's action: audit one metric, assign one owner, set one deadline.\n\n#${niche.replace(/\s+/g, "")} #Growth #${weak.replace(/\s+/g, "")}`,
+      cta: "Comment “PLAYBOOK” for the checklist",
+      seoKeywords: kw,
+      goalLink: objective,
+      day,
+    });
+    pack.push({
+      id: `ig-${day}`,
+      channel: "instagram",
+      title: `Instagram carousel concept — Day ${day}`,
+      body: `Slide 1: The ${weak} problem in ${niche}.\nSlide 2: Why ${brand} wins on ${strong}.\nSlide 3: 3 steps to improve this week.\nSlide 4: Social proof / result placeholder.\nSlide 5: CTA — visit ${site}`,
+      cta: "Save this post & share with your team",
+      seoKeywords: kw,
+      goalLink: objective,
+      day,
+    });
+    pack.push({
+      id: `ad-${day}`,
+      channel: day % 2 === 0 ? "meta_ad" : "google_ad",
+      title: `Paid ad — Day ${day}`,
+      body: day % 2 === 0
+        ? `Hook: Still struggling with ${weak} in ${niche}?\nPrimary text: ${brand} helps you move from reactive firefighting to a clear ${objective} plan.\nCTA button: Learn more\nLanding: ${site}`
+        : `Headline: ${brand} | ${niche} ${weak} improvement\nDescription: SEO-aligned offer for teams serious about ${objective}. Book a diagnostic.\nPath: ${site}`,
+      cta: "Book diagnostic",
+      seoKeywords: kw,
+      goalLink: objective,
+      day,
+    });
+  }
+  pack.push({
+    id: "email-1",
+    channel: "email",
+    title: "Weekly nurture email",
+    body: `Subject: Your ${niche} ${weak} plan for this week\n\nHi {{first_name}},\n\nBased on your diagnostic priorities, focus on ${weak} while protecting ${strong}.\n\n1) Measure baseline\n2) Run one experiment\n3) Review Friday\n\n— ${brand}`,
+    cta: `Open your plan on ${site}`,
+    seoKeywords: kw,
+    goalLink: objective,
+    day: 1,
+  });
+  return pack;
+}
+
+export function autofillDemoProfile(industry = "SaaS B2B") {
+  return {
+    company: {
+      name: "Cintexa Demo Co",
+      website: "https://cintexa.com",
+      industry,
+      subIndustry: resolveIndustryKey(industry),
+      model: "B2B",
+      market: "Ghana, West Africa, Remote",
+      employees: "25-50",
+      revenue: "GHS 50k–150k / mo",
+      objective: "Increase qualified revenue and conversion efficiency",
+    },
+    metrics: {
+      monthlyRevenue: 90000,
+      monthlyLeads: 400,
+      qualifiedLeads: 120,
+      customers: 24,
+      conversion: 6,
+      aov: 3750,
+      cac: 450,
+      churn: 3,
+      retention: 92,
+      grossMargin: 62,
+      netMargin: 14,
+      salesCycle: 21,
+    } as Record<string, number>,
+  };
+}

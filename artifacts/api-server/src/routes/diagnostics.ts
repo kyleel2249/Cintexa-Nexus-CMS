@@ -202,6 +202,13 @@ router.post("/research", async (req, res) => {
       competitorWebsites: competitors.filter((c: any) => c.website).map((c: any) => ({ name: c.name, website: c.website })),
     },
     benchmarks: getBenchmarks(industry || null),
+    aiEmployees: [
+      { id: "scout", status: "done", action: "Profile and niche context captured" },
+      { id: "rival", status: "done", action: "Competitor seeds prepared from niche" },
+      { id: "benchmark", status: "done", action: "Industry benchmark band applied" },
+      { id: "case", status: "done", action: "Case patterns matched to weakest pillar" },
+    ],
+    note: "AI employees produce structured seeds and source links. Treat unverified public claims as UNKNOWN until dated evidence is attached.",
   });
 });
 
