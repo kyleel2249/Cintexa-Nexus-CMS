@@ -291,9 +291,6 @@ export function downloadIntakeHtmlForm() {
   </style>
 </head>
 <body>
-  <h1>CINTEXA Business Diagnostic — Intake Form</h1>
-  <p class="lead">Fill every field you can. Download JSON and upload it in CINTEXA Nexus to autofill the diagnostic profile and metrics.</p>
-
   <form id="intake">
     <section>
       <h2>Company profile</h2>
@@ -361,8 +358,7 @@ export function downloadIntakeHtmlForm() {
   </form>
 
   <footer>
-    © ${new Date().getFullYear()} Cintexa Technologies · Powered by Cintexa Technologies · https://cintexa.com<br/>
-    Upload the downloaded JSON in CINTEXA Nexus → Diagnostics → Company intelligence profile → Upload filled intake form.
+    © ${new Date().getFullYear()} Cintexa Technologies · Powered by Cintexa Technologies · https://cintexa.com
   </footer>
 
   <script>
