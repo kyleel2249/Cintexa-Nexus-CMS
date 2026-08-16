@@ -304,7 +304,7 @@ export default function BusinessDiagnostic() {
           months7to12: [{ item: "Quarterly re-diagnostic", action: "Update competitor scorecard with sources", evidence: "INFERRED" }],
         },
         strategy: {
-          summary: `For ${companyName} in ${company.industry || "its market"}, prioritize ${weakest.label} while protecting ${strongest.label}. Objective: ${company.objective || "improve measurable business outcomes"}.`,
+          summary: `For ${companyName} in ${company.industry || "its market"}, prioritize ${weakest.label} while protecting ${strongest.label}. Objective: ${company.objective || "improve measurable business outcomes"}.${webResearch?.metaDescription ? ` Public positioning: ${String(webResearch.metaDescription)}` : ""}${webResearch?.pageTitle ? ` Site title: ${String(webResearch.pageTitle)}.` : ""}`,
           initiatives: [
             `Strengthen ${weakest.label} with owned KPIs and weekly review`,
             `Defend advantage in ${strongest.label}`,
@@ -344,6 +344,18 @@ export default function BusinessDiagnostic() {
         socialInsights: socialAnalysis.insights,
         sales: (report as any)?.sales || sales,
         pillarScores: scores,
+        liveWebResearch: webResearch
+          ? {
+              pageTitle: webResearch.pageTitle as string | null,
+              metaDescription: webResearch.metaDescription as string | null,
+              aboutSnippet: webResearch.aboutSnippet as string | null,
+              keywords: webResearch.keywords as string[] | undefined,
+              strategyHints: webResearch.strategyHints as string[] | undefined,
+              companyInsights: webResearch.companyInsights as any,
+              companyWebsite: (webResearch.companyWebsite || company.website) as string | null,
+              researchedAt: webResearch.researchedAt as string | undefined,
+            }
+          : null,
         implementationGuide: [
           "Confirm evidence — UNKNOWN and USER PROVIDED stay hypotheses until sourced.",
           `Protect ${strongest.label}; fund ${weakest.label}.`,
