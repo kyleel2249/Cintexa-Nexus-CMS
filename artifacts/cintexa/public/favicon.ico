@@ -1,0 +1,1329 @@
+<!DOCTYPE html>
+<html lang="en" class="no-js">
+<head>
+<script>document.documentElement.className = 'js';</script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cintexa | Connected Technology Systems for Modern Businesses</title>
+<meta name="description" content="Cintexa builds intelligent software, cloud infrastructure, and business platforms that help companies automate operations, manage inventory, and scale efficiently.">
+<link rel="canonical" href="https://www.cintexa.com/">
+
+<meta property="og:type" content="website">
+<meta property="og:site_name" content="Cintexa">
+<meta property="og:title" content="Cintexa | Connected Technology Systems for Modern Businesses">
+<meta property="og:description" content="Intelligent software, cloud infrastructure, and business platforms that help companies automate operations, manage inventory, and scale efficiently.">
+<meta property="og:url" content="https://www.cintexa.com/">
+<meta property="og:image" content="https://www.cintexa.com/assets/og-cover.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="Cintexa | Connected Technology Systems">
+<meta name="twitter:description" content="Intelligent software, cloud infrastructure, and business platforms built for modern enterprise.">
+<meta name="twitter:image" content="https://www.cintexa.com/assets/og-cover.png">
+<meta name="robots" content="index, follow">
+<meta name="theme-color" content="#2563EB">
+<link rel="icon" type="image/svg+xml" href="/assets/favicon.svg">
+
+<!-- Fonts -->
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="preload" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap"></noscript>
+
+<!-- Critical styles -->
+<link rel="stylesheet" href="css/tokens.css">
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/header.css">
+<link rel="stylesheet" href="css/hero.css">
+<link rel="stylesheet" href="css/animations.css">
+
+<!-- Below-fold styles (async) -->
+<link rel="stylesheet" href="css/platform.css"    media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/services.css"    media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/dev-portal.css"  media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/diagnostics.css" media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/sections.css"    media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/reviews.css"     media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/blog.css"        media="print" onload="this.media='all'">
+<link rel="stylesheet" href="css/support-widget.css" media="print" onload="this.media='all'">
+<noscript>
+  <link rel="stylesheet" href="css/platform.css">
+  <link rel="stylesheet" href="css/services.css">
+  <link rel="stylesheet" href="css/dev-portal.css">
+  <link rel="stylesheet" href="css/diagnostics.css">
+  <link rel="stylesheet" href="css/sections.css">
+  <link rel="stylesheet" href="css/reviews.css">
+  <link rel="stylesheet" href="css/blog.css">
+  <link rel="stylesheet" href="css/support-widget.css">
+</noscript>
+
+<script type="application/ld+json">{
+  "@context": "https://schema.org",
+  "@type": "Organization",
+  "name": "Cintexa",
+  "url": "https://www.cintexa.com",
+  "logo": "https://www.cintexa.com/assets/logo.svg",
+  "description": "Connected technology infrastructure for software and web systems.",
+  "sameAs": ["https://twitter.com/cintexa", "https://linkedin.com/company/cintexa"]
+}</script>
+</head>
+
+<body>
+<a class="skip-link" href="#main">Skip to content</a>
+
+<!-- ============ HEADER ============ -->
+<header class="site-header" id="site-header">
+  <div class="container nav-row">
+    <a href="/" class="brand" aria-label="Cintexa home">
+      <img src="/assets/logo.svg" alt="" class="brand-mark" width="30" height="30">
+      Cintexa
+    </a>
+
+    <nav class="nav-links" id="nav-links" aria-label="Primary">
+      <a href="#services">Services</a>
+      <a href="#inventory">Inventory</a>
+      <a href="#intelligence">Platform</a>
+      <a href="#case-studies">Case Studies</a>
+      <a href="blog/">Blog</a>
+      <a href="#pricing">Pricing</a>
+    </nav>
+
+    <div class="nav-actions">
+      <a href="#contact" class="btn btn-ghost btn-sm">Contact</a>
+      <button class="btn btn-primary btn-sm" id="open-diagnostics" type="button">Free Diagnostic</button>
+    </div>
+
+    <button class="nav-toggle" id="nav-toggle" aria-expanded="false" aria-controls="nav-links" aria-label="Toggle menu">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+    </button>
+  </div>
+</header>
+
+<main id="main">
+
+  <!-- ============ HERO ============ -->
+  <section class="hero" id="hero">
+    <div class="hero-bg-dots" aria-hidden="true"></div>
+    <div class="container hero-grid">
+
+      <!-- Copy -->
+      <div class="hero-copy">
+        <div class="hero-trust-badges" data-hero="0">
+          <span class="trust-badge">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            Enterprise-grade security
+          </span>
+          <span class="trust-badge">
+            <svg viewBox="0 0 24 24" fill="currentColor"><path d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            99.95% uptime SLA
+          </span>
+        </div>
+
+        <h1 data-hero="1">
+          <span class="line">Connected Technology</span>
+          <span class="line">Systems That Power</span>
+          <span class="line line-accent">Modern Businesses</span>
+        </h1>
+
+        <p class="hero-lede" data-hero="2">Cintexa builds intelligent software, cloud infrastructure, and business platforms that help companies automate operations, manage inventory, and scale efficiently.</p>
+
+        <div class="hero-ctas" data-hero="3">
+          <a href="#contact" class="btn btn-primary btn-lg">Build Your System</a>
+          <button class="btn btn-secondary btn-lg" id="open-diagnostics-hero" type="button">Get Free Business Diagnostic</button>
+        </div>
+
+        <div class="hero-stats" data-hero="4">
+          <div class="hero-stat">
+            <span class="num" data-counter="40" data-suffix="%">40%</span>
+            <span class="label">Avg. admin reduction</span>
+          </div>
+          <div class="hero-stat">
+            <span class="num" data-counter="2.5" data-suffix="×">2.5×</span>
+            <span class="label">Avg. conversion lift</span>
+          </div>
+          <div class="hero-stat">
+            <span class="num" data-counter="99.95" data-suffix="%">99.95%</span>
+            <span class="label">Platform uptime</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Dashboard Mockup -->
+      <div class="hero-visual-wrap" data-hero="visual">
+        <!-- Float badges -->
+        <div class="hero-float-badge hero-float-badge-1">
+          <div class="badge-icon" style="background:#DCFCE7;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2.5"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;color:var(--text-muted);">Revenue this month</div>
+            <div style="font-size:1rem;font-weight:700;color:var(--text-primary);">$184,320 <span style="color:var(--green);font-size:0.75rem;">+23%</span></div>
+          </div>
+        </div>
+
+        <div class="hero-float-badge hero-float-badge-2">
+          <div class="badge-icon" style="background:#DBEAFE;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2.5"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><circle cx="12" cy="12" r="1"/></svg>
+          </div>
+          <div>
+            <div style="font-size:0.7rem;color:var(--text-muted);">Orders synced</div>
+            <div style="font-size:1rem;font-weight:700;color:var(--text-primary);">1,248 <span style="color:var(--green);font-size:0.75rem;">live</span></div>
+          </div>
+        </div>
+
+        <div class="hero-visual-frame">
+          <!-- Browser chrome -->
+          <div class="dash-chrome">
+            <div class="dash-chrome-url">app.cintexa.com/dashboard</div>
+          </div>
+
+          <!-- Dashboard body -->
+          <div class="dash-body">
+            <!-- Sidebar -->
+            <nav class="dash-sidebar" aria-label="Dashboard navigation">
+              <div class="dash-sidebar-icon is-active">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              </div>
+              <div class="dash-sidebar-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/></svg>
+              </div>
+              <div class="dash-sidebar-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z"/></svg>
+              </div>
+              <div class="dash-sidebar-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>
+              </div>
+              <div class="dash-sidebar-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              </div>
+            </nav>
+
+            <!-- Main content -->
+            <div class="dash-main">
+              <!-- KPI row -->
+              <div class="dash-kpis">
+                <div class="dash-kpi">
+                  <div class="dash-kpi-label">Revenue</div>
+                  <div class="dash-kpi-val">$184K</div>
+                  <div class="dash-kpi-delta">▲ 23%</div>
+                </div>
+                <div class="dash-kpi">
+                  <div class="dash-kpi-label">Orders</div>
+                  <div class="dash-kpi-val">1,248</div>
+                  <div class="dash-kpi-delta">▲ 11%</div>
+                </div>
+                <div class="dash-kpi">
+                  <div class="dash-kpi-label">Customers</div>
+                  <div class="dash-kpi-val">3,891</div>
+                  <div class="dash-kpi-delta">▲ 8%</div>
+                </div>
+                <div class="dash-kpi">
+                  <div class="dash-kpi-label">Uptime</div>
+                  <div class="dash-kpi-val">99.9%</div>
+                  <div class="dash-kpi-delta" style="color:var(--green);">● Live</div>
+                </div>
+              </div>
+
+              <!-- Mid row -->
+              <div class="dash-mid">
+                <!-- Bar chart -->
+                <div class="dash-chart-card">
+                  <div class="dash-chart-title">Monthly Sales Performance</div>
+                  <div class="dash-bars">
+                    <div class="dash-bar" style="height:45%"></div>
+                    <div class="dash-bar" style="height:62%"></div>
+                    <div class="dash-bar" style="height:51%"></div>
+                    <div class="dash-bar" style="height:78%"></div>
+                    <div class="dash-bar" style="height:65%"></div>
+                    <div class="dash-bar" style="height:88%"></div>
+                    <div class="dash-bar" style="height:72%"></div>
+                    <div class="dash-bar" style="height:95%"></div>
+                    <div class="dash-bar" style="height:83%"></div>
+                    <div class="dash-bar" style="height:100%"></div>
+                  </div>
+                </div>
+
+                <!-- Inventory -->
+                <div class="dash-inv-card">
+                  <div class="dash-inv-title">Inventory Status</div>
+                  <div class="dash-inv-row">
+                    <span class="dash-inv-row-name">Product A</span>
+                    <span class="dash-inv-row-stock">842 units</span>
+                  </div>
+                  <div class="dash-inv-row">
+                    <span class="dash-inv-row-name">Product B</span>
+                    <span class="dash-inv-row-stock low">12 units</span>
+                  </div>
+                  <div class="dash-inv-row">
+                    <span class="dash-inv-row-name">Product C</span>
+                    <span class="dash-inv-row-stock">291 units</span>
+                  </div>
+                  <div class="dash-inv-row">
+                    <span class="dash-inv-row-name">Product D</span>
+                    <span class="dash-inv-row-stock">1,104 units</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Intelligence chips -->
+              <div class="dash-intel-row">
+                <div class="dash-intel-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+                  Reorder Product B — stock critical
+                </div>
+                <div class="dash-intel-chip">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+                  Q4 demand up 34% — forecast ready
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ BUSINESS PROBLEMS ============ -->
+  <section class="section problems-section" id="problems">
+    <div class="container">
+      <div class="section-head centered" data-reveal>
+        <span class="eyebrow">The real cost of disconnected systems</span>
+        <h2>Every day without connected technology costs your business</h2>
+        <p>Most businesses lose time, revenue, and customers to fragmented tools, manual processes, and outdated infrastructure. Cintexa solves this.</p>
+      </div>
+
+      <div class="problems-grid">
+        <div class="problem-card" data-reveal data-delay="1">
+          <div class="problem-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          </div>
+          <h3>Inventory chaos costing you customers</h3>
+          <p>Overselling, stockouts, and manual tracking across spreadsheets leads to delayed orders, unhappy customers, and lost revenue you never recover.</p>
+          <div class="problem-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            Cintexa Inventory fixes this
+          </div>
+        </div>
+
+        <div class="problem-card" data-reveal data-delay="2">
+          <div class="problem-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          </div>
+          <h3>Manual operations burning your team's time</h3>
+          <p>Hours wasted on repetitive data entry, disconnected tools, and manual reporting that should be automated — pulling your team away from real work.</p>
+          <div class="problem-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            Business automation solves this
+          </div>
+        </div>
+
+        <div class="problem-card" data-reveal data-delay="3">
+          <div class="problem-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 9v2m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/></svg>
+          </div>
+          <h3>Technology holding back your growth</h3>
+          <p>Legacy software, slow websites, and infrastructure that can't scale are silent competitors — they make you lose deals before you even know you're in them.</p>
+          <div class="problem-arrow">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+            Our platform transforms this
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SOLUTIONS ============ -->
+  <section class="section" id="services">
+    <div class="container">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">What we build</span>
+        <h2>A complete technology ecosystem for your business</h2>
+        <p>From custom software to the cloud infrastructure that runs it — every Cintexa service is built to integrate, not sit in isolation.</p>
+      </div>
+
+      <div class="solutions-grid">
+        <div class="solution-card" data-reveal data-delay="1">
+          <div class="solution-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke="currentColor"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg></div>
+          <h3>Inventory Management</h3>
+          <p>Real-time stock tracking, automated alerts, multi-location control, and demand forecasting — built for growing businesses.</p>
+          <a href="#inventory" class="solution-link">Explore inventory <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+
+        <div class="solution-card" data-reveal data-delay="2">
+          <div class="solution-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke="currentColor"><path d="M16 18l6-6-6-6M8 6l-6 6 6 6"/></svg></div>
+          <h3>Custom Software</h3>
+          <p>Bespoke applications, internal tools, CRMs, and dashboards built around your operating model — not a generic template.</p>
+          <a href="#software" class="solution-link">See software services <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+
+        <div class="solution-card" data-reveal data-delay="3">
+          <div class="solution-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke="currentColor"><path d="M3 15a4 4 0 014-4h.5a5.5 5.5 0 0110.9-1A4.5 4.5 0 0118.5 19H7a4 4 0 01-4-4z"/></svg></div>
+          <h3>Cloud Infrastructure</h3>
+          <p>Resilient, edge-accelerated infrastructure on Firebase and Cloudflare — provisioned for uptime, scale, and predictable cost.</p>
+          <a href="#cloud" class="solution-link">Review architecture <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+
+        <div class="solution-card" data-reveal data-delay="4">
+          <div class="solution-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke="currentColor"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg></div>
+          <h3>Business Intelligence</h3>
+          <p>Automated reporting, predictive insights, workflow automation, and smart recommendations that keep your business ahead.</p>
+          <a href="#intelligence" class="solution-link">Learn more <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+
+        <div class="solution-card" data-reveal data-delay="5">
+          <div class="solution-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke="currentColor"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 5l-2 14"/></svg></div>
+          <h3>API &amp; Integrations</h3>
+          <p>Clean, documented API layers that connect your existing tools instead of forcing a rebuild — live in our Developer Portal.</p>
+          <a href="#developer-portal" class="solution-link">Open developer portal <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+
+        <div class="solution-card" data-reveal data-delay="6">
+          <div class="solution-icon"><svg viewBox="0 0 24 24" fill="none" stroke-width="2" stroke="currentColor"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg></div>
+          <h3>Digital Transformation</h3>
+          <p>Structured roadmaps that move legacy operations onto connected systems — sequenced so your business never stalls mid-migration.</p>
+          <a href="#diagnostics" class="solution-link">Run a free diagnostic <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M13 6l6 6-6 6"/></svg></a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ INVENTORY MANAGEMENT ============ -->
+  <section class="section inventory-section" id="inventory">
+    <div class="container inventory-layout">
+      <!-- Copy -->
+      <div class="inventory-copy" data-reveal>
+        <span class="eyebrow">Smart Inventory Management</span>
+        <h2>Built for growing businesses that can't afford stockouts</h2>
+        <p class="inv-desc">Stop losing customers to inventory chaos. Cintexa's inventory platform gives you real-time visibility, automation, and predictive intelligence across every location, channel, and supplier.</p>
+
+        <div class="inv-features">
+          <div class="inv-feature">
+            <div class="inv-feature-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <span>Real-time stock tracking</span>
+          </div>
+          <div class="inv-feature">
+            <div class="inv-feature-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <span>Automated reorder alerts</span>
+          </div>
+          <div class="inv-feature">
+            <div class="inv-feature-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <span>Barcode &amp; SKU management</span>
+          </div>
+          <div class="inv-feature">
+            <div class="inv-feature-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <span>Multi-location control</span>
+          </div>
+          <div class="inv-feature">
+            <div class="inv-feature-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <span>Demand forecasting</span>
+          </div>
+          <div class="inv-feature">
+            <div class="inv-feature-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <span>Supplier management</span>
+          </div>
+          <div class="inv-feature">
+            <div class="inv-feature-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <span>Analytics dashboard</span>
+          </div>
+          <div class="inv-feature">
+            <div class="inv-feature-check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M20 6L9 17l-5-5"/></svg></div>
+            <span>Mobile inventory access</span>
+          </div>
+        </div>
+
+        <a href="#contact" class="btn btn-white">Build Your Inventory System</a>
+
+        <div class="inv-promo-image" data-reveal>
+          <img src="assets/inventory-banner.jpg" alt="Smarter Inventory. Better Business. — Custom inventory management software by Cintexa." loading="lazy" width="700" height="700">
+        </div>
+      </div>
+
+      <!-- Inventory dashboard -->
+      <div class="inv-visual" data-reveal data-delay="2">
+        <div class="inv-float-badge">
+          <strong>+34%</strong>
+          Forecast accuracy this quarter
+        </div>
+
+        <div class="inv-dashboard">
+          <div class="inv-dash-header">
+            <div class="inv-dash-header-title">Cintexa Inventory — Live Dashboard</div>
+            <div class="inv-dash-header-badge">
+              <div class="inv-live-dot"></div>
+              Live sync
+            </div>
+          </div>
+
+          <div class="inv-dash-body">
+            <div class="inv-metrics-row">
+              <div class="inv-metric">
+                <span class="inv-metric-num">4,291</span>
+                <span class="inv-metric-label">Total SKUs</span>
+              </div>
+              <div class="inv-metric">
+                <span class="inv-metric-num">12</span>
+                <span class="inv-metric-label">Low Stock</span>
+              </div>
+              <div class="inv-metric">
+                <span class="inv-metric-num">3</span>
+                <span class="inv-metric-label">Locations</span>
+              </div>
+            </div>
+
+            <div class="inv-table-head">
+              <span>Product</span>
+              <span>Stock</span>
+              <span>Status</span>
+              <span>Fill Rate</span>
+            </div>
+
+            <div class="inv-table-row">
+              <div><div class="item-name">Wireless Headset Pro</div><div class="item-sku">SKU-00142</div></div>
+              <div>842</div>
+              <div><span class="inv-stock-pill in-stock">In Stock</span></div>
+              <div>
+                <div class="inv-progress-bar"><div class="inv-progress-fill" style="width:84%"></div></div>
+              </div>
+            </div>
+
+            <div class="inv-table-row">
+              <div><div class="item-name">USB-C Hub 7-in-1</div><div class="item-sku">SKU-00089</div></div>
+              <div>12</div>
+              <div><span class="inv-stock-pill low-stock">Low Stock</span></div>
+              <div>
+                <div class="inv-progress-bar"><div class="inv-progress-fill" style="width:12%;background:var(--warning)"></div></div>
+              </div>
+            </div>
+
+            <div class="inv-table-row">
+              <div><div class="item-name">Laptop Stand Aluminium</div><div class="item-sku">SKU-00211</div></div>
+              <div>291</div>
+              <div><span class="inv-stock-pill in-stock">In Stock</span></div>
+              <div>
+                <div class="inv-progress-bar"><div class="inv-progress-fill" style="width:58%"></div></div>
+              </div>
+            </div>
+
+            <div class="inv-table-row">
+              <div><div class="item-name">Mechanical Keyboard</div><div class="item-sku">SKU-00305</div></div>
+              <div>1,104</div>
+              <div><span class="inv-stock-pill in-stock">In Stock</span></div>
+              <div>
+                <div class="inv-progress-bar"><div class="inv-progress-fill" style="width:95%"></div></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ SOFTWARE DEVELOPMENT ============ -->
+  <section class="section" id="software">
+    <div class="container">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">Software Development</span>
+        <h2>Custom software built to fit how your business actually works</h2>
+        <p>Off-the-shelf software makes you adapt to it. Cintexa builds software that adapts to you — faster to deploy, cheaper to run, and built to scale.</p>
+      </div>
+
+      <div class="section-image-showcase" data-reveal>
+        <img src="assets/growing-a-business.jpg" alt="Cintexa builds websites and apps that grow your business — Modern. Fast. Responsive." loading="lazy" width="780" height="780">
+      </div>
+
+      <div class="dev-services-grid">
+        <div class="dev-service-card" data-reveal data-delay="1">
+          <div class="dev-service-icon" style="background:#DBEAFE;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#2563EB" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M9 21V9"/></svg>
+          </div>
+          <div class="dev-service-body">
+            <h3>Enterprise Web Applications</h3>
+            <p>Full-stack web applications with modern frameworks, real-time data, role-based access control, and enterprise-grade security built in from the start.</p>
+          </div>
+        </div>
+
+        <div class="dev-service-card" data-reveal data-delay="2">
+          <div class="dev-service-icon" style="background:#DCFCE7;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#22C55E" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z"/><path d="M23 21v-2a4 4 0 00-3-3.87M16 3.13a4 4 0 010 7.75"/></svg>
+          </div>
+          <div class="dev-service-body">
+            <h3>CRM &amp; Operations Dashboards</h3>
+            <p>Customer relationship management, pipeline tracking, and operations dashboards that give your team a single source of truth for every business process.</p>
+          </div>
+        </div>
+
+        <div class="dev-service-card" data-reveal data-delay="3">
+          <div class="dev-service-icon" style="background:#F3E8FF;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#7C3AED" stroke-width="2"><path d="M12 19l9-2-9-16-9 16 9 2zM12 19v3"/></svg>
+          </div>
+          <div class="dev-service-body">
+            <h3>Marketing Websites &amp; Portals</h3>
+            <p>Performance-optimized sites and customer portals deployed on global CDN infrastructure — built for speed, accessibility, and conversion.</p>
+          </div>
+        </div>
+
+        <div class="dev-service-card" data-reveal data-delay="4">
+          <div class="dev-service-icon" style="background:#FEF3C7;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="#D97706" stroke-width="2"><path d="M8 9l-4 3 4 3M16 9l4 3-4 3M13 5l-2 14"/></svg>
+          </div>
+          <div class="dev-service-body">
+            <h3>API Development &amp; Integration</h3>
+            <p>RESTful and GraphQL APIs, webhook systems, and third-party integrations that connect your business tools without forcing a costly rebuild.</p>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CLOUD INFRASTRUCTURE ============ -->
+  <section class="section cloud-section" id="cloud">
+    <div class="container cloud-layout">
+      <div class="cloud-features" data-reveal>
+        <div class="section-head" style="margin-bottom:var(--space-6)">
+          <span class="eyebrow">Cloud Infrastructure</span>
+          <h2>Infrastructure that scales with your business — not against it</h2>
+          <p>Cintexa provisions and manages cloud infrastructure on Firebase and Cloudflare — so you get enterprise-grade reliability without the enterprise-grade complexity.</p>
+        </div>
+
+        <div class="cloud-feature">
+          <div class="cloud-feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15a4 4 0 014-4h.5a5.5 5.5 0 0110.9-1A4.5 4.5 0 0118.5 19H7a4 4 0 01-4-4z"/></svg>
+          </div>
+          <div>
+            <h3>Edge-Accelerated Hosting</h3>
+            <p>Pages and APIs served from 300+ edge locations globally — under 50ms response times for most users worldwide.</p>
+          </div>
+        </div>
+
+        <div class="cloud-feature">
+          <div class="cloud-feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+          </div>
+          <div>
+            <h3>Auto-Scaling Infrastructure</h3>
+            <p>Traffic spikes handled automatically — no manual intervention, no downtime during your highest-demand moments.</p>
+          </div>
+        </div>
+
+        <div class="cloud-feature">
+          <div class="cloud-feature-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+          </div>
+          <div>
+            <h3>Managed Security &amp; Compliance</h3>
+            <p>DDoS protection, SSL/TLS management, firewall rules, and access controls maintained and monitored by our infrastructure team.</p>
+          </div>
+        </div>
+      </div>
+
+      <div class="cloud-visual" data-reveal data-delay="2">
+        <div class="cloud-uptime-card">
+          <div class="cloud-uptime-num">99.95%</div>
+          <div class="cloud-uptime-label">Platform uptime — last 12 months</div>
+          <div class="uptime-bar-row">
+            <div class="uptime-bar"></div><div class="uptime-bar"></div><div class="uptime-bar"></div>
+            <div class="uptime-bar"></div><div class="uptime-bar"></div><div class="uptime-bar partial"></div>
+            <div class="uptime-bar"></div><div class="uptime-bar"></div><div class="uptime-bar"></div>
+            <div class="uptime-bar"></div><div class="uptime-bar"></div><div class="uptime-bar"></div>
+            <div class="uptime-bar"></div><div class="uptime-bar"></div><div class="uptime-bar"></div>
+            <div class="uptime-bar"></div><div class="uptime-bar"></div><div class="uptime-bar"></div>
+            <div class="uptime-bar"></div><div class="uptime-bar"></div>
+          </div>
+        </div>
+
+        <div class="cloud-stats-row">
+          <div class="cloud-stat">
+            <span class="cloud-stat-num">&lt;50ms</span>
+            <span class="cloud-stat-label">Avg. response time</span>
+          </div>
+          <div class="cloud-stat">
+            <span class="cloud-stat-num">300+</span>
+            <span class="cloud-stat-label">Edge locations</span>
+          </div>
+          <div class="cloud-stat">
+            <span class="cloud-stat-num">24/7</span>
+            <span class="cloud-stat-label">Infra monitoring</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CINTEXA INTELLIGENCE ============ -->
+  <section class="section intelligence-section" id="intelligence">
+    <div class="container intelligence-layout">
+      <div class="intelligence-copy" data-reveal>
+        <span class="eyebrow">Cintexa Intelligence</span>
+        <h2>Your business operating on smarter decisions, automatically</h2>
+        <p>Cintexa Intelligence is a built-in decision layer across all your business platforms — surfacing the right insight at the right moment so your team acts faster and smarter.</p>
+
+        <div class="intel-capabilities">
+          <div class="intel-cap">
+            <div class="intel-cap-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg></div>
+            <span>Automated business reports — daily, weekly, or on-demand</span>
+          </div>
+          <div class="intel-cap">
+            <div class="intel-cap-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/></svg></div>
+            <span>Inventory demand forecasting based on historical patterns</span>
+          </div>
+          <div class="intel-cap">
+            <div class="intel-cap-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z"/></svg></div>
+            <span>Customer behaviour insights and opportunity signals</span>
+          </div>
+          <div class="intel-cap">
+            <div class="intel-cap-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 10V3L4 14h7v7l9-11h-7z"/></svg></div>
+            <span>Workflow automation triggered by real business events</span>
+          </div>
+          <div class="intel-cap">
+            <div class="intel-cap-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+            <span>System health monitoring and proactive anomaly alerts</span>
+          </div>
+        </div>
+
+        <a href="#contact" class="btn btn-white">Get Cintexa Intelligence</a>
+      </div>
+
+      <div class="intel-ui" data-reveal data-delay="2">
+        <div class="intel-ui-header">
+          <div class="intel-avatar">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+          </div>
+          <div>
+            <div class="intel-name">Cintexa Intelligence</div>
+            <div class="intel-status">Monitoring 14 business signals</div>
+          </div>
+        </div>
+
+        <div class="intel-ui-body">
+          <div class="intel-message">
+            Based on current sales velocity, Product B (USB-C Hub 7-in-1) will reach zero stock in approximately <strong>4 days</strong>. Recommended reorder: <strong>500 units</strong> from your primary supplier at current pricing.
+          </div>
+
+          <div class="intel-insights">
+            <div class="intel-insight">
+              <span class="intel-insight-val">+34%</span>
+              <div class="intel-insight-label">Q4 demand forecast vs last year</div>
+            </div>
+            <div class="intel-insight">
+              <span class="intel-insight-val">$12.4K</span>
+              <div class="intel-insight-label">Revenue at risk from low stock</div>
+            </div>
+            <div class="intel-insight">
+              <span class="intel-insight-val">98.2%</span>
+              <div class="intel-insight-label">Forecast accuracy (90-day)</div>
+            </div>
+            <div class="intel-insight">
+              <span class="intel-insight-val">3</span>
+              <div class="intel-insight-label">Automations triggered today</div>
+            </div>
+          </div>
+
+          <div class="intel-message">
+            Your top 3 customers account for 41% of revenue this month. Consider activating a retention workflow for accounts inactive &gt;30 days — I've identified <strong>18 at-risk accounts</strong>.
+          </div>
+        </div>
+
+        <div class="intel-input-row">
+          <input class="intel-input" placeholder="Ask about your business data..." readonly>
+          <button class="intel-send-btn" aria-label="Send">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+          </button>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ ENTERPRISE DASHBOARD PREVIEW ============ -->
+  <section class="section dashboard-preview-section" id="dashboard">
+    <div class="container">
+      <div class="section-head centered" data-reveal>
+        <span class="eyebrow">Enterprise Dashboard</span>
+        <h2>Everything your business needs — in one connected platform</h2>
+        <p>A unified view of inventory, sales, customers, and infrastructure — updated in real time, accessible from anywhere.</p>
+      </div>
+
+      <div class="dash-preview-frame" data-reveal>
+        <div class="dash-preview-topbar">
+          <div class="dash-preview-topbar-brand">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#93C5FD" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+            Cintexa Platform
+          </div>
+          <div class="dash-preview-topbar-actions">
+            <div class="dash-preview-dot-row">
+              <div class="dash-preview-dot"></div>
+              <div class="dash-preview-dot"></div>
+              <div class="dash-preview-dot" style="background:rgba(74,222,128,0.7)"></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="dash-preview-layout">
+          <!-- Sidebar -->
+          <nav class="dash-preview-sidebar">
+            <div class="dash-preview-nav-section">Main</div>
+            <div class="dash-preview-nav-item active">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg>
+              Overview
+            </div>
+            <div class="dash-preview-nav-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/></svg>
+              Inventory
+            </div>
+            <div class="dash-preview-nav-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18M7 14l4-4 3 3 5-6"/></svg>
+              Analytics
+            </div>
+            <div class="dash-preview-nav-section">Business</div>
+            <div class="dash-preview-nav-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2M9 11a4 4 0 100-8 4 4 0 000 8z"/></svg>
+              Customers
+            </div>
+            <div class="dash-preview-nav-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 14l6-6M9 8h6v6M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              Automation
+            </div>
+            <div class="dash-preview-nav-section">Infrastructure</div>
+            <div class="dash-preview-nav-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 15a4 4 0 014-4h.5a5.5 5.5 0 0110.9-1A4.5 4.5 0 0118.5 19H7a4 4 0 01-4-4z"/></svg>
+              Cloud
+            </div>
+            <div class="dash-preview-nav-item">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+              Security
+            </div>
+          </nav>
+
+          <!-- Content -->
+          <div class="dash-preview-content">
+            <div class="dash-preview-top-row">
+              <div class="dash-preview-kpi">
+                <div class="dash-preview-kpi-label">Total Revenue</div>
+                <div class="dash-preview-kpi-val">$184K</div>
+                <div class="dash-preview-kpi-delta up">▲ 23% vs last month</div>
+              </div>
+              <div class="dash-preview-kpi">
+                <div class="dash-preview-kpi-label">Active Orders</div>
+                <div class="dash-preview-kpi-val">1,248</div>
+                <div class="dash-preview-kpi-delta up">▲ 11% vs last month</div>
+              </div>
+              <div class="dash-preview-kpi">
+                <div class="dash-preview-kpi-label">Inventory SKUs</div>
+                <div class="dash-preview-kpi-val">4,291</div>
+                <div class="dash-preview-kpi-delta down">▼ 12 low stock alerts</div>
+              </div>
+              <div class="dash-preview-kpi">
+                <div class="dash-preview-kpi-label">System Uptime</div>
+                <div class="dash-preview-kpi-val">99.95%</div>
+                <div class="dash-preview-kpi-delta up">● All systems operational</div>
+              </div>
+            </div>
+
+            <div class="dash-preview-mid-row">
+              <div class="dash-preview-chart-card">
+                <div class="dash-preview-chart-title">Revenue Performance — Last 12 Months</div>
+                <div class="dash-preview-bars">
+                  <div class="dash-preview-bar" style="height:38%"></div>
+                  <div class="dash-preview-bar" style="height:52%"></div>
+                  <div class="dash-preview-bar" style="height:44%"></div>
+                  <div class="dash-preview-bar" style="height:67%"></div>
+                  <div class="dash-preview-bar" style="height:58%"></div>
+                  <div class="dash-preview-bar highlight" style="height:79%"></div>
+                  <div class="dash-preview-bar" style="height:64%"></div>
+                  <div class="dash-preview-bar highlight" style="height:88%"></div>
+                  <div class="dash-preview-bar" style="height:75%"></div>
+                  <div class="dash-preview-bar highlight" style="height:91%"></div>
+                  <div class="dash-preview-bar" style="height:83%"></div>
+                  <div class="dash-preview-bar highlight" style="height:100%"></div>
+                </div>
+              </div>
+
+              <div class="dash-preview-activity">
+                <div class="dash-preview-activity-title">Recent Activity</div>
+                <div class="dash-activity-item">
+                  <div class="dash-activity-dot" style="background:var(--green)"></div>
+                  <div>
+                    <div class="dash-activity-text"><strong>Order #4821</strong> fulfilled and shipped</div>
+                    <div class="dash-activity-time">2 minutes ago</div>
+                  </div>
+                </div>
+                <div class="dash-activity-item">
+                  <div class="dash-activity-dot" style="background:var(--warning)"></div>
+                  <div>
+                    <div class="dash-activity-text"><strong>USB-C Hub</strong> stock below threshold — reorder triggered</div>
+                    <div class="dash-activity-time">18 minutes ago</div>
+                  </div>
+                </div>
+                <div class="dash-activity-item">
+                  <div class="dash-activity-dot" style="background:var(--blue)"></div>
+                  <div>
+                    <div class="dash-activity-text"><strong>New customer</strong> Acme Corp onboarded</div>
+                    <div class="dash-activity-time">1 hour ago</div>
+                  </div>
+                </div>
+                <div class="dash-activity-item">
+                  <div class="dash-activity-dot" style="background:var(--green)"></div>
+                  <div>
+                    <div class="dash-activity-text"><strong>Monthly report</strong> generated and sent</div>
+                    <div class="dash-activity-time">3 hours ago</div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PLATFORM ECOSYSTEM ============ -->
+  <section class="section" id="ecosystem">
+    <div class="container">
+      <div class="section-head centered" data-reveal>
+        <span class="eyebrow">Platform ecosystem</span>
+        <h2>One architecture, four connected platforms</h2>
+        <p>Each Cintexa platform is independently useful and natively interoperable — built on the same connected exchange architecture.</p>
+      </div>
+      <div class="grid grid-4">
+        <div class="platform-card" data-accent="cyan" data-reveal data-delay="1">
+          <span class="tag tag-blue">Infrastructure</span>
+          <h3>Cintexa Cloud</h3>
+          <p>Edge-distributed hosting, auto-scaling Workers, and managed CDN — provisioned and maintained for you.</p>
+        </div>
+        <div class="platform-card" data-accent="blue" data-reveal data-delay="2">
+          <span class="tag tag-blue">Applications</span>
+          <h3>Cintexa Apps</h3>
+          <p>Custom web and mobile applications, dashboards, and portals — built to your exact operating model.</p>
+        </div>
+        <div class="platform-card" data-accent="purple" data-reveal data-delay="3">
+          <span class="tag tag-blue">Intelligence</span>
+          <h3>Cintexa Intelligence</h3>
+          <p>Automated insights, forecasting, and workflow automation across all your connected business platforms.</p>
+        </div>
+        <div class="platform-card" data-accent="green" data-reveal data-delay="4">
+          <span class="tag tag-blue">Commerce</span>
+          <h3>Cintexa Inventory</h3>
+          <p>Real-time inventory, order management, and supplier coordination — across every location and channel.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DEVELOPER PORTAL ============ -->
+  <section class="section section-cloud" id="developer-portal" style="display:none" aria-hidden="true">
+    <div class="container">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">Developer platform</span>
+        <h2>A complete API for developers building on Cintexa</h2>
+        <p>Every Cintexa platform is API-first. Integrate your tools, automate your workflows, and build on our infrastructure with clean, documented endpoints.</p>
+      </div>
+      <div class="dev-portal-layout" data-reveal>
+        <nav class="dev-sidebar" aria-label="API categories">
+          <button class="is-active" data-panel="auth">Authentication</button>
+          <button data-panel="inventory">Inventory API</button>
+          <button data-panel="orders">Orders API</button>
+        </nav>
+        <div class="dev-content-area">
+          <div class="dev-content-panel is-active" id="panel-auth">
+            <div class="dev-panel-header">
+              <h3>Authentication</h3>
+              <span class="endpoint-pill"><span class="method-badge POST">POST</span>/v1/auth/token</span>
+            </div>
+            <div class="dev-panel-body">
+              <div class="code-block">
+                <div class="code-block-topbar">
+                  <span class="code-block-lang">Shell</span>
+                  <button class="code-block-copy" data-copy-target="curl-example">Copy</button>
+                </div>
+                <pre id="curl-example"><code><span class="tok-comment"># Request a new access token</span>
+<span class="tok-kw">curl</span> -X POST https://api.cintexa.com/v1/auth/token \
+  -H <span class="tok-str">"Content-Type: application/json"</span> \
+  -d <span class="tok-str">'{"client_id":"YOUR_ID","client_secret":"YOUR_SECRET"}'</span></code></pre>
+              </div>
+              <div class="code-block" style="margin-top:var(--space-3)">
+                <div class="code-block-topbar">
+                  <span class="code-block-lang">Response</span>
+                  <button class="code-block-copy" data-copy-target="json-example">Copy</button>
+                </div>
+                <pre id="json-example"><code>{
+  <span class="tok-key">"access_token"</span>: <span class="tok-str">"eyJhbGciOiJSUzI1NiJ9..."</span>,
+  <span class="tok-key">"token_type"</span>:   <span class="tok-str">"Bearer"</span>,
+  <span class="tok-key">"expires_in"</span>:   <span class="tok-num">3600</span>,
+  <span class="tok-key">"scope"</span>:        <span class="tok-str">"inventory:read inventory:write orders:read"</span>
+}</code></pre>
+              </div>
+            </div>
+          </div>
+          <div class="dev-content-panel" id="panel-inventory">
+            <div class="dev-panel-header">
+              <h3>Inventory API</h3>
+              <span class="endpoint-pill"><span class="method-badge GET">GET</span>/v1/inventory/items</span>
+            </div>
+            <div class="dev-panel-body">
+              <table class="spec-table">
+                <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><code>location_id</code></td><td><code>string</code></td><td>Filter by warehouse location</td></tr>
+                  <tr><td><code>low_stock</code></td><td><code>boolean</code></td><td>Return only items below threshold</td></tr>
+                  <tr><td><code>limit</code></td><td><code>integer</code></td><td>Results per page (max 100)</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+          <div class="dev-content-panel" id="panel-orders">
+            <div class="dev-panel-header">
+              <h3>Orders API</h3>
+              <span class="endpoint-pill"><span class="method-badge GET">GET</span>/v1/orders</span>
+            </div>
+            <div class="dev-panel-body">
+              <table class="spec-table">
+                <thead><tr><th>Parameter</th><th>Type</th><th>Description</th></tr></thead>
+                <tbody>
+                  <tr><td><code>status</code></td><td><code>string</code></td><td>pending · fulfilled · cancelled</td></tr>
+                  <tr><td><code>customer_id</code></td><td><code>string</code></td><td>Filter orders by customer</td></tr>
+                  <tr><td><code>date_from</code></td><td><code>date</code></td><td>ISO 8601 start date</td></tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CASE STUDIES ============ -->
+  <section class="section case-studies-section" id="case-studies">
+    <div class="container">
+      <div class="section-head" data-reveal>
+        <span class="eyebrow">Results</span>
+        <h2>Real outcomes for real businesses</h2>
+        <p>Every Cintexa engagement is measured by its business impact — not just delivery. Here's what that looks like in practice.</p>
+      </div>
+      <div class="grid grid-2">
+        <article class="case-study-card" data-reveal data-delay="1">
+          <span class="tag">Inventory Management</span>
+          <div class="case-study-row"><span class="ck-label">Challenge</span><p>A multi-location retailer managed stock across four warehouses using spreadsheets, leading to regular stockouts during peak periods.</p></div>
+          <div class="case-study-row"><span class="ck-label">Solution</span><p>Cintexa built a real-time inventory platform with automated reorder triggers, supplier integration, and a mobile stocktake app.</p></div>
+          <div class="case-study-metric"><span class="metric-num">60%</span><span class="metric-label">Reduction in stockout incidents</span></div>
+        </article>
+        <article class="case-study-card" data-reveal data-delay="2">
+          <span class="tag">Software Development</span>
+          <div class="case-study-row"><span class="ck-label">Challenge</span><p>A multi-location service business managed scheduling and invoicing across five disconnected spreadsheets and a legacy desktop tool.</p></div>
+          <div class="case-study-row"><span class="ck-label">Solution</span><p>Cintexa built a unified operations dashboard with real-time sync, role-based access, and automated invoice generation.</p></div>
+          <div class="case-study-metric"><span class="metric-num">40%</span><span class="metric-label">Reduction in administrative workload</span></div>
+        </article>
+        <article class="case-study-card" data-reveal data-delay="3">
+          <span class="tag">Website Development</span>
+          <div class="case-study-row"><span class="ck-label">Challenge</span><p>An enterprise SaaS marketing site suffered from a confusing funnel and slow page loads on mobile networks.</p></div>
+          <div class="case-study-row"><span class="ck-label">Solution</span><p>Cintexa rebuilt the site with a CDN-optimized static architecture, restructured funnel, and lazy-loaded media.</p></div>
+          <div class="case-study-metric"><span class="metric-num">2.5×</span><span class="metric-label">Increase in trial signup conversion</span></div>
+        </article>
+        <article class="case-study-card" data-reveal data-delay="4">
+          <span class="tag">Cloud Infrastructure</span>
+          <div class="case-study-row"><span class="ck-label">Challenge</span><p>A growing e-commerce operation experienced recurring outages during traffic spikes around promotional events.</p></div>
+          <div class="case-study-row"><span class="ck-label">Solution</span><p>Cintexa migrated the platform to edge-distributed infrastructure with auto-scaling Workers and tuned caching rules.</p></div>
+          <div class="case-study-metric"><span class="metric-num">35%</span><span class="metric-label">Reduction in unplanned downtime</span></div>
+        </article>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ REVIEWS ============ -->
+  <section class="section reviews-section" id="reviews">
+    <div class="container">
+      <div class="section-head centered" data-reveal>
+        <span class="eyebrow">Client feedback</span>
+        <h2>What clients say about working with Cintexa</h2>
+        <p>Real reviews from businesses that have worked with us. Worked with us recently? Leave a review below.</p>
+      </div>
+      <div class="reviews-summary" data-reveal>
+        <div class="reviews-score-block">
+          <span class="reviews-score-num" id="reviews-avg">—</span>
+          <span class="star-row" id="reviews-avg-stars" aria-hidden="true"></span>
+          <span class="reviews-score-count" id="reviews-count">Loading reviews…</span>
+        </div>
+        <div class="reviews-bars" id="reviews-bars" aria-hidden="true"></div>
+      </div>
+      <div class="reviews-grid" id="reviews-grid"></div>
+      <div style="text-align:center;margin-top:var(--space-6)">
+        <button class="btn btn-ghost" id="reviews-load-more" type="button" style="display:none;">Show more reviews</button>
+      </div>
+      <form class="review-form-card" id="review-form" data-reveal style="margin-top:var(--space-8)">
+        <h3>Leave a review</h3>
+        <div class="star-input" id="review-star-input" role="radiogroup" aria-label="Rating">
+          <label data-val="1" title="1 star">★</label>
+          <label data-val="2" title="2 stars">★</label>
+          <label data-val="3" title="3 stars">★</label>
+          <label data-val="4" title="4 stars">★</label>
+          <label data-val="5" title="5 stars">★</label>
+        </div>
+        <input type="hidden" id="review-rating-value" value="0">
+        <div class="form-field">
+          <label for="review-name">Your name</label>
+          <input type="text" id="review-name" name="name" required autocomplete="name">
+        </div>
+        <div class="form-field">
+          <label for="review-company">Company (optional)</label>
+          <input type="text" id="review-company" name="company" autocomplete="organization">
+        </div>
+        <div class="form-field">
+          <label for="review-text">Your review</label>
+          <textarea id="review-text" name="text" required rows="4"></textarea>
+        </div>
+        <div class="review-form-status" id="review-form-status" role="status"></div>
+        <button type="submit" class="btn btn-primary btn-block" id="review-submit-btn">Submit review</button>
+      </form>
+    </div>
+  </section>
+
+  <!-- ============ ROADMAP ============ -->
+  <section class="section" id="roadmap">
+    <div class="container">
+      <div class="section-head centered" data-reveal>
+        <span class="eyebrow">Platform roadmap</span>
+        <h2>What's coming to the Cintexa platform</h2>
+        <p>We build in public and ship fast. Here's what's live, in development, and planned for the Cintexa platform.</p>
+      </div>
+      <div class="roadmap-track">
+        <div class="roadmap-phase" data-status="active" data-reveal data-delay="1">
+          <div class="roadmap-phase-num">01</div>
+          <h3>Core Platform</h3>
+          <p>Inventory management, cloud infrastructure, and custom software development — fully live.</p>
+          <div class="roadmap-status">Live now</div>
+        </div>
+        <div class="roadmap-phase" data-status="active" data-reveal data-delay="2">
+          <div class="roadmap-phase-num">02</div>
+          <h3>Cintexa Intelligence</h3>
+          <p>Business intelligence layer with automated reporting, forecasting, and workflow automation.</p>
+          <div class="roadmap-status">Live now</div>
+        </div>
+        <div class="roadmap-phase" data-status="upcoming" data-reveal data-delay="3">
+          <div class="roadmap-phase-num">03</div>
+          <h3>Mobile Platform</h3>
+          <p>Native iOS and Android apps for inventory management, order tracking, and business insights.</p>
+          <div class="roadmap-status">Q1 2027</div>
+        </div>
+        <div class="roadmap-phase" data-status="upcoming" data-reveal data-delay="4">
+          <div class="roadmap-phase-num">04</div>
+          <h3>Marketplace Integrations</h3>
+          <p>One-click connections to Shopify, Amazon, WooCommerce, Xero, and 50+ business platforms.</p>
+          <div class="roadmap-status">Q2 2027</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ PRICING ============ -->
+  <section class="section pricing-section" id="pricing">
+    <div class="container">
+      <div class="section-head centered" data-reveal>
+        <span class="eyebrow">Pricing</span>
+        <h2>Transparent pricing. No hidden fees.</h2>
+        <p>Start with a diagnostic to find the right fit. Every plan includes cloud hosting, support, and ongoing platform access.</p>
+      </div>
+      <div class="pricing-grid grid" data-reveal>
+        <div class="pricing-card">
+          <h3>Starter</h3>
+          <p class="pricing-desc">For growing businesses ready to automate their first system and get serious about operations.</p>
+          <div class="pricing-price"><span class="amount">Custom</span><span class="period">Pricing based on project scope</span></div>
+          <ul class="pricing-features">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>1 core platform (inventory or software)</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Cloud hosting included</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>1 integration</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Email support</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Business diagnostic included</li>
+          </ul>
+          <a href="#contact" class="btn btn-secondary">Get started</a>
+        </div>
+
+        <div class="pricing-card is-featured">
+          <h3>Growth</h3>
+          <p class="pricing-desc">For businesses ready to connect multiple systems and run their operations on Cintexa.</p>
+          <div class="pricing-price"><span class="amount">Custom</span><span class="period">Pricing based on project scope</span></div>
+          <ul class="pricing-features">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>2–3 connected platforms</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Cintexa Intelligence included</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Up to 5 integrations</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Priority support + SLA</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Dedicated engineer</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Monthly reporting</li>
+          </ul>
+          <a href="#contact" class="btn btn-primary">Get started</a>
+        </div>
+
+        <div class="pricing-card">
+          <h3>Enterprise</h3>
+          <p class="pricing-desc">For organisations that need the full Cintexa platform, custom integrations, and dedicated infrastructure.</p>
+          <div class="pricing-price"><span class="amount">Custom</span><span class="period">Pricing based on project scope</span></div>
+          <ul class="pricing-features">
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Full platform access</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Unlimited integrations</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Dedicated cloud infrastructure</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>24/7 infrastructure monitoring</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>Custom SLA</li>
+            <li><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M20 6L9 17l-5-5"/></svg>White-label available</li>
+          </ul>
+          <a href="#contact" class="btn btn-secondary">Contact us</a>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ DIAGNOSTIC CTA ============ -->
+  <section class="section diagnostic-section" id="diagnostics">
+    <div class="container diagnostic-layout">
+      <div class="diagnostic-copy">
+        <h2>Not sure where to start?<br>Run a free Business Diagnostic.</h2>
+        <p>Answer 8 questions about your business and get a personalised technology roadmap — what to build, in what order, and why. Takes 3 minutes.</p>
+      </div>
+      <div class="diagnostic-actions">
+        <button class="btn btn-white btn-lg" id="open-diagnostics-cta" type="button">Start Free Diagnostic</button>
+        <a href="#contact" class="btn btn-lg" style="background:rgba(255,255,255,0.12);color:#fff;border:1.5px solid rgba(255,255,255,0.3);">Talk to an engineer</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ CONTACT ============ -->
+  <section class="section" id="contact">
+    <div class="container contact-layout">
+      <div>
+        <div class="section-head">
+          <span class="eyebrow">Get in touch</span>
+          <h2>Ready to build something that actually works?</h2>
+          <p>Tell us about your business and what you need. We'll come back within one business day with a plan.</p>
+        </div>
+        <div class="contact-info">
+          <div class="contact-info-item">
+            <div class="contact-info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg></div>
+            <div><h3>Email us</h3><p><a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="81e8efe7eec1e2e8eff5e4f9e0afe2eeec">[email&#160;protected]</a></p></div>
+          </div>
+          <div class="contact-info-item">
+            <div class="contact-info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></div>
+            <div><h3>Response time</h3><p>Within one business day</p></div>
+          </div>
+          <div class="contact-info-item">
+            <div class="contact-info-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+            <div><h3>Free diagnostic</h3><p>Every engagement starts with a business diagnostic — at no cost to you.</p></div>
+          </div>
+        </div>
+      </div>
+
+      <form class="contact-form" id="contact-form" novalidate>
+        <div class="form-field">
+          <label for="contact-name">Your name</label>
+          <input type="text" id="contact-name" name="name" required autocomplete="name">
+        </div>
+        <div class="form-field">
+          <label for="contact-email">Email address</label>
+          <input type="email" id="contact-email" name="email" required autocomplete="email">
+        </div>
+        <div class="form-field">
+          <label for="contact-company">Company name</label>
+          <input type="text" id="contact-company" name="company" autocomplete="organization">
+        </div>
+        <div class="form-field">
+          <label for="contact-message">Tell us about your project</label>
+          <textarea id="contact-message" name="message" required rows="5" placeholder="What are you trying to build or fix?"></textarea>
+        </div>
+        <div class="form-status" id="contact-form-status" role="status"></div>
+        <button type="submit" class="btn btn-primary btn-block">Send Message →</button>
+      </form>
+    </div>
+  </section>
+
+</main>
+
+<!-- ============ FOOTER ============ -->
+<footer class="site-footer">
+  <div class="container">
+    <div class="footer-top">
+      <div class="footer-brand">
+        <a href="/" class="brand" style="color:#fff;margin-bottom:var(--space-3);display:inline-flex">
+          <img src="/assets/logo.svg" alt="" class="brand-mark" width="28" height="28">
+          Cintexa
+        </a>
+        <p>Connected technology systems that help modern businesses operate smarter, faster, and more efficiently.</p>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-label">Platform</div>
+        <ul>
+          <li><a href="#inventory">Inventory Management</a></li>
+          <li><a href="#software">Custom Software</a></li>
+          <li><a href="#cloud">Cloud Infrastructure</a></li>
+          <li><a href="#intelligence">Cintexa Intelligence</a></li>
+          <li><a href="#developer-portal">Developer API</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-label">Company</div>
+        <ul>
+          <li><a href="#case-studies">Case Studies</a></li>
+          <li><a href="#pricing">Pricing</a></li>
+          <li><a href="blog/">Blog</a></li>
+          <li><a href="#contact">Contact</a></li>
+        </ul>
+      </div>
+      <div class="footer-col">
+        <div class="footer-col-label">Legal</div>
+        <ul>
+          <li><a href="/privacy.html">Privacy Policy</a></li>
+          <li><a href="/terms.html">Terms of Service</a></li>
+        </ul>
+      </div>
+    </div>
+    <div class="footer-bottom">
+      <span>© 2026 Cintexa. All rights reserved.</span>
+      <div class="footer-socials">
+        <a href="https://linkedin.com/company/cintexa" aria-label="LinkedIn">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M16 8a6 6 0 016 6v7h-4v-7a2 2 0 00-2-2 2 2 0 00-2 2v7h-4v-7a6 6 0 016-6zM2 9h4v12H2z"/><circle cx="4" cy="4" r="2"/></svg>
+        </a>
+        <a href="https://twitter.com/cintexa" aria-label="X / Twitter">
+          <svg viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
+        </a>
+      </div>
+    </div>
+  </div>
+</footer>
+
+<!-- ============ SUPPORT WIDGET ============ -->
+<button class="cs-launcher" id="support-launcher" aria-label="Open chat with Cintexa Support" aria-expanded="false" aria-controls="support-panel">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+</button>
+
+<section class="cs-panel" id="support-panel" aria-label="Chat with Cintexa Support" role="dialog" aria-modal="false">
+  <div class="cs-header">
+    <div class="cs-header-avatar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+    </div>
+    <div class="cs-header-info">
+      <div class="cs-header-name">Cintexa Support</div>
+      <div class="cs-header-status">Online — typically replies in minutes</div>
+    </div>
+    <button class="cs-close" id="support-close" aria-label="Close chat">✕</button>
+  </div>
+  <div class="cs-messages" id="support-messages" aria-live="polite"></div>
+  <div class="cs-suggestions" id="support-suggestions"></div>
+  <form class="cs-input-row" id="support-form">
+    <textarea id="support-input" rows="1" placeholder="Ask Cintexa Support anything..." aria-label="Message to Cintexa Support"></textarea>
+    <button type="submit" class="cs-send" id="support-send" aria-label="Send message">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>
+    </button>
+  </form>
+</section>
+
+<!-- ============ DIAGNOSTICS MODAL ============ -->
+<div class="diag-modal-overlay" id="diag-overlay" role="dialog" aria-modal="true" aria-label="Cintexa Business Diagnostic">
+  <div class="diag-modal" id="diag-modal">
+    <div class="diag-modal-header">
+      <div class="diag-progress-track"><div class="diag-progress-fill" id="diag-progress-fill"></div></div>
+      <span class="diag-progress-label" id="diag-progress-label">Step 0 / 0</span>
+      <button class="diag-modal-close" id="diag-close" aria-label="Close diagnostics">✕</button>
+    </div>
+    <div class="diag-modal-body" id="diag-body"></div>
+    <div class="diag-modal-footer" id="diag-footer"></div>
+  </div>
+</div>
+
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script src="js/main.js"></script>
+<script src="js/reviews.js"></script>
+<script src="js/diagnostics.js"></script>
+<script src="js/support-widget.js"></script>
+</body>
+</html>

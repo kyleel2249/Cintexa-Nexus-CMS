@@ -1,3 +1,4 @@
+import { CintexaLogo } from "@/components/SplashScreen";
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -157,6 +158,7 @@ export default function Dashboard() {
       <motion.div variants={fadeUp} className="flex items-center justify-between">
         <div>
           <div className="flex items-center gap-2.5">
+            <CintexaLogo size={36} />
             <h2 className="text-3xl font-bold tracking-tight">Overview</h2>
             <motion.span
               className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-medium text-primary"

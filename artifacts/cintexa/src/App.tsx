@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AuthProvider } from "@/context/AuthContext";
+import { SplashScreen } from "@/components/SplashScreen";
 import NotFound from "@/pages/not-found";
 
 function lazyWithRecovery<T extends ComponentType<unknown>>(loader: () => Promise<{ default: T }>) {
@@ -115,6 +116,7 @@ function AppRoutes() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
+      <SplashScreen />
       <ThemeProvider defaultTheme="dark" defaultAccent="indigo" storageKey="cintexa-theme" accentStorageKey="cintexa-accent">
         <TooltipProvider>
           <AuthProvider>
