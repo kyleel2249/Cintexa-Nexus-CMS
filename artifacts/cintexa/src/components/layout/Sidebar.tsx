@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target,
+  Puzzle, Mail, Target, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -12,7 +12,10 @@ import { CintexaLogo } from "@/components/SplashScreen";
 
 const navGroups = [
   { title: "Overview", items: [{ name: "Dashboard", href: "/", icon: LayoutDashboard }] },
-  { title: "Intelligence", items: [{ name: "Business Diagnostic", href: "/diagnostics", icon: Activity }] },
+  { title: "Intelligence", items: [
+    { name: "Business Diagnostic", href: "/diagnostics", icon: Activity },
+    { name: "Diagnostic History", href: "/diagnostics?history=1", icon: History },
+  ] },
   { title: "Content", items: [
     { name: "Sites", href: "/sites", icon: Globe }, { name: "Pages", href: "/pages", icon: FileText },
     { name: "Posts", href: "/posts", icon: PenTool }, { name: "Calendar", href: "/calendar", icon: CalendarDays },

@@ -1,4 +1,6 @@
 import { CintexaLogo } from "@/components/SplashScreen";
+import { Link } from "wouter";
+import { useEffect, useState } from "react";
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -6,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import {
   FileText, PenTool, Image as ImageIcon, Users, Globe, FormInput,
   ArrowUpRight, Activity, TrendingUp, TrendingDown, Minus, Mail, Sparkles,
+  History, ArrowRight,
 } from "lucide-react";
 import {
   LineChart, Line, AreaChart, Area, XAxis, YAxis, CartesianGrid,
@@ -92,6 +95,33 @@ export default function Dashboard() {
   const { data: activity, isLoading: isLoadingActivity } = useGetDashboardActivity();
   const { data: traffic, isLoading: isLoadingTraffic } = useGetDashboardTraffic();
 
+  const [diagnosticHistory, setDiagnosticHistory] = useState<Array<{ id: string; taskType: string; title: string; detail?: string; createdAt: string; status: string }>>([]);
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cintexa-diagnostic-task-history");
+      const parsed = raw ? JSON.parse(raw) : [];
+      if (Array.isArray(parsed)) setDiagnosticHistory(parsed.slice(0, 12));
+    } catch {
+      setDiagnosticHistory([]);
+    }
+    const refresh = () => {
+      try {
+        const raw = localStorage.getItem("cintexa-diagnostic-task-history");
+        const parsed = raw ? JSON.parse(raw) : [];
+        if (Array.isArray(parsed)) setDiagnosticHistory(parsed.slice(0, 12));
+      } catch { /* ignore */ }
+    };
+    window.addEventListener("storage", refresh);
+    window.addEventListener("focus", refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("focus", refresh);
+    };
+  }, []);
+
+
+
   const { data: sparklines, isLoading: isLoadingSparklines } = useQuery<SparklineData>({
     queryKey: ["dashboard", "sparklines"],
     queryFn: async () => {
@@ -173,6 +203,78 @@ export default function Dashboard() {
           <p className="text-muted-foreground mt-1">Metrics and performance for your connected sites.</p>
         </div>
       </motion.div>
+
+      <motion.div variants={fadeUp} className="grid lg:grid-cols-3 gap-4">
+        <Card className="lg:col-span-2 border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card overflow-hidden relative">
+          <CardHeader className="flex flex-row items-start justify-between gap-3">
+            <div>
+              <CardTitle className="flex items-center gap-2 text-lg">
+                <Activity className="h-5 w-5 text-primary" />
+                Business Diagnostic
+              </CardTitle>
+              <CardDescription className="mt-1.5">
+                Diagnose the business, research the company online, build strategy and download an execution PDF.
+              </CardDescription>
+            </div>
+            <Link href="/diagnostics">
+              <span className="inline-flex items-center gap-1.5 rounded-md bg-primary text-primary-foreground text-sm font-medium px-3 py-2 cursor-pointer hover:opacity-90">
+                Open diagnostic <ArrowRight className="h-3.5 w-3.5" />
+              </span>
+            </Link>
+          </CardHeader>
+          <CardContent className="grid sm:grid-cols-3 gap-3">
+            {[
+              { label: "Company profile", hint: "Name, website, niche" },
+              { label: "Live research", hint: "Run Search on the public site" },
+              { label: "Strategy PDF", hint: "Roadmap + goals export" },
+            ].map((x) => (
+              <div key={x.label} className="rounded-xl border bg-background/60 p-3">
+                <div className="text-sm font-semibold">{x.label}</div>
+                <div className="text-xs text-muted-foreground mt-1">{x.hint}</div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="flex items-center gap-2 text-base">
+              <History className="h-4 w-4 text-primary" />
+              Diagnostic history
+            </CardTitle>
+            <CardDescription>Recent diagnostic tasks from this browser</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {diagnosticHistory.length === 0 ? (
+              <div className="text-sm text-muted-foreground space-y-3">
+                <p>No diagnostic tasks yet.</p>
+                <Link href="/diagnostics">
+                  <span className="text-primary text-sm font-medium cursor-pointer hover:underline">Start a diagnostic →</span>
+                </Link>
+              </div>
+            ) : (
+              <div className="space-y-2 max-h-52 overflow-y-auto pr-1">
+                {diagnosticHistory.map((t) => (
+                  <div key={t.id} className="border rounded-lg p-2.5 text-sm">
+                    <div className="font-medium leading-snug">{t.title}</div>
+                    {t.detail ? <div className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{t.detail}</div> : null}
+                    <div className="text-[10px] text-muted-foreground mt-1 flex justify-between gap-2">
+                      <span>{t.taskType}</span>
+                      <span>{t.createdAt ? new Date(t.createdAt).toLocaleString() : ""}</span>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-3">
+              <Link href="/diagnostics">
+                <span className="text-xs text-primary font-medium cursor-pointer hover:underline">View full diagnostic & history →</span>
+              </Link>
+            </div>
+          </CardContent>
+        </Card>
+      </motion.div>
+
 
       <motion.div
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"

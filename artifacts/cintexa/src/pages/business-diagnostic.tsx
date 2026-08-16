@@ -213,6 +213,13 @@ export default function BusinessDiagnostic() {
       const existing = JSON.parse(localStorage.getItem("cintexa-diagnostic-task-history") || "[]");
       if (Array.isArray(existing) && existing.length) setTaskHistory(existing);
     } catch { /* ignore */ }
+    try {
+      const q = new URLSearchParams(window.location.search);
+      if (q.get("history") === "1") {
+        setShowHistory(true);
+        setStage("results");
+      }
+    } catch { /* ignore */ }
   }, []);
 
   const downloadDetailedPdf = async () => {
