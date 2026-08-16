@@ -1,254 +1,498 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
 
-type Report = {
-  meta: { title: string; companyName: string; industry: string; generatedAt: string; evidencePolicy: string };
-  executiveSummary: { overallScore: number; condition: string; topProblems: string[]; topPriority: any; biggestOpportunity: string };
-  findings: Array<{ pillar: string; problem: string; evidence: string; confidence: string; impact: string; rationale: string; recommendedAction: string }>;
-  benchmarks?: { industry: string; rows: Array<{ metric: string; actual: number | null; benchmark: number; unit: string; gap: number | null; source: string }> };
-  smartGoals?: Array<{ title: string; owner?: string; deadline?: string; kpi?: string; goalType?: string; smartValidation?: { score: number } }>;
-  roadmap?: { days7: any[]; days30: any[]; days90: any[]; months4to6: any[]; months7to12: any[] };
+export type DiagnosticPdfReport = {
+  meta: {
+    title: string;
+    companyName: string;
+    industry: string;
+    generatedAt: string;
+    evidencePolicy: string;
+  };
+  profile?: {
+    website?: string;
+    subIndustry?: string;
+    model?: string;
+    market?: string;
+    employees?: string;
+    revenue?: string;
+    objective?: string;
+  };
+  executiveSummary: {
+    overallScore: number;
+    condition: string;
+    topProblems: string[];
+    topPriority: unknown;
+    biggestOpportunity: string;
+  };
+  findings?: Array<{
+    pillar: string;
+    problem: string;
+    evidence: string;
+    confidence?: string;
+    impact: string;
+    rationale?: string;
+    recommendedAction: string;
+  }>;
+  benchmarks?: {
+    industry: string;
+    rows: Array<{ metric: string; actual: number | null; benchmark: number; unit: string; gap: number | null; source: string }>;
+  };
+  smartGoals?: Array<{
+    title: string;
+    owner?: string;
+    deadline?: string;
+    kpi?: string;
+    goalType?: string;
+    level?: string;
+    baseline?: number | null;
+    target?: number | null;
+    unit?: string;
+    status?: string;
+    smartValidation?: { score: number };
+  }>;
+  roadmap?: {
+    days7?: Array<{ item?: string; action?: string; evidence?: string } | string>;
+    days30?: Array<{ item?: string; action?: string; evidence?: string } | string>;
+    days90?: Array<{ item?: string; action?: string; evidence?: string } | string>;
+    months4to6?: Array<{ item?: string; action?: string; evidence?: string } | string>;
+    months7to12?: Array<{ item?: string; action?: string; evidence?: string } | string>;
+  };
+  strategy?: {
+    summary?: string;
+    initiatives?: string[];
+    portfolioMoves?: string[];
+    platformStrategies?: Array<{ platform: string; strategy: string }>;
+  };
+  execution?: {
+    cadence?: string;
+    accountability?: Array<{ goal: string; owner: string; deadline: string; status: string }>;
+    nextWeek?: string[];
+    nextQuarter?: string[];
+  };
   kpis?: Array<{ name: string; baseline: number | null; target: string | number; owner: string }>;
-  swot?: { strengths: any[]; weaknesses: any[]; opportunities: any[]; threats: any[] };
-  competitors?: Array<{ name: string; positioning?: string; strengths?: string; weaknesses?: string }>;
-  socialAds?: { platforms: any[]; note?: string };
-  socialInsights?: any[];
+  swot?: { strengths: string[]; weaknesses: string[]; opportunities: string[]; threats: string[] };
+  competitors?: Array<{ name: string; website?: string; positioning?: string; strengths?: string; weaknesses?: string }>;
+  socialAds?: { platforms: unknown[]; note?: string };
+  socialInsights?: Array<{
+    label: string;
+    healthScore?: number;
+    metrics?: { roas?: number; cpl?: number };
+    strategy?: string;
+    recommendations?: string[];
+  }>;
   sales?: Record<string, number | null>;
+  pillarScores?: Record<string, number>;
+  implementationGuide?: string[];
 };
 
-function line(doc: jsPDF, text: string, x: number, y: number, maxWidth = 180) {
-  const lines = doc.splitTextToSize(text, maxWidth);
-  doc.text(lines, x, y);
-  return y + lines.length * 5 + 2;
+function ensureSpace(doc: jsPDF, y: number, need = 24) {
+  if (y > 297 - need) {
+    doc.addPage();
+    return 16;
+  }
+  return y;
 }
 
-export function downloadDiagnosticPdf(report: Report) {
-  const doc = new jsPDF({ unit: "mm", format: "a4" });
-  const margin = 14;
-  let y = 16;
+function line(doc: jsPDF, text: string, x: number, y: number, maxWidth = 182) {
+  const lines = doc.splitTextToSize(String(text ?? ""), maxWidth);
+  doc.text(lines, x, y);
+  return y + lines.length * 5 + 1;
+}
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(16);
-  doc.text(report.meta.title, margin, y);
-  y += 8;
-  doc.setFontSize(11);
-  doc.setFont("helvetica", "normal");
-  y = line(doc, `Company: ${report.meta.companyName}`, margin, y);
-  y = line(doc, `Industry: ${report.meta.industry}`, margin, y);
-  y = line(doc, `Generated: ${new Date(report.meta.generatedAt).toLocaleString()}`, margin, y);
-  y = line(doc, report.meta.evidencePolicy, margin, y, 180);
-  y += 4;
-
+function sectionTitle(doc: jsPDF, title: string, y: number, margin: number) {
+  y = ensureSpace(doc, y, 20);
   doc.setFont("helvetica", "bold");
   doc.setFontSize(13);
-  doc.text("1. Executive Summary", margin, y);
-  y += 6;
+  doc.setTextColor(20, 30, 50);
+  doc.text(title, margin, y);
+  doc.setDrawColor(30, 107, 255);
+  doc.setLineWidth(0.4);
+  doc.line(margin, y + 1.5, margin + 60, y + 1.5);
   doc.setFont("helvetica", "normal");
   doc.setFontSize(10);
-  y = line(doc, `Overall Health: ${report.executiveSummary.overallScore}/100 — ${report.executiveSummary.condition}`, margin, y);
-  y = line(doc, `Biggest opportunity: ${report.executiveSummary.biggestOpportunity}`, margin, y);
-  y = line(doc, `Top problems: ${report.executiveSummary.topProblems.join("; ") || "None listed"}`, margin, y);
-  y += 3;
+  doc.setTextColor(40, 40, 40);
+  return y + 8;
+}
 
-  if (report.sales) {
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("2. Sales Metrics (Calculated)", margin, y);
-    y += 4;
+function roadmapItems(
+  items?: Array<{ item?: string; action?: string; evidence?: string } | string>,
+): string[] {
+  if (!items?.length) return [];
+  return items.map((it) => {
+    if (typeof it === "string") return it;
+    const head = it.item || it.action || "Action";
+    const tail = it.action && it.item ? ` → ${it.action}` : "";
+    const ev = it.evidence ? ` [${it.evidence}]` : "";
+    return `${head}${tail}${ev}`;
+  });
+}
+
+/**
+ * Generates a clean company diagnostic PDF (no app navigation/chrome).
+ * Filename and cover use the assessed company profile.
+ */
+export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
+  const doc = new jsPDF({ unit: "mm", format: "a4" });
+  const margin = 14;
+  let y = 18;
+
+  const company = report.meta.companyName || "Company";
+  const industry = report.meta.industry || "Not specified";
+  const generated = new Date(report.meta.generatedAt || Date.now()).toLocaleString();
+
+  // —— Cover / company identity (no UI chrome) ——
+  doc.setFillColor(7, 13, 26);
+  doc.rect(0, 0, 210, 42, "F");
+  doc.setTextColor(255, 255, 255);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(18);
+  doc.text("CINTEXA Nexus", margin, 16);
+  doc.setFontSize(11);
+  doc.setFont("helvetica", "normal");
+  doc.text("Business Diagnostic & Strategic Execution Report", margin, 24);
+  doc.setFontSize(9);
+  doc.setTextColor(160, 190, 220);
+  doc.text("Confidential — prepared for internal strategic use", margin, 32);
+
+  y = 52;
+  doc.setTextColor(20, 30, 50);
+  doc.setFont("helvetica", "bold");
+  doc.setFontSize(16);
+  y = line(doc, company, margin, y, 182);
+  doc.setFont("helvetica", "normal");
+  doc.setFontSize(11);
+  y = line(doc, report.meta.title || "Business Diagnostic Report", margin, y);
+  y += 2;
+  doc.setFontSize(10);
+  y = line(doc, `Industry: ${industry}`, margin, y);
+  if (report.profile?.subIndustry) y = line(doc, `Sub-industry: ${report.profile.subIndustry}`, margin, y);
+  if (report.profile?.website) y = line(doc, `Website: ${report.profile.website}`, margin, y);
+  if (report.profile?.model) y = line(doc, `Business model: ${report.profile.model}`, margin, y);
+  if (report.profile?.market) y = line(doc, `Markets: ${report.profile.market}`, margin, y);
+  if (report.profile?.employees) y = line(doc, `Company size: ${report.profile.employees}`, margin, y);
+  if (report.profile?.revenue) y = line(doc, `Revenue range: ${report.profile.revenue}`, margin, y);
+  if (report.profile?.objective) y = line(doc, `Strategic objective: ${report.profile.objective}`, margin, y);
+  y = line(doc, `Generated: ${generated}`, margin, y);
+  y += 3;
+  doc.setFontSize(9);
+  doc.setTextColor(80, 80, 80);
+  y = line(doc, report.meta.evidencePolicy || "Evidence is labeled. Unknown items are not invented.", margin, y);
+  doc.setTextColor(40, 40, 40);
+  y += 4;
+
+  // —— Executive summary ——
+  y = sectionTitle(doc, "1. Executive Summary", y, margin);
+  y = line(doc, `Overall business health: ${report.executiveSummary.overallScore}/100 — ${report.executiveSummary.condition}`, margin, y);
+  y = line(doc, `Biggest opportunity: ${report.executiveSummary.biggestOpportunity}`, margin, y);
+  if (report.executiveSummary.topPriority) {
+    y = line(doc, `Top priority: ${typeof report.executiveSummary.topPriority === "string" ? report.executiveSummary.topPriority : JSON.stringify(report.executiveSummary.topPriority)}`, margin, y);
+  }
+  if (report.executiveSummary.topProblems?.length) {
+    y = line(doc, "Top problems:", margin, y);
+    for (const p of report.executiveSummary.topProblems.slice(0, 6)) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `• ${p}`, margin + 2, y);
+    }
+  }
+  y += 2;
+
+  // —— Pillar scores ——
+  if (report.pillarScores && Object.keys(report.pillarScores).length) {
+    y = sectionTitle(doc, "2. Diagnostic Pillar Scores", y, margin);
     autoTable(doc, {
       startY: y,
-      head: [["Metric", "Value"]],
-      body: Object.entries(report.sales).map(([k, v]) => [k, v == null ? "—" : String(typeof v === "number" ? v.toFixed(2) : v)]),
+      head: [["Pillar", "Score / 100"]],
+      body: Object.entries(report.pillarScores).map(([k, v]) => [k, String(v)]),
       margin: { left: margin, right: margin },
       styles: { fontSize: 9 },
+      headStyles: { fillColor: [30, 107, 255] },
     });
     y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
   }
 
-  if (y > 250) { doc.addPage(); y = 16; }
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("3. Prioritized Findings", margin, y);
-  y += 4;
-  autoTable(doc, {
-    startY: y,
-    head: [["Pillar", "Problem", "Impact", "Evidence", "Action"]],
-    body: (report.findings ?? []).slice(0, 12).map((f) => [f.pillar, f.problem, f.impact, f.evidence, f.recommendedAction]),
-    margin: { left: margin, right: margin },
-    styles: { fontSize: 8, cellWidth: "wrap" },
-    columnStyles: { 1: { cellWidth: 40 }, 4: { cellWidth: 55 } },
-  });
-  y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
-
-  if (report.benchmarks?.rows?.length) {
-    if (y > 240) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text(`4. Benchmarking (${report.benchmarks.industry})`, margin, y);
-    y += 4;
+  // —— Findings ——
+  if (report.findings?.length) {
+    y = sectionTitle(doc, "3. Findings & Recommended Actions", y, margin);
     autoTable(doc, {
       startY: y,
-      head: [["Metric", "Actual", "Benchmark", "Gap", "Source"]],
-      body: report.benchmarks.rows.map((r) => [
-        r.metric,
-        r.actual == null ? "—" : String(r.actual.toFixed?.(2) ?? r.actual),
-        `${r.benchmark} ${r.unit}`,
-        r.gap == null ? "—" : r.gap.toFixed(2),
-        r.source,
+      head: [["Pillar", "Problem", "Impact", "Evidence", "Action"]],
+      body: report.findings.map((f) => [
+        f.pillar,
+        f.problem,
+        f.impact,
+        f.evidence,
+        f.recommendedAction,
       ]),
       margin: { left: margin, right: margin },
       styles: { fontSize: 8 },
+      headStyles: { fillColor: [30, 107, 255] },
     });
     y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
   }
 
+  // —— Strategy ——
+  y = sectionTitle(doc, "4. Strategy", y, margin);
+  if (report.strategy?.summary) {
+    y = line(doc, report.strategy.summary, margin, y);
+  } else {
+    y = line(
+      doc,
+      `Prioritize closing gaps on the weakest pillars while protecting strengths. Convert each priority into SMART goals with owners and deadlines. Align spend and capacity to the company objective${report.profile?.objective ? `: “${report.profile.objective}”` : ""}.`,
+      margin,
+      y,
+    );
+  }
+  if (report.strategy?.initiatives?.length) {
+    y = line(doc, "Strategic initiatives:", margin, y);
+    for (const s of report.strategy.initiatives) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `• ${s}`, margin + 2, y);
+    }
+  }
+  if (report.strategy?.portfolioMoves?.length) {
+    y = line(doc, "Portfolio moves:", margin, y);
+    for (const s of report.strategy.portfolioMoves) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `• ${s}`, margin + 2, y);
+    }
+  }
+  if (report.strategy?.platformStrategies?.length) {
+    y = ensureSpace(doc, y, 30);
+    autoTable(doc, {
+      startY: y,
+      head: [["Platform", "Strategy"]],
+      body: report.strategy.platformStrategies.map((p) => [p.platform, p.strategy]),
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [30, 107, 255] },
+    });
+    y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+  }
+  y += 2;
+
+  // —— SMART goals ——
+  y = sectionTitle(doc, "5. SMART Goals", y, margin);
   if (report.smartGoals?.length) {
-    if (y > 240) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("5. SMART Goals", margin, y);
-    y += 4;
     autoTable(doc, {
       startY: y,
-      head: [["Level", "Goal", "Owner", "Deadline", "KPI", "SMART"]],
+      head: [["Goal", "Level", "Owner", "Baseline", "Target", "Deadline", "Status"]],
       body: report.smartGoals.map((g) => [
-        g.goalType ?? "",
         g.title,
-        g.owner ?? "",
-        g.deadline ?? "",
-        g.kpi ?? "",
-        g.smartValidation ? `${g.smartValidation.score}/100` : "—",
+        g.level || g.goalType || "—",
+        g.owner || "—",
+        g.baseline != null ? `${g.baseline}${g.unit ? ` ${g.unit}` : ""}` : "—",
+        g.target != null ? `${g.target}${g.unit ? ` ${g.unit}` : ""}` : g.kpi || "—",
+        g.deadline || "—",
+        g.status || "—",
       ]),
       margin: { left: margin, right: margin },
       styles: { fontSize: 8 },
+      headStyles: { fillColor: [30, 107, 255] },
+    });
+    y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+  } else {
+    y = line(doc, "No SMART goals captured in this session. Create strategic, tactical and operational goals in the Strategy planner.", margin, y);
+    y += 2;
+  }
+
+  // —— Execution roadmap ——
+  y = sectionTitle(doc, "6. Execution Roadmap", y, margin);
+  const phases: Array<[string, string[]]> = [
+    ["Next 7 days", roadmapItems(report.roadmap?.days7)],
+    ["30 days", roadmapItems(report.roadmap?.days30)],
+    ["90 days", roadmapItems(report.roadmap?.days90)],
+    ["4–6 months", roadmapItems(report.roadmap?.months4to6)],
+    ["7–12 months", roadmapItems(report.roadmap?.months7to12)],
+  ];
+  const hasRoadmap = phases.some(([, items]) => items.length > 0);
+  if (hasRoadmap) {
+    for (const [label, items] of phases) {
+      if (!items.length) continue;
+      y = ensureSpace(doc, y, 20);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      y = line(doc, label, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      for (const item of items) {
+        y = ensureSpace(doc, y);
+        y = line(doc, `• ${item}`, margin + 2, y);
+      }
+      y += 2;
+    }
+  } else {
+    // Default execution roadmap derived from profile when engine did not return phases
+    const defaults: Array<[string, string[]]> = [
+      [
+        "Next 7 days",
+        [
+          "Confirm diagnostic evidence and assign an executive sponsor",
+          "Baseline KPIs for conversion, cycle time and acquisition cost",
+          "Schedule a 30-day strategy review",
+        ],
+      ],
+      [
+        "30 days",
+        [
+          "Launch quick wins on the priority pillar",
+          "Publish SMART goals with owners and deadlines",
+          "Stand up weekly execution standup (30 minutes)",
+        ],
+      ],
+      [
+        "90 days",
+        [
+          "Complete core process or funnel improvements",
+          "Re-measure pillar scores and health",
+          "Reallocate budget toward highest-ROI channels",
+        ],
+      ],
+      [
+        "4–12 months",
+        [
+          "Scale proven initiatives",
+          "Institutionalize review cadence (monthly / quarterly)",
+          "Update competitive scorecard with dated sources",
+        ],
+      ],
+    ];
+    for (const [label, items] of defaults) {
+      y = ensureSpace(doc, y, 20);
+      doc.setFont("helvetica", "bold");
+      doc.setFontSize(10);
+      y = line(doc, label, margin, y);
+      doc.setFont("helvetica", "normal");
+      doc.setFontSize(9);
+      for (const item of items) {
+        y = ensureSpace(doc, y);
+        y = line(doc, `• ${item}`, margin + 2, y);
+      }
+      y += 2;
+    }
+  }
+
+  // —— Execution accountability ——
+  y = sectionTitle(doc, "7. Execution & Accountability", y, margin);
+  y = line(doc, `Review cadence: ${report.execution?.cadence || "Weekly operational review; monthly strategy check; quarterly re-diagnostic."}`, margin, y);
+  if (report.execution?.accountability?.length) {
+    autoTable(doc, {
+      startY: y + 2,
+      head: [["Goal", "Owner", "Deadline", "Status"]],
+      body: report.execution.accountability.map((a) => [a.goal, a.owner, a.deadline, a.status]),
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [30, 107, 255] },
+    });
+    y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+  } else if (report.smartGoals?.length) {
+    autoTable(doc, {
+      startY: y + 2,
+      head: [["Goal", "Owner", "Deadline", "Status"]],
+      body: report.smartGoals.map((g) => [g.title, g.owner || "—", g.deadline || "—", g.status || "Not Started"]),
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [30, 107, 255] },
     });
     y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
   }
 
+  if (report.execution?.nextWeek?.length) {
+    y = line(doc, "This week:", margin, y);
+    for (const x of report.execution.nextWeek) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `• ${x}`, margin + 2, y);
+    }
+  }
+  if (report.execution?.nextQuarter?.length) {
+    y = line(doc, "This quarter:", margin, y);
+    for (const x of report.execution.nextQuarter) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `• ${x}`, margin + 2, y);
+    }
+  }
+
+  // —— KPIs ——
   if (report.kpis?.length) {
-    if (y > 240) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("6. KPI Framework", margin, y);
-    y += 4;
+    y = sectionTitle(doc, "8. KPIs", y, margin);
     autoTable(doc, {
       startY: y,
       head: [["KPI", "Baseline", "Target", "Owner"]],
       body: report.kpis.map((k) => [k.name, k.baseline == null ? "—" : String(k.baseline), String(k.target), k.owner]),
       margin: { left: margin, right: margin },
-      styles: { fontSize: 9 },
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [30, 107, 255] },
     });
     y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
   }
 
-  if (report.roadmap) {
-    doc.addPage();
-    y = 16;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("7. Execution Roadmap", margin, y);
-    y += 6;
-    const sections: Array<[string, any[]]> = [
-      ["First 7 days", report.roadmap.days7],
-      ["First 30 days", report.roadmap.days30],
-      ["Days 31–90", report.roadmap.days90],
-      ["Months 4–6", report.roadmap.months4to6],
-      ["Months 7–12", report.roadmap.months7to12],
-    ];
-    for (const [label, items] of sections) {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text(label, margin, y);
-      y += 4;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      for (const item of items ?? []) {
-        y = line(doc, `• ${item.action} | Owner: ${item.owner ?? "TBD"} | KPI: ${item.kpi ?? "TBD"}`, margin, y);
-        if (y > 275) { doc.addPage(); y = 16; }
-      }
-      y += 3;
-    }
-  }
-
-  if (report.swot) {
-    doc.addPage();
-    y = 16;
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("8. SWOT (Evidence-linked)", margin, y);
-    y += 6;
-    for (const [label, items] of [
-      ["Strengths", report.swot.strengths],
-      ["Weaknesses", report.swot.weaknesses],
-      ["Opportunities", report.swot.opportunities],
-      ["Threats", report.swot.threats],
-    ] as const) {
-      doc.setFont("helvetica", "bold");
-      doc.setFontSize(11);
-      doc.text(label, margin, y);
-      y += 5;
-      doc.setFont("helvetica", "normal");
-      doc.setFontSize(9);
-      for (const item of items ?? []) {
-        y = line(doc, `• ${item.item} [${item.evidence}] → ${item.action}`, margin, y);
-        if (y > 275) { doc.addPage(); y = 16; }
-      }
-      y += 3;
-    }
-  }
-
+  // —— Competitors ——
   if (report.competitors?.length) {
-    if (y > 240) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("9. Competitors", margin, y);
-    y += 4;
+    y = sectionTitle(doc, "9. Competitors", y, margin);
     autoTable(doc, {
       startY: y,
-      head: [["Name", "Positioning", "Strengths", "Weaknesses"]],
-      body: report.competitors.map((c) => [c.name, c.positioning ?? "—", c.strengths ?? "—", c.weaknesses ?? "—"]),
+      head: [["Name", "Website", "Positioning", "Strengths", "Weaknesses"]],
+      body: report.competitors.map((c) => [
+        c.name,
+        c.website || "—",
+        c.positioning || "—",
+        c.strengths || "—",
+        c.weaknesses || "—",
+      ]),
       margin: { left: margin, right: margin },
-      styles: { fontSize: 8 },
-    });
-  }
-
-  doc.addPage();
-  y = 16;
-  
-  if ((report as any).socialInsights?.length || report.socialAds?.platforms?.length) {
-    if (y > 240) { doc.addPage(); y = 16; }
-    doc.setFont("helvetica", "bold");
-    doc.setFontSize(13);
-    doc.text("Paid social platforms (separate diagnosis)", margin, y);
-    y += 4;
-    const rows = (report as any).socialInsights?.map((s: any) => [
-      s.label,
-      String(s.healthScore ?? "—"),
-      s.metrics?.roas != null ? String(s.metrics.roas) : "—",
-      s.metrics?.cpl != null ? String(Number(s.metrics.cpl).toFixed(2)) : "—",
-      (s.recommendations?.[0] ?? s.strategy ?? "—").slice(0, 80),
-    ]) ?? (report.socialAds?.platforms ?? []).map((p: any) => [p.label || p.id, p.enabled ? "Active" : "Off", p.roas ?? "—", p.monthlySpend ?? "—", ""]);
-    autoTable(doc, {
-      startY: y,
-      head: [["Platform", "Health / Status", "ROAS", "CPL / Spend", "Recommendation"]],
-      body: rows,
-      margin: { left: margin, right: margin },
-      styles: { fontSize: 8 },
+      styles: { fontSize: 7 },
+      headStyles: { fillColor: [30, 107, 255] },
     });
     y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
   }
 
-  doc.setFont("helvetica", "bold");
-  doc.setFontSize(13);
-  doc.text("10. Evidence Policy & Next Steps", margin, y);
-  y += 6;
-  doc.setFont("helvetica", "normal");
-  doc.setFontSize(10);
-  y = line(doc, report.meta.evidencePolicy, margin, y);
-  y = line(doc, "Next: assign owners to SMART goals, establish KPI baselines this week, and schedule a 30-day review.", margin, y);
-  y = line(doc, "CINTEXA Nexus treats this as a living plan: diagnose → prioritize → execute → measure → adapt.", margin, y);
+  // —— Social ——
+  if (report.socialInsights?.length) {
+    y = sectionTitle(doc, "10. Paid Social Platforms", y, margin);
+    autoTable(doc, {
+      startY: y,
+      head: [["Platform", "Health", "ROAS", "CPL", "Strategy"]],
+      body: report.socialInsights.map((s) => [
+        s.label,
+        s.healthScore != null ? String(s.healthScore) : "—",
+        s.metrics?.roas != null ? String(s.metrics.roas) : "—",
+        s.metrics?.cpl != null ? String(s.metrics.cpl) : "—",
+        (s.strategy || s.recommendations?.[0] || "—").slice(0, 80),
+      ]),
+      margin: { left: margin, right: margin },
+      styles: { fontSize: 8 },
+      headStyles: { fillColor: [30, 107, 255] },
+    });
+    y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
+  }
 
-  const filename = `CINTEXA-Diagnostic-${report.meta.companyName.replace(/[^a-z0-9]+/gi, "-")}-${new Date().toISOString().slice(0, 10)}.pdf`;
+  // —— Implementation ——
+  y = sectionTitle(doc, "11. Implementation Guide", y, margin);
+  const guide =
+    report.implementationGuide?.length
+      ? report.implementationGuide
+      : [
+          "Confirm evidence — treat UNKNOWN and USER PROVIDED items as hypotheses until sourced.",
+          "Protect the strongest pillar while funding the priority pillar.",
+          "Translate findings into SMART goals with owners, baselines, targets and deadlines.",
+          "Execute the 7 / 30 / 90 day roadmap; scale what works over 4–12 months.",
+          "Instrument KPIs weekly; re-run the diagnostic quarterly.",
+          "Success rule: no initiative without owner + metric + review date; no external claim without source + date.",
+        ];
+  for (const step of guide) {
+    y = ensureSpace(doc, y);
+    y = line(doc, `• ${step}`, margin, y);
+  }
+  y += 4;
+  y = ensureSpace(doc, y, 20);
+  doc.setFont("helvetica", "italic");
+  doc.setFontSize(9);
+  doc.setTextColor(90, 90, 90);
+  y = line(doc, "This PDF is a standalone strategic document. It does not include application navigation or interface chrome.", margin, y);
+  y = line(doc, "CINTEXA Nexus — diagnose → prioritize → execute → measure → adapt.", margin, y);
+
+  const safeName = company.replace(/[^a-z0-9]+/gi, "-").replace(/^-|-$/g, "") || "Company";
+  const filename = `CINTEXA-${safeName}-Diagnostic-Strategy-Execution-${new Date().toISOString().slice(0, 10)}.pdf`;
   doc.save(filename);
   return filename;
 }

@@ -194,7 +194,7 @@ export default function BusinessDiagnostic() {
     setGoals(prev => [...prev, goal]);
   }
 
-  function printReport() { window.print(); }
+  function printReport() { void downloadDetailedPdf(); }
 
   useEffect(() => {
     try {
@@ -205,26 +205,148 @@ export default function BusinessDiagnostic() {
 
   const downloadDetailedPdf = async () => {
     setReportBusy(true);
+    const companyName = company.name?.trim() || "Company";
     try {
-      const report = await diagnosticApi.fullReport({
-        companyName: company.name || "Company",
-        industry: company.industry,
-        metrics: {
-          monthlyLeads: metrics.find(m => m.id === "monthlyLeads")?.value,
-          monthlyQualifiedLeads: metrics.find(m => m.id === "qualifiedLeads")?.value,
-          monthlyCustomers: metrics.find(m => m.id === "customers")?.value,
-          avgTransactionValue: metrics.find(m => m.id === "aov")?.value,
-          customerAcquisitionCost: metrics.find(m => m.id === "cac")?.value,
-          salesCycleDays: metrics.find(m => m.id === "salesCycle")?.value,
+      let report: Record<string, unknown> = {};
+      try {
+        report = await diagnosticApi.fullReport({
+          companyName,
+          industry: company.industry,
+          metrics: {
+            monthlyLeads: metrics.find(m => m.id === "monthlyLeads")?.value,
+            monthlyQualifiedLeads: metrics.find(m => m.id === "qualifiedLeads")?.value,
+            monthlyCustomers: metrics.find(m => m.id === "customers")?.value,
+            avgTransactionValue: metrics.find(m => m.id === "aov")?.value,
+            customerAcquisitionCost: metrics.find(m => m.id === "cac")?.value,
+            salesCycleDays: metrics.find(m => m.id === "salesCycle")?.value,
+          },
+          pillarScores: scores,
+          competitors: competitors.map(c => ({
+            name: c.name,
+            website: c.website,
+            positioning: c.positioning,
+            strengths: Array.isArray(c.strengths) ? c.strengths.join(", ") : "",
+            weaknesses: Array.isArray(c.weaknesses) ? c.weaknesses.join(", ") : "",
+          })),
+          socialPlatforms,
+        }) as Record<string, unknown>;
+      } catch {
+        report = {};
+      }
+
+      const smartGoals = goals.map(g => ({
+        title: g.title,
+        level: g.level,
+        owner: g.owner,
+        baseline: g.baseline,
+        target: g.target,
+        unit: g.unit,
+        deadline: g.deadline,
+        status: g.status,
+        kpi: g.target != null ? `${g.target}${g.unit ? ` ${g.unit}` : ""}` : undefined,
+      }));
+
+      const enriched = {
+        meta: {
+          title: `${companyName} — Business Diagnostic, Strategy & Execution Report`,
+          companyName,
+          industry: company.industry || "Not specified",
+          generatedAt: new Date().toISOString(),
+          evidencePolicy:
+            (report as any)?.meta?.evidencePolicy ||
+            "Facts, calculations, benchmarks and inferences are labeled. Missing external facts remain UNKNOWN.",
         },
+        profile: {
+          website: company.website,
+          subIndustry: company.subIndustry,
+          model: company.model,
+          market: company.market,
+          employees: company.employees,
+          revenue: company.revenue,
+          objective: company.objective,
+        },
+        executiveSummary: (report as any)?.executiveSummary || {
+          overallScore: health,
+          condition: severity,
+          topProblems: starterProblems.map(p => p.title),
+          topPriority: weakest.label,
+          biggestOpportunity: `Close gaps on ${weakest.label} while protecting ${strongest.label}`,
+        },
+        findings: (report as any)?.findings,
+        benchmarks: (report as any)?.benchmarks,
+        smartGoals: (report as any)?.smartGoals?.length ? (report as any).smartGoals : smartGoals,
+        roadmap: (report as any)?.roadmap || {
+          days7: [
+            { item: "Confirm evidence and owners", action: "Assign executive sponsor", evidence: "USER PROVIDED" },
+            { item: "Baseline KPIs", action: "Conversion, cycle time, CAC", evidence: "CALCULATED" },
+          ],
+          days30: [
+            { item: "Quick wins on priority pillar", action: `Focus: ${weakest.label}`, evidence: "INFERRED" },
+            { item: "Publish SMART goals", action: "Owner + deadline for each", evidence: "USER PROVIDED" },
+          ],
+          days90: [
+            { item: "Core process improvements", action: "Re-measure health score", evidence: "CALCULATED" },
+            { item: "Reallocate budget", action: "Toward highest-ROI channels", evidence: "INFERRED" },
+          ],
+          months4to6: [{ item: "Scale proven initiatives", action: "Institutionalize reviews", evidence: "INFERRED" }],
+          months7to12: [{ item: "Quarterly re-diagnostic", action: "Update competitor scorecard with sources", evidence: "INFERRED" }],
+        },
+        strategy: {
+          summary: `For ${companyName} in ${company.industry || "its market"}, prioritize ${weakest.label} while protecting ${strongest.label}. Objective: ${company.objective || "improve measurable business outcomes"}.`,
+          initiatives: [
+            `Strengthen ${weakest.label} with owned KPIs and weekly review`,
+            `Defend advantage in ${strongest.label}`,
+            company.objective ? `Align all projects to: ${company.objective}` : "Limit work-in-progress to three company priorities",
+          ],
+          portfolioMoves: socialAnalysis.portfolioRecommendations,
+          platformStrategies: socialAnalysis.insights.map(s => ({ platform: s.label, strategy: s.strategy })),
+        },
+        execution: {
+          cadence: "Weekly operational review · Monthly strategy check · Quarterly re-diagnostic",
+          accountability: smartGoals.map(g => ({
+            goal: g.title,
+            owner: g.owner || "Unassigned",
+            deadline: g.deadline || "TBD",
+            status: g.status || "Not Started",
+          })),
+          nextWeek: [
+            "Validate top findings with internal data",
+            "Assign owners to each SMART goal",
+            "Ship one experiment on the priority pillar",
+          ],
+          nextQuarter: [
+            "Complete 90-day roadmap items",
+            "Publish before/after KPI dashboard",
+            "Refresh competitor websites and sources",
+          ],
+        },
+        kpis: (report as any)?.kpis,
+        swot: (report as any)?.swot,
+        competitors: competitors.map(c => ({
+          name: c.name,
+          website: c.website,
+          positioning: c.positioning,
+          strengths: Array.isArray(c.strengths) ? c.strengths.join(", ") : "",
+          weaknesses: Array.isArray(c.weaknesses) ? c.weaknesses.join(", ") : "",
+        })),
+        socialInsights: socialAnalysis.insights,
+        sales: (report as any)?.sales || sales,
         pillarScores: scores,
-        competitors: competitors.map(c => ({ name: c.name, positioning: c.positioning, strengths: Array.isArray(c.strengths) ? c.strengths.join(", ") : "", weaknesses: Array.isArray(c.weaknesses) ? c.weaknesses.join(", ") : "" })),
-      });
-      downloadDiagnosticPdf(report as any);
-      await logTaskLocal("pdf_export", "Downloaded detailed diagnostic PDF", company.name || "Company");
+        implementationGuide: [
+          "Confirm evidence — UNKNOWN and USER PROVIDED stay hypotheses until sourced.",
+          `Protect ${strongest.label}; fund ${weakest.label}.`,
+          "Every initiative needs owner + metric + review date.",
+          "Execute 7 / 30 / 90 day roadmap; scale over 4–12 months.",
+          "Instrument KPIs weekly; re-run diagnostic quarterly.",
+        ],
+      };
+
+      downloadDiagnosticPdf(enriched as any);
+      await logTaskLocal("pdf_export", `Downloaded strategy & execution PDF for ${companyName}`, companyName);
     } catch (err) {
       console.error(err);
-      window.print();
+      // Never fall back to printing the app chrome; surface failure instead
+      alert("PDF generation failed. Check the console for details.");
     } finally {
       setReportBusy(false);
     }
@@ -413,7 +535,7 @@ export default function BusinessDiagnostic() {
 
   if (stage === "results") return (
     <div className="space-y-7 pb-12 print:pb-0">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={downloadDetailedPdf} disabled={reportBusy}><Download className="w-4 h-4 mr-2"/> {reportBusy ? "Building PDF…" : "Download detailed PDF"}</Button><Button variant="outline" onClick={printReport}>Print</Button></div></div>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={downloadDetailedPdf} disabled={reportBusy}><Download className="w-4 h-4 mr-2"/> {reportBusy ? "Building PDF…" : "Download strategy & execution PDF"}</Button><Button variant="outline" onClick={printReport}>Print</Button></div></div>
       <div className="grid lg:grid-cols-[auto_1fr] gap-5"><Card><CardContent className="p-8 flex flex-col items-center justify-center min-w-[180px]"><ScoreRing score={health} label="Business Health" size="lg"/><Badge className="mt-8">{severity}</Badge></CardContent></Card><Card><CardHeader><CardTitle>Executive readout</CardTitle><CardDescription>What CINTEXA would put in front of leadership first.</CardDescription></CardHeader><CardContent className="grid sm:grid-cols-2 gap-4"><Readout title="Strongest pillar" value={`${strongest.label} — ${scores[strongest.id]}/100`} icon={TrendingUp} tone="good" /><Readout title="Priority pillar" value={`${weakest.label} — ${scores[weakest.id]}/100`} icon={AlertTriangle} tone="risk" /><Readout title="Biggest revenue leak" value="Sales funnel conversion requires validation" icon={BarChart3} tone="risk" /><Readout title="Evidence gap" value="Competitor benchmarks need dated sources" icon={ShieldAlert} tone="neutral" /></CardContent></Card></div>
       <Card><Card className="overflow-hidden"><CardHeader><CardTitle>Diagnostic pillar scorecard</CardTitle><CardDescription>Colour and motion encode health vs industry benchmark band.</CardDescription></CardHeader><CardContent>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
