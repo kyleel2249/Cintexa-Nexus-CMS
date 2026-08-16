@@ -1,5 +1,4 @@
 import { useMemo, useState, useEffect } from "react";
-import { createId } from "@/lib/id";
 import { Link } from "wouter";
 import { motion } from "framer-motion";
 import {
@@ -27,6 +26,16 @@ import {
 } from "@/lib/business-diagnostic";
 import { diagnosticApi } from "@/lib/diagnostic-api";
 import { downloadDiagnosticPdf } from "@/lib/diagnostic-report-pdf";
+import {
+  downloadIntakeHtmlForm,
+  downloadIntakeJsonTemplate,
+  downloadIntakeCsvTemplate,
+  parseIntakeFormText,
+  intakeToCompany,
+  intakeMetricPatches,
+  intakeCompetitors,
+} from "@/lib/diagnostic-intake-form";
+import { createId } from "@/lib/id";
 
 const modes: { id: DiagnosticMode; label: string; minutes: string; description: string }[] = [
   { id: "quick", label: "Quick Scan", minutes: "10–15 min", description: "Rapid health and priority scan" },
@@ -385,6 +394,65 @@ export default function BusinessDiagnostic() {
   };
 
 
+
+  function applyIntakePayload(payload: ReturnType<typeof parseIntakeFormText>) {
+    const profile = intakeToCompany(payload);
+    setCompany(prev => ({
+      ...prev,
+      name: profile.name || prev.name,
+      website: profile.website || prev.website,
+      industry: profile.industry || prev.industry,
+      subIndustry: profile.subIndustry || prev.subIndustry,
+      model: profile.model || prev.model,
+      market: profile.market || prev.market,
+      employees: profile.employees || prev.employees,
+      revenue: profile.revenue || prev.revenue,
+      objective: profile.objective || prev.objective,
+    }));
+    const patches = intakeMetricPatches(payload);
+    setMetrics(prev => prev.map(m => {
+      const v = patches[m.id];
+      return v !== undefined && v !== null ? { ...m, value: v } : m;
+    }));
+    const comps = intakeCompetitors(payload);
+    if (comps.length) {
+      setCompetitors(comps.map(c => ({
+        id: createId(),
+        name: c.name,
+        website: c.website,
+        positioning: "From intake form",
+        score: 0,
+        pricing: "Unknown",
+        strengths: [],
+        weaknesses: [],
+      })));
+    }
+    void logTaskLocal("intake_upload", "Autofilled profile from uploaded intake form", payload.companyName || "form");
+  }
+
+  async function handleIntakeFormUpload(fileList: FileList | null) {
+    if (!fileList?.length) return;
+    setDocBusy(true);
+    try {
+      const file = fileList[0];
+      const raw = await file.text();
+      const payload = parseIntakeFormText(raw, file.name);
+      const hasAny = Object.values(payload).some(v => v !== "" && v != null);
+      if (!hasAny) {
+        alert("Could not read fields from this file. Use the CINTEXA intake JSON, CSV, or HTML export.");
+        return;
+      }
+      applyIntakePayload(payload);
+      setUploadedDocs(prev => [...prev, { name: file.name, size: file.size, mimeType: file.type || "text/plain", text: raw.slice(0, 2000) }]);
+      alert("Intake form applied — company profile and metrics autofilled.");
+    } catch (err) {
+      console.error(err);
+      alert("Failed to parse intake form.");
+    } finally {
+      setDocBusy(false);
+    }
+  }
+
   function applyAutofill() {
     const inferred = inferProfileFromIdentity(company.name || "", company.website || "");
     const demo = autofillDemoProfile(inferred.industry || company.industry || "SaaS B2B");
@@ -504,6 +572,28 @@ export default function BusinessDiagnostic() {
         <Button type="button" variant="secondary" onClick={applyAutofill}>Autofill demo profile</Button>
         <Button type="button" disabled={aiBusy} onClick={() => void runAiEmployees()}>{aiBusy ? "AI working…" : "Run AI employees"}</Button>
       </div>
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="text-base">Fillable intake form</CardTitle>
+          <CardDescription>
+            Download a fillable form, complete it offline, then upload the filled file to autofill company profile, metrics and competitors.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button type="button" variant="outline" onClick={downloadIntakeHtmlForm}>Download HTML form</Button>
+          <Button type="button" variant="outline" onClick={downloadIntakeJsonTemplate}>Download JSON template</Button>
+          <Button type="button" variant="outline" onClick={downloadIntakeCsvTemplate}>Download CSV template</Button>
+          <label className="inline-flex items-center gap-2 text-sm border rounded-md px-3 h-10 cursor-pointer hover:bg-muted bg-background">
+            <input
+              type="file"
+              accept=".json,.csv,.txt,.html,.htm,application/json,text/csv,text/html,text/plain"
+              className="hidden"
+              onChange={e => void handleIntakeFormUpload(e.target.files)}
+            />
+            {docBusy ? "Reading form…" : "Upload filled form (autofill)"}
+          </label>
+        </CardContent>
+      </Card>
       <SectionTitle icon={Network} title="Company intelligence profile" description="Start with the operating context. Missing data stays missing instead of becoming an invented assumption." />
       <Card><CardContent className="p-6"><div className="grid md:grid-cols-2 gap-5">
         <div>
