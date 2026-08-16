@@ -84,6 +84,16 @@ export type DiagnosticPdfReport = {
   sales?: Record<string, number | null>;
   pillarScores?: Record<string, number>;
   implementationGuide?: string[];
+  liveWebResearch?: {
+    pageTitle?: string | null;
+    metaDescription?: string | null;
+    aboutSnippet?: string | null;
+    keywords?: string[];
+    strategyHints?: string[];
+    companyInsights?: Array<{ claim: string; evidence: string; source?: string | null }>;
+    companyWebsite?: string | null;
+    researchedAt?: string;
+  } | null;
 };
 
 function ensureSpace(doc: jsPDF, y: number, need = 24) {
@@ -468,8 +478,35 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
     y = ((doc as any).lastAutoTable?.finalY ?? y) + 8;
   }
 
+  // —— Live web research ——
+  if (report.liveWebResearch) {
+    y = sectionTitle(doc, "11. Live Web Research", y, margin);
+    const wr = report.liveWebResearch;
+    if (wr.companyWebsite) y = line(doc, `Source website: ${wr.companyWebsite}`, margin, y);
+    if (wr.researchedAt) y = line(doc, `Researched at: ${new Date(wr.researchedAt).toLocaleString()}`, margin, y);
+    if (wr.pageTitle) y = line(doc, `Page title: ${wr.pageTitle}`, margin, y);
+    if (wr.metaDescription) y = line(doc, `Public positioning: ${wr.metaDescription}`, margin, y);
+    if (wr.aboutSnippet) y = line(doc, `Snippet: ${wr.aboutSnippet}`, margin, y);
+    if (wr.keywords?.length) y = line(doc, `Signals: ${wr.keywords.join(", ")}`, margin, y);
+    if (wr.strategyHints?.length) {
+      y = line(doc, "Strategy hints from public web:", margin, y);
+      for (const h of wr.strategyHints.slice(0, 8)) {
+        y = ensureSpace(doc, y);
+        y = line(doc, `• ${h}`, margin + 2, y);
+      }
+    }
+    if (wr.companyInsights?.length) {
+      y = line(doc, "Research claims:", margin, y);
+      for (const c of wr.companyInsights.slice(0, 10)) {
+        y = ensureSpace(doc, y);
+        y = line(doc, `• [${c.evidence}] ${c.claim}${c.source ? ` (${c.source})` : ""}`, margin + 2, y);
+      }
+    }
+    y += 2;
+  }
+
   // —— Implementation ——
-  y = sectionTitle(doc, "11. Implementation Guide", y, margin);
+  y = sectionTitle(doc, "12. Implementation Guide", y, margin);
   const guide =
     report.implementationGuide?.length
       ? report.implementationGuide

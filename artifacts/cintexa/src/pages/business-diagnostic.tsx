@@ -122,6 +122,7 @@ export default function BusinessDiagnostic() {
   const [contentPack, setContentPack] = useState<ContentPackItem[]>([]);
   const [pillarBenchmarks, setPillarBenchmarks] = useState<Record<string, number>>({ ...INDUSTRY_BENCHMARKS.default });
   const [aiBusy, setAiBusy] = useState(false);
+  const [webResearch, setWebResearch] = useState<Record<string, unknown> | null>(null);
 
   const questions = useMemo(() => buildAdaptiveQuestions(answers), [answers]);
   const currentQuestion = questions[questionIndex];
@@ -508,7 +509,6 @@ export default function BusinessDiagnostic() {
       alert("Enter company name and/or website in the Company intelligence profile so AI employees can research the right entity.");
       return;
     }
-    // Auto-fill missing industry / market / objective from name + website
     const inferred = inferProfileFromIdentity(companyName, companyWebsite);
     const nextCompany = {
       ...company,
@@ -518,58 +518,112 @@ export default function BusinessDiagnostic() {
       objective: company.objective || inferred.objective || company.objective,
     };
     setCompany(nextCompany);
-
     setAiBusy(true);
     const niche = nextCompany.industry || inferred.industry || "general";
     setAiEmployees(prev => prev.map(e => ({ ...e, status: "working" as const, lastAction: "Working…" })));
-    await new Promise(r => setTimeout(r, 500));
-    setAiEmployees(prev => prev.map(e => e.id === "scout" ? {
-      ...e,
-      status: "done" as const,
-      lastAction: `Researched ${companyName || "company"}${companyWebsite ? ` (${companyWebsite})` : ""} · niche: ${niche}`,
-    } : e));
+
+    // Live internet research from name + website
+    let research: Record<string, unknown> | null = null;
+    try {
+      research = await diagnosticApi.research({
+        companyName: companyName || "Company",
+        companyWebsite: companyWebsite || undefined,
+        industry: niche,
+        competitors: competitors.map(c => ({ name: c.name, website: c.website || "" })),
+      }) as Record<string, unknown>;
+      setWebResearch(research);
+      setResearchNotes(JSON.stringify(research, null, 2));
+      const keywords = Array.isArray(research.keywords) ? (research.keywords as string[]) : [];
+      if (keywords.length && !nextCompany.industry) {
+        // soft-fill industry from keyword signals when empty
+        const joined = keywords.join(" ");
+        const again = inferProfileFromIdentity(companyName, `${companyWebsite} ${joined}`);
+        if (again.industry) {
+          setCompany(prev => ({
+            ...prev,
+            industry: prev.industry || again.industry || prev.industry,
+            subIndustry: prev.subIndustry || again.subIndustry || prev.subIndustry,
+          }));
+        }
+      }
+      setAiEmployees(prev => prev.map(e => e.id === "scout" ? {
+        ...e,
+        status: "done" as const,
+        lastAction: research?.fetchError
+          ? `Fetch issue: ${String(research.fetchError)}`
+          : `Live research: ${companyName || "company"}${companyWebsite ? ` · ${companyWebsite}` : ""} · ${String(research.pageTitle || niche)}`,
+      } : e));
+    } catch (err: any) {
+      setAiEmployees(prev => prev.map(e => e.id === "scout" ? {
+        ...e,
+        status: "done" as const,
+        lastAction: `Research API unavailable — ${err?.message || "using profile only"}`,
+      } : e));
+    }
+
+    await new Promise(r => setTimeout(r, 300));
     const seeds = seedCompetitorsForNiche(niche, companyName || "Company");
-    setCompetitors(seeds.map(s => ({
+    // Prefer competitor websites returned from research when present
+    const researchedComps = Array.isArray(research?.competitorInsights)
+      ? (research!.competitorInsights as any[]).map((c) => ({
+          name: String(c.name || "Competitor"),
+          website: String(c.website || ""),
+          positioning: String(c.metaDescription || c.pageTitle || "Public research"),
+        }))
+      : [];
+    const merged = (researchedComps.length ? researchedComps : seeds).map((s: any) => ({
       id: createId(),
       name: s.name,
-      website: s.website,
-      positioning: s.positioning,
+      website: s.website || "",
+      positioning: s.positioning || "Research-backed competitor",
       score: 0,
       pricing: "Research required",
-      strengths: s.strengths,
-      weaknesses: s.weaknesses,
-    })));
-    setAiEmployees(prev => prev.map(e => e.id === "rival" ? { ...e, status: "done" as const, lastAction: `Added ${seeds.length} competitors with websites` } : e));
-    await new Promise(r => setTimeout(r, 350));
+      strengths: s.strengths || [],
+      weaknesses: s.weaknesses || [],
+    }));
+    setCompetitors(merged);
+    setAiEmployees(prev => prev.map(e => e.id === "rival" ? {
+      ...e,
+      status: "done" as const,
+      lastAction: `Competitors updated (${merged.length}) with public site signals where available`,
+    } : e));
+
+    await new Promise(r => setTimeout(r, 250));
     const key = resolveIndustryKey(niche);
     const band = INDUSTRY_BENCHMARKS[key] || INDUSTRY_BENCHMARKS.default;
     setPillarBenchmarks({ ...band });
     setAiEmployees(prev => prev.map(e => e.id === "benchmark" ? { ...e, status: "done" as const, lastAction: `Loaded ${key} benchmark band` } : e));
+
     const cases = seedCaseStudies(niche, weakest.label);
     setCaseStudies(cases);
     setAiEmployees(prev => prev.map(e => e.id === "case" ? { ...e, status: "done" as const, lastAction: `Matched ${cases.length} case sources` } : e));
+
+    const about = String(research?.aboutSnippet || research?.metaDescription || "");
     const pack = generateDailyContentPack({
       companyName: companyName || "Company",
       industry: niche,
       website: companyWebsite || nextCompany.website,
       weakestPillar: weakest.label,
       strongestPillar: strongest.label,
-      objective: nextCompany.objective,
+      objective: nextCompany.objective || about.slice(0, 80),
       goals: goals.map(g => g.title),
     });
     setContentPack(pack);
-    setAiEmployees(prev => prev.map(e => e.id === "copy" ? { ...e, status: "done" as const, lastAction: `Generated ${pack.length} SEO/ad assets` } : e));
-    try {
-      await diagnosticApi.research({
-        companyName: companyName,
-        companyWebsite: companyWebsite,
-        industry: niche,
-        competitors: seeds.map(s => ({ name: s.name, website: s.website })),
-      });
-    } catch { /* optional */ }
-    void logTaskLocal("ai_employees", "AI employees completed research, benchmarks, cases and content pack", niche);
+    setAiEmployees(prev => prev.map(e => e.id === "copy" ? {
+      ...e,
+      status: "done" as const,
+      lastAction: `Generated ${pack.length} SEO/ad assets using live research`,
+    } : e));
+
+    void logTaskLocal(
+      "ai_employees",
+      "AI employees completed live web research, benchmarks, cases and content pack",
+      `${companyName} ${companyWebsite}`.trim(),
+      { pageTitle: research?.pageTitle, keywords: research?.keywords },
+    );
     setAiBusy(false);
   }
+
 
   if (stage === "overview") return (
     <div className="space-y-7 pb-12">
@@ -860,7 +914,32 @@ export default function BusinessDiagnostic() {
       <Card><CardHeader><CardTitle>Root-cause chain</CardTitle><CardDescription>Symptoms are kept separate from hypotheses.</CardDescription></CardHeader><CardContent><div className="grid md:grid-cols-5 gap-2 items-center">{["Observed Problem", "Evidence", "Possible Causes", "Root Cause", "Intervention"].map((x,i)=><div key={x} className="flex items-center gap-2"><div className="flex-1 border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">STEP {i+1}</div><div className="font-semibold mt-1">{x}</div><div className="text-xs text-muted-foreground mt-2">{i === 0 ? "Sales performance signal" : i === 1 ? "User data + calculations" : i === 2 ? "Qualification / follow-up / offer" : i === 3 ? "Validate with funnel evidence" : "Target the confirmed constraint"}</div></div>{i < 4 && <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0"/>}</div>)}</div></CardContent></Card>
       <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores} benchmarks={pillarBenchmarks}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
       
-      <Card>
+      
+      {webResearch && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Live web research</CardTitle>
+            <CardDescription>Public information pulled from the company website and used in assessment, strategy and the PDF report.</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {webResearch.pageTitle ? <p><span className="font-medium">Page title:</span> {String(webResearch.pageTitle)}</p> : null}
+            {webResearch.metaDescription ? <p><span className="font-medium">Positioning:</span> {String(webResearch.metaDescription)}</p> : null}
+            {webResearch.aboutSnippet ? <p className="text-muted-foreground">{String(webResearch.aboutSnippet)}</p> : null}
+            {Array.isArray(webResearch.keywords) && (webResearch.keywords as string[]).length > 0 && (
+              <p><span className="font-medium">Signals:</span> {(webResearch.keywords as string[]).join(", ")}</p>
+            )}
+            {Array.isArray(webResearch.strategyHints) && (
+              <ul className="list-disc pl-5 space-y-1 text-muted-foreground">
+                {(webResearch.strategyHints as string[]).slice(0, 6).map((h, i) => <li key={i}>{h}</li>)}
+              </ul>
+            )}
+            {webResearch.fetchError ? <p className="text-rose-500 text-xs">Fetch note: {String(webResearch.fetchError)}</p> : null}
+            <p className="text-[11px] text-muted-foreground">Evidence: public page content labeled VERIFIED with source URL and date when retrieved successfully.</p>
+          </CardContent>
+        </Card>
+      )}
+
+<Card>
         <CardHeader>
           <CardTitle>Intelligence report — how to implement successfully</CardTitle>
           <CardDescription>Diagnosis only creates value when it becomes sequenced execution.</CardDescription>
