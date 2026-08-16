@@ -34,6 +34,7 @@ import {
   intakeToCompany,
   intakeMetricPatches,
   intakeCompetitors,
+  intakeSocialPatches,
 } from "@/lib/diagnostic-intake-form";
 import { createId } from "@/lib/id";
 
@@ -414,6 +415,24 @@ export default function BusinessDiagnostic() {
       const v = patches[m.id];
       return v !== undefined && v !== null ? { ...m, value: v } : m;
     }));
+    if (payload.answers && Object.keys(payload.answers).length) {
+      setAnswers(prev => ({ ...prev, ...payload.answers }));
+      // Light pillar score nudge from answered questions
+      setScores(prev => {
+        const next = { ...prev };
+        for (const [qid, val] of Object.entries(payload.answers || {})) {
+          const q = questionBank.find(x => x.id === qid);
+          if (!q) continue;
+          const positive = val === true || val === 5 || val === "Closing" || val === "Lead volume" ? 8 : 0;
+          const neg = val === false ? 5 : 0;
+          next[q.pillar] = Math.min(100, Math.max(0, (next[q.pillar] ?? 50) + positive - neg));
+        }
+        return next;
+      });
+    }
+    if (payload.social) {
+      setSocialPlatforms(prev => intakeSocialPatches(payload, prev));
+    }
     const comps = intakeCompetitors(payload);
     if (comps.length) {
       setCompetitors(comps.map(c => ({
@@ -427,7 +446,7 @@ export default function BusinessDiagnostic() {
         weaknesses: [],
       })));
     }
-    void logTaskLocal("intake_upload", "Autofilled profile from uploaded intake form", payload.companyName || "form");
+    void logTaskLocal("intake_upload", "Autofilled profile, metrics, social & assessment from intake form", payload.companyName || "form");
   }
 
   async function handleIntakeFormUpload(fileList: FileList | null) {
@@ -444,7 +463,7 @@ export default function BusinessDiagnostic() {
       }
       applyIntakePayload(payload);
       setUploadedDocs(prev => [...prev, { name: file.name, size: file.size, mimeType: file.type || "text/plain", text: raw.slice(0, 2000) }]);
-      alert("Intake form applied — company profile and metrics autofilled.");
+      alert("Intake form applied — profile, metrics, paid social platforms and assessment answers autofilled.");
     } catch (err) {
       console.error(err);
       alert("Failed to parse intake form.");
@@ -576,7 +595,7 @@ export default function BusinessDiagnostic() {
         <CardHeader>
           <CardTitle className="text-base">Fillable intake form</CardTitle>
           <CardDescription>
-            Download a fillable form, complete it offline, then upload the filled file to autofill company profile, metrics and competitors.
+            Download a fillable form covering company profile, core metrics, paid social platforms and adaptive assessment. Upload the filled file to autofill everything.
           </CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2">
