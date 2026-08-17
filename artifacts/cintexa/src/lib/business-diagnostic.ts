@@ -256,6 +256,99 @@ export const INDUSTRY_BENCHMARKS: Record<string, Record<string, number>> = {
   fintech: { strategy: 80, sales: 72, marketing: 70, customer: 76, operations: 78, finance: 82, technology: 85, automation: 80, competitive: 74 },
 };
 
+
+/** Map assessment answers to pillar scores (0–100) with transparent deltas. */
+export function derivePillarScoresFromAnswers(
+  answers: Record<string, string | number | boolean>,
+  base: Record<string, number> = Object.fromEntries(pillars.map(p => [p.id, 55])),
+): Record<string, number> {
+  const scores: Record<string, number> = { ...base };
+  const clamp = (n: number) => Math.max(0, Math.min(100, Math.round(n)));
+
+  for (const [qid, raw] of Object.entries(answers)) {
+    const q = questionBank.find(x => x.id === qid) || (qid.includes("follow") || qid.includes("closing") || qid.includes("silos")
+      ? { id: qid, pillar: qid.startsWith("sales") ? "sales" : qid.startsWith("tech") ? "technology" : "strategy", type: "text" as const, text: "" }
+      : null);
+    if (!q) continue;
+    const pillar = q.pillar;
+    let delta = 0;
+    if (typeof raw === "boolean") {
+      delta = raw ? 8 : -10;
+    } else if (typeof raw === "number") {
+      // 1–5 scale → centered on 3
+      delta = (raw - 3) * 6;
+    } else if (typeof raw === "string") {
+      const t = raw.trim();
+      if (!t) delta = -4;
+      else if (t.length < 12) delta = 2;
+      else if (t.length < 40) delta = 5;
+      else delta = 7;
+      // penalize vague “no / none / n/a”
+      if (/^(no|none|n\/a|na|unknown|not sure)\b/i.test(t)) delta = -6;
+    }
+    scores[pillar] = clamp((scores[pillar] ?? 55) + delta);
+  }
+
+  // Soft regularization: unanswered pillars drift toward neutral 50
+  for (const p of pillars) {
+    const answered = questionBank.some(q => q.pillar === p.id && answers[q.id] !== undefined);
+    if (!answered) scores[p.id] = clamp((scores[p.id] ?? 55) * 0.85 + 50 * 0.15);
+  }
+  return scores;
+}
+
+/** Benchmark metadata — values are illustrative bands until admin-sourced series exist. */
+export type BenchmarkSeries = {
+  industryKey: string;
+  asOf: string;
+  source: string;
+  evidence: EvidenceClass;
+  pillars: Record<string, number>;
+};
+
+export function getDatedIndustryBenchmarks(industry: string): BenchmarkSeries {
+  const key = resolveIndustryKey(industry);
+  const pillarsMap = INDUSTRY_BENCHMARKS[key] || INDUSTRY_BENCHMARKS.default;
+  return {
+    industryKey: key,
+    asOf: "2026-01-01",
+    source: "CINTEXA internal illustrative bands (replace with admin-verified series)",
+    evidence: "INFERRED",
+    pillars: { ...pillarsMap },
+  };
+}
+
+/** Build a portable diagnostic snapshot for API / local persistence. */
+export function buildDiagnosticSnapshot(input: {
+  company: Record<string, string>;
+  mode: DiagnosticMode;
+  answers: Record<string, string | number | boolean>;
+  scores: Record<string, number>;
+  metrics: Metric[];
+  goals: Goal[];
+  competitors: Competitor[];
+  socialPlatforms?: SocialAdPlatform[];
+  webResearch?: Record<string, unknown> | null;
+  health: number;
+}) {
+  return {
+    version: 1,
+    capturedAt: new Date().toISOString(),
+    company: input.company,
+    mode: input.mode,
+    answers: input.answers,
+    scores: input.scores,
+    health: input.health,
+    severity: scoreSeverity(input.health),
+    metrics: input.metrics,
+    goals: input.goals,
+    competitors: input.competitors,
+    socialPlatforms: (input.socialPlatforms || []).filter(p => p.enabled),
+    webResearch: input.webResearch || null,
+    evidencePolicy: "Snapshot mixes USER PROVIDED answers, CALCULATED scores, and optional VERIFIED web research.",
+  };
+}
+
 export function resolveIndustryKey(industry: string): string {
   const s = industry.toLowerCase();
   if (/saas|software|cloud/.test(s)) return "saas";

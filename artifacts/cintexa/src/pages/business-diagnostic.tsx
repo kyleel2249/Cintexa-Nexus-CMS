@@ -20,6 +20,7 @@ import {
   pillars, questionBank, scoreSeverity, initialSocialPlatforms, analyzeSocialPlatforms,
   autofillDemoProfile, seedCompetitorsForNiche, seedCaseStudies, generateDailyContentPack,
   INDUSTRY_BENCHMARKS, resolveIndustryKey, AI_EMPLOYEES,
+  derivePillarScoresFromAnswers, getDatedIndustryBenchmarks, buildDiagnosticSnapshot,
   INDUSTRY_OPTIONS, SUB_INDUSTRY_BY_INDUSTRY, MARKET_OPTIONS, OBJECTIVE_OPTIONS, inferProfileFromIdentity,
   type Competitor, type DiagnosticMode, type Goal, type Metric, type SocialAdPlatform,
   type AiEmployee, type CaseStudySeed, type ContentPackItem,
@@ -161,18 +162,38 @@ export default function BusinessDiagnostic() {
     if (!currentQuestion) return;
     const next = { ...answers, [currentQuestion.id]: value };
     setAnswers(next);
-    const pillar = currentQuestion.pillar;
-    const positive = value === true || value === 5 || value === "Closing" || value === "Lead volume" ? 10 : 0;
-    setScores(prev => ({ ...prev, [pillar]: Math.min(100, Math.max(0, (prev[pillar] ?? 50) + positive - (value === false ? 7 : 0))) }));
+    // Recompute all pillar scores from the full answer set for consistency
+    const derived = derivePillarScoresFromAnswers(next);
+    setScores(derived);
     if (questionIndex < questions.length - 1) {
       setQuestionIndex(i => i + 1);
     } else {
+      // Persist snapshot when diagnostic completes
+      try {
+        const snap = buildDiagnosticSnapshot({
+          company,
+          mode,
+          answers: next,
+          scores: derived,
+          metrics,
+          goals,
+          competitors,
+          socialPlatforms,
+          webResearch,
+          health: calculateBusinessHealth(derived),
+        });
+        localStorage.setItem("cintexa-diagnostic-last-snapshot", JSON.stringify(snap));
+        const histKey = "cintexa-diagnostic-snapshots";
+        const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
+        localStorage.setItem(histKey, JSON.stringify([snap, ...(Array.isArray(hist) ? hist : [])].slice(0, 25)));
+      } catch { /* ignore */ }
       setStage("results");
       void logTaskLocal(
         "social_platforms",
         `Diagnosed ${socialPlatforms.filter(p => p.enabled).length} paid social platform(s)`,
         socialPlatforms.filter(p => p.enabled).map(p => p.label).join(", "),
       );
+      void logTaskLocal("diagnostic_complete", `Completed ${mode} diagnostic for ${company.name || "company"}`, `Health score recalculated from ${Object.keys(next).length} answers`);
     }
   }
 
@@ -205,6 +226,50 @@ export default function BusinessDiagnostic() {
     const goal: Goal = { id: createId(), title: level === "strategic" ? "Increase qualified revenue" : level === "tactical" ? "Increase qualified opportunities" : "Complete qualified prospect meetings weekly", level, owner: level === "strategic" ? "CEO / Founder" : level === "tactical" ? "Department Lead" : "Sales Team", baseline: level === "strategic" ? 100 : 8, target: level === "strategic" ? 140 : level === "tactical" ? 12 : 20, unit: level === "operational" ? "meetings/week" : "%", deadline: "2026-12-31", status: "Not Started", smart: { specific: true, measurable: true, achievable: false, relevant: true, timeBound: true } };
     setGoals(prev => [...prev, goal]);
   }
+
+    function applyIntakePayload(payload: ReturnType<typeof parseIntakeFormText>) {
+    const profile = intakeToCompany(payload);
+    setCompany(prev => ({
+      ...prev,
+      name: profile.name || prev.name,
+      website: profile.website || prev.website,
+      industry: profile.industry || prev.industry,
+      subIndustry: profile.subIndustry || prev.subIndustry,
+      model: profile.model || prev.model,
+      market: profile.market || prev.market,
+      employees: profile.employees || prev.employees,
+      revenue: profile.revenue || prev.revenue,
+      objective: profile.objective || prev.objective,
+    }));
+    const patches = intakeMetricPatches(payload);
+    setMetrics(prev => prev.map(m => {
+      const v = patches[m.id];
+      return v !== undefined && v !== null ? { ...m, value: v } : m;
+    }));
+    if (payload.answers && Object.keys(payload.answers).length) {
+      setAnswers(prev => ({ ...prev, ...payload.answers }));
+      // Light pillar score nudge from answered questions
+      setScores(derivePillarScoresFromAnswers({ ...answers, ...payload.answers }));
+    }
+    if (payload.social) {
+      setSocialPlatforms(prev => intakeSocialPatches(payload, prev));
+    }
+    const comps = intakeCompetitors(payload);
+    if (comps.length) {
+      setCompetitors(comps.map(c => ({
+        id: createId(),
+        name: c.name,
+        website: c.website,
+        positioning: "From intake form",
+        score: 0,
+        pricing: "Unknown",
+        strengths: [],
+        weaknesses: [],
+      })));
+    }
+    void logTaskLocal("intake_upload", "Autofilled profile, metrics, social & assessment from intake form", payload.companyName || "form");
+  }
+
 
   function printReport() { void downloadDetailedPdf(); }
 
@@ -414,61 +479,6 @@ export default function BusinessDiagnostic() {
     }
   };
 
-
-
-  function applyIntakePayload(payload: ReturnType<typeof parseIntakeFormText>) {
-    const profile = intakeToCompany(payload);
-    setCompany(prev => ({
-      ...prev,
-      name: profile.name || prev.name,
-      website: profile.website || prev.website,
-      industry: profile.industry || prev.industry,
-      subIndustry: profile.subIndustry || prev.subIndustry,
-      model: profile.model || prev.model,
-      market: profile.market || prev.market,
-      employees: profile.employees || prev.employees,
-      revenue: profile.revenue || prev.revenue,
-      objective: profile.objective || prev.objective,
-    }));
-    const patches = intakeMetricPatches(payload);
-    setMetrics(prev => prev.map(m => {
-      const v = patches[m.id];
-      return v !== undefined && v !== null ? { ...m, value: v } : m;
-    }));
-    if (payload.answers && Object.keys(payload.answers).length) {
-      setAnswers(prev => ({ ...prev, ...payload.answers }));
-      // Light pillar score nudge from answered questions
-      setScores(prev => {
-        const next = { ...prev };
-        for (const [qid, val] of Object.entries(payload.answers || {})) {
-          const q = questionBank.find(x => x.id === qid);
-          if (!q) continue;
-          const positive = val === true || val === 5 || val === "Closing" || val === "Lead volume" ? 8 : 0;
-          const neg = val === false ? 5 : 0;
-          next[q.pillar] = Math.min(100, Math.max(0, (next[q.pillar] ?? 50) + positive - neg));
-        }
-        return next;
-      });
-    }
-    if (payload.social) {
-      setSocialPlatforms(prev => intakeSocialPatches(payload, prev));
-    }
-    const comps = intakeCompetitors(payload);
-    if (comps.length) {
-      setCompetitors(comps.map(c => ({
-        id: createId(),
-        name: c.name,
-        website: c.website,
-        positioning: "From intake form",
-        score: 0,
-        pricing: "Unknown",
-        strengths: [],
-        weaknesses: [],
-      })));
-    }
-    void logTaskLocal("intake_upload", "Autofilled profile, metrics, social & assessment from intake form", payload.companyName || "form");
-  }
-
   async function handleIntakeFormUpload(fileList: FileList | null) {
     if (!fileList?.length) return;
     setDocBusy(true);
@@ -608,10 +618,9 @@ export default function BusinessDiagnostic() {
     } : e));
 
     await new Promise(r => setTimeout(r, 250));
-    const key = resolveIndustryKey(niche);
-    const band = INDUSTRY_BENCHMARKS[key] || INDUSTRY_BENCHMARKS.default;
-    setPillarBenchmarks({ ...band });
-    setAiEmployees(prev => prev.map(e => e.id === "benchmark" ? { ...e, status: "done" as const, lastAction: `Loaded ${key} benchmark band` } : e));
+    const dated = getDatedIndustryBenchmarks(niche);
+    setPillarBenchmarks({ ...dated.pillars });
+    setAiEmployees(prev => prev.map(e => e.id === "benchmark" ? { ...e, status: "done" as const, lastAction: `Loaded ${dated.industryKey} band (as of ${dated.asOf}, ${dated.evidence})` } : e));
 
     const cases = seedCaseStudies(niche, weakest.label);
     setCaseStudies(cases);

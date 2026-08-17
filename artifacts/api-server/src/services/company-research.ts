@@ -114,24 +114,56 @@ function keywordHints(text: string): string[] {
   return catalog.filter((k) => bag.includes(k)).slice(0, 10);
 }
 
+const RESEARCH_TIMEOUT_MS = 10_000;
+const RESEARCH_MAX_BYTES = 400_000;
+const MAX_COMPETITORS = 5;
+
+/** Block obvious non-public targets (SSRF hygiene). */
+function assertPublicHttpUrl(url: string): void {
+  const u = new URL(url);
+  if (!["http:", "https:"].includes(u.protocol)) throw new Error("Only http(s) allowed");
+  const host = u.hostname.toLowerCase();
+  if (host === "localhost" || host.endsWith(".local") || host === "0.0.0.0") {
+    throw new Error("Local hosts are not allowed");
+  }
+  // Basic private IP / link-local checks
+  if (/^(10\.|127\.|169\.254\.|192\.168\.|172\.(1[6-9]|2\d|3[0-1])\.)/.test(host)) {
+    throw new Error("Private network targets are not allowed");
+  }
+}
+
 async function fetchHtml(url: string): Promise<{ html: string; finalUrl: string }> {
+  assertPublicHttpUrl(url);
   const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), 12000);
+  const timer = setTimeout(() => controller.abort(), RESEARCH_TIMEOUT_MS);
   try {
     const res = await fetch(url, {
       signal: controller.signal,
       redirect: "follow",
       headers: {
-        "User-Agent": "CINTEXA-Nexus-Research/1.0 (+https://cintexa.com)",
-        Accept: "text/html,application/xhtml+xml",
+        "User-Agent": "CINTEXA-Nexus-Research/1.0 (+https://cintexa.com; research@cintexa.com)",
+        Accept: "text/html,application/xhtml+xml;q=0.9,*/*;q=0.8",
+        "Accept-Language": "en,en-GB;q=0.9",
       },
     });
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const ctype = (res.headers.get("content-type") || "").toLowerCase();
+    if (ctype && !ctype.includes("html") && !ctype.includes("text") && !ctype.includes("xml")) {
+      throw new Error(`Unsupported content-type: ${ctype}`);
+    }
+    // Stream-limit: read text then slice (Node fetch buffers; cap response size)
     const html = await res.text();
-    return { html: html.slice(0, 500_000), finalUrl: res.url || url };
+    if (html.length > RESEARCH_MAX_BYTES * 2) {
+      // oversized pages — keep head only
+    }
+    return { html: html.slice(0, RESEARCH_MAX_BYTES), finalUrl: res.url || url };
   } finally {
     clearTimeout(timer);
   }
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 export async function researchCompanyWeb(input: {
@@ -309,7 +341,7 @@ export async function researchCompetitorSites(
 > {
   const today = new Date().toISOString().slice(0, 10);
   const out = [];
-  for (const c of competitors.slice(0, 5)) {
+  for (const c of competitors.slice(0, MAX_COMPETITORS)) {
     const name = c.name?.trim() || "Competitor";
     const website = normalizeUrl(c.website || "");
     const claims: ResearchClaim[] = [
@@ -324,6 +356,7 @@ export async function researchCompetitorSites(
     let metaDescription: string | null = null;
     if (website) {
       try {
+        await sleep(350);
         const { html, finalUrl } = await fetchHtml(website);
         pageTitle = extractTitle(html) || extractMeta(html, "og:title");
         metaDescription = extractMeta(html, "description") || extractMeta(html, "og:description");

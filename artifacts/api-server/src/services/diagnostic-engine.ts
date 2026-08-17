@@ -200,13 +200,26 @@ export const INDUSTRY_BENCHMARKS: Record<string, Record<string, { value: number;
 };
 
 export function getBenchmarks(industry?: string | null) {
-  if (!industry) return INDUSTRY_BENCHMARKS.default;
-  const key = Object.keys(INDUSTRY_BENCHMARKS).find((k) => industry.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(industry.toLowerCase()));
-  return INDUSTRY_BENCHMARKS[key ?? "default"] ?? INDUSTRY_BENCHMARKS.default;
+  const key = !industry
+    ? "default"
+    : (Object.keys(INDUSTRY_BENCHMARKS).find((k) => industry.toLowerCase().includes(k.toLowerCase()) || k.toLowerCase().includes(industry.toLowerCase())) ?? "default");
+  const series = INDUSTRY_BENCHMARKS[key] ?? INDUSTRY_BENCHMARKS.default;
+  // Wrap with dated metadata — values remain illustrative until admin-sourced series exist
+  return {
+    meta: {
+      industryKey: key,
+      asOf: "2026-01-01",
+      source: "CINTEXA illustrative industry bands",
+      evidence: "INFERRED" as EvidenceType,
+      note: "Benchmark values are intentionally provisional until a reliable public series or administrator-entered benchmark exists.",
+    },
+    metrics: series,
+  };
 }
 
 export function buildBenchmarkReport(metrics: MetricInput, industry?: string | null) {
-  const bench = getBenchmarks(industry);
+  const pack = getBenchmarks(industry);
+  const bench = (pack as any).metrics ?? pack;
   const sales = salesMetrics(metrics);
   const rows: Array<{ metric: string; actual: number | null; benchmark: number; unit: string; gap: number | null; source: string; evidence: EvidenceType }> = [];
   const push = (metric: string, actual: number | null, key: string) => {
@@ -217,7 +230,12 @@ export function buildBenchmarkReport(metrics: MetricInput, industry?: string | n
   };
   push("Lead-to-customer conversion", sales.conversion, "leadToCustomer");
   push("Sales cycle (days)", sales.salesCycle, "salesCycleDays");
-  return { industry: industry ?? "General", rows, generatedAt: new Date().toISOString() };
+  return {
+    industry: industry ?? "General",
+    meta: (pack as any).meta ?? null,
+    rows,
+    generatedAt: new Date().toISOString(),
+  };
 }
 
 export function buildSwot(findings: DiagnosticFinding[], scores: Record<string, number | null | undefined>) {
