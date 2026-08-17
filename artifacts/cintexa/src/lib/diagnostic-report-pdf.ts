@@ -110,6 +110,12 @@ export type DiagnosticPdfReport = {
     confidence?: string;
     recommendedIntervention?: string;
   }>;
+  ceoBrief?: string[];
+  executiveAlerts?: Array<{ severity: string; title: string; detail: string; evidence: string }>;
+  moduleRecommendations?: Array<{ module: string; reason: string; justifiedBy: string }>;
+  positioningSummary?: string;
+  planningBarriers?: Array<{ barrier: string; solution: string }>;
+  goalCascadeTitle?: string;
   detailedRecommendations?: Array<{
     recommendation: string;
     problem: string;
@@ -584,7 +590,50 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
   }
 
   // —— Implementation ——
-  y = sectionTitle(doc, "16. Implementation Guide", y, margin);
+  if (report.ceoBrief?.length) {
+    y = sectionTitle(doc, "16. CEO / Board Brief", y, margin);
+    for (const line of report.ceoBrief) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `• ${line}`, margin, y);
+    }
+    y += 2;
+  }
+  if (report.executiveAlerts?.length) {
+    y = sectionTitle(doc, "17. Executive Alerts", y, margin);
+    for (const a of report.executiveAlerts) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `[${a.severity}] ${a.title} — ${a.detail} (${a.evidence})`, margin, y);
+    }
+    y += 2;
+  }
+  if (report.positioningSummary) {
+    y = sectionTitle(doc, "18. Positioning", y, margin);
+    y = line(doc, report.positioningSummary, margin, y);
+    y += 2;
+  }
+  if (report.planningBarriers?.length) {
+    y = sectionTitle(doc, "19. Planning Barriers", y, margin);
+    for (const b of report.planningBarriers) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `• ${b.barrier}: ${b.solution}`, margin, y);
+    }
+    y += 2;
+  }
+  if (report.moduleRecommendations?.length) {
+    y = sectionTitle(doc, "20. Recommended CINTEXA Modules", y, margin);
+    for (const m of report.moduleRecommendations) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `• ${m.module} — ${m.reason} (${m.justifiedBy})`, margin, y);
+    }
+    y += 2;
+  }
+  if (report.goalCascadeTitle) {
+    y = sectionTitle(doc, "21. Goal Cascade Root", y, margin);
+    y = line(doc, report.goalCascadeTitle, margin, y);
+    y += 2;
+  }
+
+  y = sectionTitle(doc, "22. Implementation Guide", y, margin);
   const guide =
     report.implementationGuide?.length
       ? report.implementationGuide

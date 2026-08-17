@@ -38,6 +38,18 @@ import {
   intakeSocialPatches,
 } from "@/lib/diagnostic-intake-form";
 import { createId } from "@/lib/id";
+import {
+  buildCompetitiveMatrix,
+  recommendPositioning,
+  calculateInitiativeRoi,
+  buildExecutiveAlerts,
+  buildGoalCascade,
+  detectPlanningBarriers,
+  recommendCintexaModules,
+  compareSnapshots,
+  buildCeoBrief,
+  type SnapshotSummary,
+} from "@/lib/diagnostic-frameworks";
 
 const modes: { id: DiagnosticMode; label: string; minutes: string; description: string }[] = [
   { id: "quick", label: "Quick Scan", minutes: "10–15 min", description: "Rapid health and priority scan" },
@@ -124,6 +136,10 @@ export default function BusinessDiagnostic() {
   const [pillarBenchmarks, setPillarBenchmarks] = useState<Record<string, number>>({ ...INDUSTRY_BENCHMARKS.default });
   const [aiBusy, setAiBusy] = useState(false);
   const [webResearch, setWebResearch] = useState<Record<string, unknown> | null>(null);
+  const [roiImplCost, setRoiImplCost] = useState<string>("5000");
+  const [roiMonthlySave, setRoiMonthlySave] = useState<string>("800");
+  const [roiMonthlyRev, setRoiMonthlyRev] = useState<string>("2000");
+  const [historyCompare, setHistoryCompare] = useState<{ summary: string; healthDelta: number; pillarDeltas: Array<{ pillar: string; from: number; to: number; delta: number }> } | null>(null);
 
   const questions = useMemo(() => buildAdaptiveQuestions(answers), [answers]);
   const currentQuestion = questions[questionIndex];
@@ -133,6 +149,56 @@ export default function BusinessDiagnostic() {
   const strongest = [...pillars].sort((a, b) => (scores[b.id] ?? 0) - (scores[a.id] ?? 0))[0];
   const weakest = [...pillars].sort((a, b) => (scores[a.id] ?? 0) - (scores[b.id] ?? 0))[0];
   const socialAnalysis = useMemo(() => analyzeSocialPlatforms(socialPlatforms), [socialPlatforms]);
+  const competitiveMatrix = useMemo(() => buildCompetitiveMatrix({
+    companyName: company.name || "Company",
+    competitors: competitors.map(c => ({ name: c.name, score: c.score, strengths: c.strengths, weaknesses: c.weaknesses })),
+  }), [company.name, competitors]);
+  const positioning = useMemo(() => recommendPositioning({
+    industry: company.industry,
+    objective: company.objective,
+    automationScore: scores.automation,
+    competitiveScore: scores.competitive,
+  }), [company.industry, company.objective, scores.automation, scores.competitive]);
+  const execAlerts = useMemo(() => buildExecutiveAlerts({
+    health,
+    scores,
+    conversion: sales.conversion,
+    churn: metrics.find(m => m.id === "churn")?.value ?? null,
+    competitorsCount: competitors.length,
+  }), [health, scores, sales.conversion, metrics, competitors.length]);
+  const goalCascade = useMemo(() => buildGoalCascade({
+    objective: company.objective,
+    weakestPillar: weakest.label,
+    strongestPillar: strongest.label,
+  }), [company.objective, weakest.label, strongest.label]);
+  const barriers = useMemo(() => detectPlanningBarriers({
+    hasCrm: answers.sales2 === true,
+    goalCount: goals.length,
+    health,
+    objective: company.objective,
+  }), [answers.sales2, goals.length, health, company.objective]);
+  const moduleRecs = useMemo(() => recommendCintexaModules(scores), [scores]);
+  const roiModel = useMemo(() => calculateInitiativeRoi({
+    implementationCost: roiImplCost === "" ? null : Number(roiImplCost),
+    monthlySavings: roiMonthlySave === "" ? null : Number(roiMonthlySave),
+    monthlyAdditionalRevenue: roiMonthlyRev === "" ? null : Number(roiMonthlyRev),
+  }), [roiImplCost, roiMonthlySave, roiMonthlyRev]);
+  const ceoBrief = useMemo(() => buildCeoBrief({
+    companyName: company.name || "Company",
+    health,
+    severity,
+    strongest: strongest.label,
+    weakest: weakest.label,
+    alerts: execAlerts,
+    topActions: [
+      `Fund ${weakest.label} with owner and KPI this week`,
+      "Validate top findings with internal data",
+      goals[0]?.title ? `Drive: ${goals[0].title}` : "Create first SMART goal",
+      "Refresh competitor sources",
+      "Instrument weekly KPI review",
+    ],
+  }), [company.name, health, severity, strongest.label, weakest.label, execAlerts, goals]);
+
   const monthlyLeads = metrics.find(m => m.id === "monthlyLeads")?.value ?? 0;
   const customers = metrics.find(m => m.id === "customers")?.value ?? 0;
   const aov = metrics.find(m => m.id === "aov")?.value ?? 0;
@@ -439,6 +505,12 @@ export default function BusinessDiagnostic() {
         pestle: (report as any)?.pestle,
         rootCauses: (report as any)?.rootCauses,
         detailedRecommendations: (report as any)?.detailedRecommendations,
+        moduleRecommendations: moduleRecs,
+        executiveAlerts: execAlerts.map(a => ({ severity: a.severity, title: a.title, detail: a.detail, evidence: a.evidence })),
+        ceoBrief,
+        positioningSummary: positioning.summary,
+        planningBarriers: barriers,
+        goalCascadeTitle: goalCascade.title,
       };
 
       downloadDiagnosticPdf(enriched as any);
@@ -860,6 +932,205 @@ export default function BusinessDiagnostic() {
           })}
         </div>
       </CardContent></Card>
+
+
+      {/* CEO / Board view */}
+      <Card className="border-primary/20 bg-primary/5">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2"><ShieldAlert className="w-5 h-5" /> CEO / Board brief</CardTitle>
+          <CardDescription>Condition in minutes — evidence-labeled, decision-oriented.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2 text-sm">
+          {ceoBrief.map((line, i) => (
+            <div key={i} className="flex gap-2 border-b last:border-0 py-2">
+              <Badge variant="outline" className="shrink-0">{i === 0 ? "Health" : i === 1 ? "Focus" : i === 2 ? "Alerts" : `D${i - 2}`}</Badge>
+              <span>{line}</span>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      {/* Executive alerts */}
+      {execAlerts.length > 0 && (
+        <Card>
+          <CardHeader><CardTitle>Executive alerts</CardTitle><CardDescription>Generated from scores and metrics — not external surveillance.</CardDescription></CardHeader>
+          <CardContent className="space-y-2">
+            {execAlerts.map(a => (
+              <div key={a.id} className="flex gap-3 items-start border rounded-lg p-3 text-sm">
+                <Badge className={
+                  a.severity === "critical" ? "bg-rose-600" :
+                  a.severity === "warning" ? "bg-orange-500" :
+                  a.severity === "opportunity" ? "bg-emerald-600" :
+                  a.severity === "strategic" ? "bg-blue-600" : "bg-amber-500"
+                }>{a.severity}</Badge>
+                <div>
+                  <div className="font-semibold">{a.title}</div>
+                  <p className="text-muted-foreground text-xs mt-1">{a.detail}</p>
+                  <Badge variant="outline" className="mt-2 text-[10px]">{a.evidence}</Badge>
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Competitive matrix */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Competitive scorecard matrix</CardTitle>
+          <CardDescription>{competitiveMatrix.note}</CardDescription>
+        </CardHeader>
+        <CardContent className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="p-2">Dimension</th>
+                <th className="p-2">{company.name || "You"}</th>
+                {competitors.slice(0, 4).map(c => <th key={c.id} className="p-2">{c.name}</th>)}
+                <th className="p-2">Industry</th>
+                <th className="p-2">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {competitiveMatrix.rows.slice(0, 12).map(row => (
+                <tr key={row.dimension} className="border-b last:border-0">
+                  <td className="p-2 font-medium">{row.dimension}</td>
+                  <td className="p-2">{row.company ?? "—"}</td>
+                  {competitors.slice(0, 4).map((c, i) => (
+                    <td key={c.id} className="p-2">{row.competitors[i]?.score ?? "—"}</td>
+                  ))}
+                  <td className="p-2 text-muted-foreground">{row.industryBenchmark ?? "Unavailable"}</td>
+                  <td className="p-2"><Badge variant="outline">{row.evidence}</Badge></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </CardContent>
+      </Card>
+
+      {/* Positioning + ROI + cascade + barriers + modules */}
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle>Market positioning</CardTitle><CardDescription>INFERRED hints — validate with customer evidence.</CardDescription></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            <p>{positioning.summary}</p>
+            {positioning.axes.slice(0, 4).map(a => (
+              <div key={a.axis.id} className="flex justify-between border-b py-1 gap-2">
+                <span className="text-muted-foreground">{a.axis.low} ↔ {a.axis.high}</span>
+                <span className="font-semibold tabular-nums">{a.companyHint}</span>
+              </div>
+            ))}
+            <Badge variant="outline">{positioning.evidence}</Badge>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Initiative ROI calculator</CardTitle><CardDescription>CALCULATED from your assumptions only — never invented.</CardDescription></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            <div className="grid grid-cols-3 gap-2">
+              <div><Label>Impl. cost</Label><Input value={roiImplCost} onChange={e => setRoiImplCost(e.target.value)} /></div>
+              <div><Label>Monthly save</Label><Input value={roiMonthlySave} onChange={e => setRoiMonthlySave(e.target.value)} /></div>
+              <div><Label>Monthly rev+</Label><Input value={roiMonthlyRev} onChange={e => setRoiMonthlyRev(e.target.value)} /></div>
+            </div>
+            {roiModel.available ? (
+              <div className="grid grid-cols-2 gap-2">
+                <div className="border rounded-lg p-2">Payback<br/><b>{roiModel.paybackMonths != null ? `${roiModel.paybackMonths.toFixed(1)} mo` : "—"}</b></div>
+                <div className="border rounded-lg p-2">ROI (yr1)<br/><b>{roiModel.roiPercent != null ? `${roiModel.roiPercent.toFixed(0)}%` : "—"}</b></div>
+                <div className="border rounded-lg p-2 col-span-2">Annual profit lift<br/><b>{roiModel.expectedProfitImprovement != null ? roiModel.expectedProfitImprovement.toFixed(0) : "—"}</b></div>
+              </div>
+            ) : <p className="text-muted-foreground">{roiModel.reason}</p>}
+            <p className="text-[11px] text-muted-foreground">{roiModel.assumptions.join(" ")}</p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-4">
+        <Card>
+          <CardHeader><CardTitle>Goal cascade</CardTitle><CardDescription>Strategy → tactical → operational → KPI</CardDescription></CardHeader>
+          <CardContent className="text-sm space-y-2">
+            <div className="font-semibold">{goalCascade.title} <Badge variant="outline">{goalCascade.level}</Badge></div>
+            {(goalCascade.children || []).map(t => (
+              <div key={t.id} className="ml-3 border-l-2 pl-3 space-y-1">
+                <div>{t.title} <span className="text-muted-foreground">· {t.owner}</span></div>
+                {(t.children || []).map(o => (
+                  <div key={o.id} className="ml-2 text-muted-foreground">↳ {o.title}</div>
+                ))}
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+        <Card>
+          <CardHeader><CardTitle>Planning barriers</CardTitle><CardDescription>Execution blockers and remedies</CardDescription></CardHeader>
+          <CardContent className="space-y-2 text-sm">
+            {barriers.map((b, i) => (
+              <div key={i} className="border rounded-lg p-3">
+                <div className="font-semibold">{b.barrier}</div>
+                <p className="text-muted-foreground text-xs mt-1">{b.solution}</p>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader><CardTitle>CINTEXA module recommendations</CardTitle><CardDescription>Only modules justified by diagnostic scores</CardDescription></CardHeader>
+        <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
+          {moduleRecs.map((m, i) => (
+            <div key={i} className="border rounded-lg p-3">
+              <div className="font-semibold text-primary">{m.module}</div>
+              <p className="text-muted-foreground mt-1">{m.reason}</p>
+              <Badge variant="outline" className="mt-2">{m.justifiedBy}</Badge>
+            </div>
+          ))}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Historical diagnostic compare</CardTitle>
+          <CardDescription>Compare this run to the previous local snapshot (continuous platform).</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <Button type="button" variant="outline" size="sm" onClick={() => {
+            try {
+              const hist = JSON.parse(localStorage.getItem("cintexa-diagnostic-snapshots") || "[]");
+              if (!Array.isArray(hist) || hist.length < 1) {
+                setHistoryCompare({ summary: "No prior snapshot yet. Complete another diagnostic to enable comparison.", healthDelta: 0, pillarDeltas: [] });
+                return;
+              }
+              const prev = hist[0];
+              const current: SnapshotSummary = {
+                capturedAt: new Date().toISOString(),
+                health,
+                companyName: company.name,
+                scores,
+              };
+              const prior: SnapshotSummary = {
+                capturedAt: prev.capturedAt || prev.captured_at || "",
+                health: prev.health ?? 0,
+                companyName: prev.company?.name,
+                scores: prev.scores || {},
+              };
+              setHistoryCompare(compareSnapshots(prior, current));
+            } catch {
+              setHistoryCompare({ summary: "Could not read snapshot history.", healthDelta: 0, pillarDeltas: [] });
+            }
+          }}>Compare to last snapshot</Button>
+          {historyCompare && (
+            <div>
+              <p className="font-medium">{historyCompare.summary}</p>
+              <ul className="mt-2 space-y-1">
+                {historyCompare.pillarDeltas.slice(0, 6).map(d => (
+                  <li key={d.pillar} className="flex justify-between border-b py-1">
+                    <span>{d.pillar}</span>
+                    <span>{d.from} → {d.to} ({d.delta >= 0 ? "+" : ""}{d.delta})</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
       
       <Card className="overflow-hidden">
         <CardHeader>
