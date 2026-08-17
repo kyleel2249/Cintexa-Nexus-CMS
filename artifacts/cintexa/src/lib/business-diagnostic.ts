@@ -41,18 +41,40 @@ export const initialMetrics: Metric[] = [
 ];
 
 export const questionBank: DiagnosticQuestion[] = [
+  // Strategy
   { id: "s1", pillar: "strategy", text: "Are your top three business priorities documented with owners and measurable outcomes?", type: "boolean" },
-  { id: "s2", pillar: "strategy", text: "How clear is your market positioning?", type: "scale" },
+  { id: "s2", pillar: "strategy", text: "How clear is your market positioning versus direct competitors?", type: "scale" },
+  { id: "s3", pillar: "strategy", text: "How well are resources (budget, people, time) aligned to those priorities?", type: "scale" },
+  { id: "s4", pillar: "strategy", text: "What is the primary strategic objective for the next 12 months?", type: "text" },
+  // Sales
   { id: "sales1", pillar: "sales", text: "Where is your sales funnel weakest today?", type: "select", options: ["Lead volume", "Lead quality", "Qualification", "Follow-up", "Proposal", "Closing", "Retention"] },
   { id: "sales2", pillar: "sales", text: "Are sales opportunities tracked in a CRM with defined stages?", type: "boolean" },
-  { id: "marketing1", pillar: "marketing", text: "Which channel currently produces the highest-quality customers?", type: "text" },
-  { id: "marketing2", pillar: "marketing", text: "Can you attribute revenue to your marketing channels?", type: "boolean" },
-  { id: "customer1", pillar: "customer", text: "Do you track churn and retention by customer segment?", type: "boolean" },
-  { id: "operations1", pillar: "operations", text: "How many core processes still depend on manual spreadsheets or repeated data entry?", type: "number" },
-  { id: "finance1", pillar: "finance", text: "Do you know profitability by product, service or customer segment?", type: "boolean" },
-  { id: "technology1", pillar: "technology", text: "Are CRM, finance, commerce, support and analytics systems connected?", type: "boolean" },
-  { id: "automation1", pillar: "automation", text: "How many recurring workflows could be automated within 90 days?", type: "number" },
-  { id: "competitive1", pillar: "competitive", text: "Do you maintain a documented competitor scorecard with dated evidence?", type: "boolean" },
+  { id: "sales3", pillar: "sales", text: "How effective is follow-up discipline after first contact?", type: "scale" },
+  { id: "sales4", pillar: "sales", text: "What is your approximate win rate on qualified opportunities?", type: "number" },
+  // Marketing
+  { id: "marketing1", pillar: "marketing", text: "Which channel currently produces the highest-quality leads?", type: "select", options: ["Organic search", "Paid search", "Social organic", "Paid social", "Referrals", "Outbound", "Events", "Partnerships", "Unknown"] },
+  { id: "marketing2", pillar: "marketing", text: "Do you measure cost per lead and marketing ROI by channel?", type: "boolean" },
+  { id: "marketing3", pillar: "marketing", text: "How strong is website conversion (visitor → lead)?", type: "scale" },
+  // Customer
+  { id: "customer1", pillar: "customer", text: "Do you systematically track churn reasons?", type: "boolean" },
+  { id: "customer2", pillar: "customer", text: "How strong is onboarding quality for new customers?", type: "scale" },
+  { id: "customer3", pillar: "customer", text: "Average first-response time for support (hours)?", type: "number" },
+  // Operations
+  { id: "ops1", pillar: "operations", text: "Where is the biggest operational bottleneck?", type: "select", options: ["Fulfilment", "Service delivery", "Admin / paperwork", "Approvals", "Handoffs", "Quality rework", "Procurement", "Unknown"] },
+  { id: "ops2", pillar: "operations", text: "How standardized are core delivery processes?", type: "scale" },
+  // Finance
+  { id: "fin1", pillar: "finance", text: "Do you know gross and net margin by product or service line?", type: "boolean" },
+  { id: "fin2", pillar: "finance", text: "How healthy is cash-flow predictability?", type: "scale" },
+  { id: "fin3", pillar: "finance", text: "Is pricing reviewed against costs and competitors at least annually?", type: "boolean" },
+  // Technology
+  { id: "technology1", pillar: "technology", text: "Is customer and sales data consolidated in one system of record?", type: "boolean" },
+  { id: "technology2", pillar: "technology", text: "How much does the team rely on spreadsheets for core reporting?", type: "scale" },
+  // AI & Automation
+  { id: "auto1", pillar: "automation", text: "Which process would create the most value if automated first?", type: "select", options: ["Lead qualification", "Follow-up sequences", "Reporting", "Support replies", "Content production", "Forecasting", "None identified"] },
+  { id: "auto2", pillar: "automation", text: "How ready is the organization to adopt AI assistants?", type: "scale" },
+  // Competitive
+  { id: "comp1", pillar: "competitive", text: "How often do you formally review competitor moves?", type: "select", options: ["Weekly", "Monthly", "Quarterly", "Annually", "Rarely", "Never"] },
+  { id: "comp2", pillar: "competitive", text: "How clear is your differentiation versus the nearest rival?", type: "scale" },
 ];
 
 export function scoreSeverity(score: number) {
@@ -84,9 +106,35 @@ export function calculateSalesMetrics(metrics: Metric[]) {
 export function buildAdaptiveQuestions(answers: Record<string, string | number | boolean>): DiagnosticQuestion[] {
   const questions: DiagnosticQuestion[] = [...questionBank];
   const weakest = answers.sales1;
-  if (weakest === "Follow-up") questions.push({ id: "sales-followup", pillar: "sales", text: "How quickly are qualified leads contacted after they enter the pipeline?", type: "text" });
-  if (weakest === "Closing") questions.push({ id: "sales-closing", pillar: "sales", text: "What are the three most common reasons qualified deals are lost?", type: "text" });
-  if (answers.technology1 === false) questions.push({ id: "tech-silos", pillar: "technology", text: "Which two systems create the most duplicate data entry?", type: "text" });
+  if (weakest === "Follow-up") {
+    questions.push({ id: "sales-followup", pillar: "sales", text: "How quickly are qualified leads contacted after they enter the pipeline?", type: "text" });
+    questions.push({ id: "sales-followup-2", pillar: "sales", text: "What percentage of leads receive a second touch within 48 hours?", type: "number" });
+  }
+  if (weakest === "Closing") {
+    questions.push({ id: "sales-closing", pillar: "sales", text: "What are the three most common reasons qualified deals are lost?", type: "text" });
+    questions.push({ id: "sales-closing-2", pillar: "sales", text: "When did win rate start declining (or is it stable)?", type: "text" });
+  }
+  if (weakest === "Lead volume") {
+    questions.push({ id: "sales-volume", pillar: "sales", text: "Has inbound traffic, outbound activity, or both declined?", type: "select", options: ["Inbound", "Outbound", "Both", "Neither — quality issue", "Unknown"] });
+  }
+  if (weakest === "Lead quality") {
+    questions.push({ id: "sales-quality", pillar: "sales", text: "Which source produces the lowest-quality leads?", type: "text" });
+  }
+  if (answers.technology1 === false) {
+    questions.push({ id: "tech-silos", pillar: "technology", text: "Which two systems create the most duplicate data entry?", type: "text" });
+  }
+  if (answers.marketing2 === false) {
+    questions.push({ id: "mkt-attribution", pillar: "marketing", text: "How do you currently decide marketing budget allocation without channel ROI?", type: "text" });
+  }
+  if (answers.customer1 === false) {
+    questions.push({ id: "churn-reasons", pillar: "customer", text: "What are the top suspected reasons customers leave?", type: "text" });
+  }
+  if (answers.fin1 === false) {
+    questions.push({ id: "fin-margin", pillar: "finance", text: "Which product or service do you suspect is least profitable?", type: "text" });
+  }
+  if (answers.comp1 === "Rarely" || answers.comp1 === "Never") {
+    questions.push({ id: "comp-gap", pillar: "competitive", text: "Name the competitor that wins deals you most often lose, and why.", type: "text" });
+  }
   return questions;
 }
 

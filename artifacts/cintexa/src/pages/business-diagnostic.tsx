@@ -435,6 +435,10 @@ export default function BusinessDiagnostic() {
           "Execute 7 / 30 / 90 day roadmap; scale over 4–12 months.",
           "Instrument KPIs weekly; re-run diagnostic quarterly.",
         ],
+        porterFiveForces: (report as any)?.porterFiveForces,
+        pestle: (report as any)?.pestle,
+        rootCauses: (report as any)?.rootCauses,
+        detailedRecommendations: (report as any)?.detailedRecommendations,
       };
 
       downloadDiagnosticPdf(enriched as any);
@@ -940,7 +944,26 @@ export default function BusinessDiagnostic() {
 
       <div className="grid xl:grid-cols-2 gap-5"><Card><CardHeader><CardTitle>Top problems</CardTitle></CardHeader><CardContent className="space-y-3">{starterProblems.map((p, i) => <div key={p.title} className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><div className="flex items-center gap-2"><span className="text-xs font-bold text-muted-foreground">0{i+1}</span><h3 className="font-semibold">{p.title}</h3></div><p className="text-sm text-muted-foreground mt-2">{p.detail}</p></div><EvidenceBadge type={p.evidence}/></div><div className="mt-3 p-3 rounded-lg bg-muted/60 text-sm"><b>Action:</b> {p.action}</div></div>)}</CardContent></Card><Card><CardHeader><CardTitle>Sales intelligence</CardTitle><CardDescription>Calculated only where source metrics exist.</CardDescription></CardHeader><CardContent className="space-y-4">{[["Lead → customer conversion", sales.conversion, "%"],["Qualified lead rate", sales.qualification, "%"],["Projected revenue from customer count", sales.revenue, "GHS"],["CAC", sales.cac, "GHS"]].map(([label,value,unit]) => <div key={String(label)} className="flex justify-between items-center border-b last:border-0 pb-3 last:pb-0"><span className="text-sm">{String(label)}</span><span className="font-semibold">{value === null ? "Unknown" : `${Number(value).toFixed(1)} ${unit}`} {value !== null && <EvidenceBadge type="CALCULATED"/>}</span></div>)}</CardContent></Card></div>
       <Card><CardHeader><CardTitle>Root-cause chain</CardTitle><CardDescription>Symptoms are kept separate from hypotheses.</CardDescription></CardHeader><CardContent><div className="grid md:grid-cols-5 gap-2 items-center">{["Observed Problem", "Evidence", "Possible Causes", "Root Cause", "Intervention"].map((x,i)=><div key={x} className="flex items-center gap-2"><div className="flex-1 border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">STEP {i+1}</div><div className="font-semibold mt-1">{x}</div><div className="text-xs text-muted-foreground mt-2">{i === 0 ? "Sales performance signal" : i === 1 ? "User data + calculations" : i === 2 ? "Qualification / follow-up / offer" : i === 3 ? "Validate with funnel evidence" : "Target the confirmed constraint"}</div></div>{i < 4 && <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0"/>}</div>)}</div></CardContent></Card>
-      <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores} benchmarks={pillarBenchmarks}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
+      <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 w-full h-auto gap-1"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger><TabsTrigger value="porter">Five Forces</TabsTrigger><TabsTrigger value="pestle">PESTLE</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores} benchmarks={pillarBenchmarks}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent>
+        <TabsContent value="porter" className="mt-4">
+          <Card><CardHeader><CardTitle>Porter Five Forces</CardTitle><CardDescription>INFERRED industry structure prompts — replace with verified market data when available.</CardDescription></CardHeader>
+          <CardContent className="space-y-3 text-sm">
+            {["Competitive rivalry","Threat of new entrants","Threat of substitutes","Buyer bargaining power","Supplier bargaining power"].map((f,i)=>(
+              <div key={f} className="border rounded-lg p-3"><div className="font-semibold">{f}</div>
+              <p className="text-muted-foreground mt-1">{i===0?"Defend non-price advantages and publish a competitor scorecard.":i===1?"Raise switching costs via integrations and depth.":i===2?"Own the full job-to-be-done vs adjacent substitutes.":i===3?"Segment buyers; tighten discount policy.":"Dual-source critical vendor dependencies."}</p>
+              <Badge variant="outline" className="mt-2">INFERRED</Badge></div>
+            ))}
+          </CardContent></Card>
+        </TabsContent>
+        <TabsContent value="pestle" className="mt-4">
+          <Card><CardHeader><CardTitle>PESTLE scan</CardTitle><CardDescription>Structured external factors for leadership review — not legal advice.</CardDescription></CardHeader>
+          <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
+            {[["Political","Track licensing and advertising rules"],["Economic","Scenario-plan under longer cycles"],["Social","Align UX and SLAs to buyer expectations"],["Technological","Prioritize high-ROI automation"],["Legal","Consent and data retention hygiene"],["Environmental","Only claim sustainability with evidence"]].map(([k,v])=>(
+              <div key={k} className="border rounded-lg p-3"><div className="font-semibold">{k}</div><p className="text-muted-foreground mt-1">{v}</p></div>
+            ))}
+          </CardContent></Card>
+        </TabsContent>
+      </Tabs>
       
       
       {webResearch && (

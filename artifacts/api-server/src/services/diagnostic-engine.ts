@@ -346,6 +346,80 @@ export function buildFullReport(input: {
       { name: "Qualified pipeline coverage", baseline: null, target: "3–4x quota", owner: "Sales Ops" },
       { name: "Paid social ROAS (by platform)", baseline: null, target: "≥ 3x on scaled platforms", owner: "Marketing" },
       { name: "Blended CPL across ad platforms", baseline: null, target: "Below target CAC threshold", owner: "Marketing" },
+      { name: "Customer churn (monthly)", baseline: null, target: "Reduce 15–25% within 2 quarters", owner: "Customer Success" },
+      { name: "Gross margin", baseline: null, target: "Protect or +2pp via mix/pricing", owner: "Finance" },
     ],
+    porterFiveForces: buildPorterFiveForces(input.industry, analysis.findings),
+    pestle: buildPestle(input.industry),
+    rootCauses: buildRootCauseChains(analysis.findings),
+    detailedRecommendations: buildDetailedRecommendations(analysis.findings),
   };
 }
+
+export function buildPorterFiveForces(industry?: string | null, findings: DiagnosticFinding[] = []) {
+  const rivalryBoost = findings.some(f => f.pillar === "competitive" || /competitor/i.test(f.problem)) ? 10 : 0;
+  const forces = [
+    { force: "Competitive rivalry", score: Math.min(100, 62 + rivalryBoost), evidence: "INFERRED" as EvidenceType, implication: "Intensity of rivalry shapes pricing and differentiation pressure.", opportunity: "Differentiate on service speed, specialization or evidence-backed outcomes.", response: "Publish a clear competitive scorecard and defend 2–3 non-price advantages." },
+    { force: "Threat of new entrants", score: 48, evidence: "INFERRED" as EvidenceType, implication: "Lower switching costs or digital channels can invite entrants.", opportunity: "Raise switching costs via integrations, data and contracts.", response: "Strengthen retention and product depth before price wars." },
+    { force: "Threat of substitutes", score: 55, evidence: "INFERRED" as EvidenceType, implication: "Customers may solve the job with adjacent tools or in-house approaches.", opportunity: "Own the full job-to-be-done, not a single feature.", response: "Map substitute journeys and close gaps in convenience or total cost." },
+    { force: "Buyer bargaining power", score: 58, evidence: "INFERRED" as EvidenceType, implication: "Concentrated buyers or low differentiation increases discount pressure.", opportunity: "Segment buyers and package value by segment.", response: "Tighten discount policy; train sales on value quantification." },
+    { force: "Supplier bargaining power", score: 42, evidence: "INFERRED" as EvidenceType, implication: "Key vendors or platforms can constrain cost and capability.", opportunity: "Dual-source critical dependencies where practical.", response: "Document supplier risk and exit options quarterly." },
+  ];
+  return {
+    industry: industry ?? "General",
+    forces,
+    note: "Force scores are INFERRED from diagnostic signals, not measured market structure data. Replace with industry research when available.",
+    evidence: "INFERRED" as EvidenceType,
+  };
+}
+
+export function buildPestle(industry?: string | null) {
+  const factors = [
+    { factor: "Political", condition: "Regulatory and policy stability varies by market", impact: "medium", probability: "medium", severity: "medium", horizon: "12–24 months", response: "Track licensing, data and advertising rules in operating markets." },
+    { factor: "Economic", condition: "Demand and buyer budgets fluctuate with macro cycles", impact: "high", probability: "medium", severity: "high", horizon: "6–18 months", response: "Scenario-plan revenue under conservative conversion and longer cycles." },
+    { factor: "Social", condition: "Buyer expectations for speed, transparency and digital experience are rising", impact: "high", probability: "high", severity: "medium", horizon: "ongoing", response: "Align UX, support SLAs and proof assets to social expectations." },
+    { factor: "Technological", condition: "AI and automation raise productivity baselines", impact: "high", probability: "high", severity: "medium", horizon: "12 months", response: "Prioritize high-ROI automation on lead handling, reporting and support." },
+    { factor: "Legal", condition: "Privacy, consumer and employment rules constrain data and outreach", impact: "medium", probability: "medium", severity: "high", horizon: "ongoing", response: "Maintain consent, retention and disclosure hygiene on customer data." },
+    { factor: "Environmental", condition: "Sustainability expectations affect brand and supply chains in some sectors", impact: "low", probability: "medium", severity: "low", horizon: "24+ months", response: "Document material environmental claims only with evidence." },
+  ];
+  return { industry: industry ?? "General", factors, evidence: "INFERRED" as EvidenceType, note: "PESTLE items are structured prompts for leadership review, not verified jurisdiction-specific legal advice." };
+}
+
+export function buildRootCauseChains(findings: DiagnosticFinding[]) {
+  return prioritizeFindings(findings).slice(0, 5).map((f) => ({
+    observedProblem: f.problem,
+    evidence: f.evidence,
+    evidenceDetail: f.rationale,
+    possibleCauses: [
+      "Process design gap",
+      "Capability or skill gap",
+      "Incentive misalignment",
+      "Data / system fragmentation",
+      "Offer or positioning mismatch",
+    ],
+    rootCauseHypothesis: f.rationale,
+    confidence: f.confidence,
+    businessImpact: f.impact,
+    recommendedIntervention: f.recommendedAction,
+  }));
+}
+
+export function buildDetailedRecommendations(findings: DiagnosticFinding[]) {
+  return prioritizeFindings(findings).slice(0, 6).map((f, idx) => ({
+    recommendation: f.recommendedAction,
+    problem: f.problem,
+    evidence: f.evidence,
+    rootCause: f.rationale,
+    businessImpact: f.impact,
+    priority: idx < 2 ? "Fix Immediately" : idx < 4 ? "High Priority" : "Medium Priority",
+    owner: f.pillar === "sales" || f.pillar === "marketing" ? "Revenue leadership" : f.pillar === "finance" ? "Finance lead" : "Functional owner",
+    timeline: idx < 2 ? "7–30 days" : idx < 4 ? "30–90 days" : "90–180 days",
+    kpi: "Baseline → target defined in SMART goal",
+    expectedResult: "Measurable movement on the pillar score and linked commercial KPI",
+    risk: "Execution stalls without owner, baseline and weekly review",
+    dependencies: "Data quality, capacity, and leadership alignment",
+    alternative: "Pilot on a single segment or channel before full rollout",
+    smartGoalSeed: `Improve ${f.pillar} performance linked to “${f.problem}” with a quantified baseline, target and deadline within the stated timeline.`,
+  }));
+}
+

@@ -94,6 +94,33 @@ export type DiagnosticPdfReport = {
     companyWebsite?: string | null;
     researchedAt?: string;
   } | null;
+  porterFiveForces?: {
+    industry?: string;
+    note?: string;
+    forces?: Array<{ force: string; score: number; evidence: string; implication: string; opportunity: string; response: string }>;
+  };
+  pestle?: {
+    factors?: Array<{ factor: string; condition: string; impact: string; probability: string; severity: string; horizon: string; response: string }>;
+  };
+  rootCauses?: Array<{
+    observedProblem: string;
+    evidence: string;
+    evidenceDetail?: string;
+    rootCauseHypothesis?: string;
+    confidence?: string;
+    recommendedIntervention?: string;
+  }>;
+  detailedRecommendations?: Array<{
+    recommendation: string;
+    problem: string;
+    evidence: string;
+    priority: string;
+    owner: string;
+    timeline: string;
+    kpi: string;
+    expectedResult?: string;
+    smartGoalSeed?: string;
+  }>;
 };
 
 function ensureSpace(doc: jsPDF, y: number, need = 24) {
@@ -505,8 +532,59 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
     y += 2;
   }
 
+  // —— Porter ——
+  if (report.porterFiveForces?.forces?.length) {
+    y = sectionTitle(doc, "12. Porter Five Forces (INFERRED)", y, margin);
+    y = line(doc, report.porterFiveForces.note || "Scores are inferred from diagnostic signals until industry structure data is supplied.", margin, y);
+    y += 2;
+    for (const f of report.porterFiveForces.forces) {
+      y = ensureSpace(doc, y, 28);
+      y = line(doc, `${f.force}: ${f.score}/100 [${f.evidence}]`, margin, y);
+      y = line(doc, `Implication: ${f.implication}`, margin + 2, y);
+      y = line(doc, `Response: ${f.response}`, margin + 2, y);
+      y += 2;
+    }
+  }
+
+  // —— PESTLE ——
+  if (report.pestle?.factors?.length) {
+    y = sectionTitle(doc, "13. PESTLE Scan", y, margin);
+    for (const f of report.pestle.factors) {
+      y = ensureSpace(doc, y, 22);
+      y = line(doc, `${f.factor}: ${f.condition} (impact ${f.impact}, horizon ${f.horizon})`, margin, y);
+      y = line(doc, `Response: ${f.response}`, margin + 2, y);
+      y += 1;
+    }
+  }
+
+  // —— Root causes ——
+  if (report.rootCauses?.length) {
+    y = sectionTitle(doc, "14. Root-Cause Chains", y, margin);
+    for (const r of report.rootCauses) {
+      y = ensureSpace(doc, y, 28);
+      y = line(doc, `Problem: ${r.observedProblem}`, margin, y);
+      y = line(doc, `Evidence [${r.evidence}]: ${r.evidenceDetail || ""}`, margin + 2, y);
+      y = line(doc, `Hypothesis (${r.confidence || "medium"}): ${r.rootCauseHypothesis || ""}`, margin + 2, y);
+      y = line(doc, `Intervention: ${r.recommendedIntervention || ""}`, margin + 2, y);
+      y += 2;
+    }
+  }
+
+  // —— Detailed recommendations ——
+  if (report.detailedRecommendations?.length) {
+    y = sectionTitle(doc, "15. Detailed Recommendations", y, margin);
+    for (const d of report.detailedRecommendations) {
+      y = ensureSpace(doc, y, 32);
+      y = line(doc, `[${d.priority}] ${d.recommendation}`, margin, y);
+      y = line(doc, `Problem: ${d.problem} · Evidence: ${d.evidence}`, margin + 2, y);
+      y = line(doc, `Owner: ${d.owner} · Timeline: ${d.timeline} · KPI: ${d.kpi}`, margin + 2, y);
+      if (d.smartGoalSeed) y = line(doc, `SMART seed: ${d.smartGoalSeed}`, margin + 2, y);
+      y += 2;
+    }
+  }
+
   // —— Implementation ——
-  y = sectionTitle(doc, "12. Implementation Guide", y, margin);
+  y = sectionTitle(doc, "16. Implementation Guide", y, margin);
   const guide =
     report.implementationGuide?.length
       ? report.implementationGuide
