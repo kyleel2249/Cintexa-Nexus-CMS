@@ -89,6 +89,34 @@ export const diagnosticApi = {
     metadata?: Record<string, unknown>;
   }) => request<Record<string, unknown>>("/diagnostics/history", { method: "POST", body: JSON.stringify(payload) }),
 
+  saveSnapshot: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/diagnostics/snapshots", { method: "POST", body: JSON.stringify(payload) }),
+
+  listSnapshots: (params?: { company?: string; profileId?: number; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.company) q.set("company", params.company);
+    if (params?.profileId) q.set("profileId", String(params.profileId));
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return request<{ items: Array<Record<string, unknown>>; count: number }>(`/diagnostics/snapshots${qs ? `?${qs}` : ""}`);
+  },
+
+  compareSnapshots: (aId: number, bId: number) =>
+    request<Record<string, unknown>>("/diagnostics/snapshots/compare", { method: "POST", body: JSON.stringify({ aId, bId }) }),
+
+  connectorCatalog: () => request<{ items: Array<Record<string, unknown>> }>("/diagnostics/connectors/catalog"),
+
+  listConnectors: (profileId?: number) => {
+    const q = profileId != null ? `?profileId=${profileId}` : "";
+    return request<{ items: Array<Record<string, unknown>> }>(`/diagnostics/connectors${q}`);
+  },
+
+  registerConnector: (payload: { provider: string; profileId?: number; displayName?: string; config?: Record<string, unknown> }) =>
+    request<Record<string, unknown>>("/diagnostics/connectors", { method: "POST", body: JSON.stringify(payload) }),
+
+  syncConnector: (id: number) =>
+    request<Record<string, unknown>>(`/diagnostics/connectors/${id}/sync`, { method: "POST", body: "{}" }),
+
   listHistory: (params?: { sessionId?: number; profileId?: number }) => {
     const q = new URLSearchParams();
     if (params?.sessionId) q.set("sessionId", String(params.sessionId));

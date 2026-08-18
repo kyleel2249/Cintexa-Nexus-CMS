@@ -115,3 +115,41 @@ export const diagnosticTaskHistoryTable = pgTable("diagnostic_task_history", {
 });
 
 export type DiagnosticTaskHistory = typeof diagnosticTaskHistoryTable.$inferSelect;
+
+/** Versioned full diagnostic snapshot for org-level history & compare */
+export const diagnosticSnapshotsTable = pgTable("diagnostic_snapshots", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id"),
+  sessionId: integer("session_id"),
+  companyName: text("company_name").notNull(),
+  industry: text("industry"),
+  mode: text("mode").notNull().default("standard"),
+  overallScore: integer("overall_score"),
+  severity: text("severity"),
+  pillarScores: jsonb("pillar_scores").notNull().default("{}"),
+  metrics: jsonb("metrics").notNull().default("{}"),
+  answers: jsonb("answers").notNull().default("{}"),
+  competitors: jsonb("competitors").notNull().default("[]"),
+  goals: jsonb("goals").notNull().default("[]"),
+  payload: jsonb("payload").notNull().default("{}"),
+  capturedAt: timestamp("captured_at").notNull().defaultNow(),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+/** External data connector registry (CRM, analytics, ads) — stubs until live OAuth */
+export const diagnosticConnectorsTable = pgTable("diagnostic_connectors", {
+  id: serial("id").primaryKey(),
+  profileId: integer("profile_id"),
+  provider: text("provider").notNull(),
+  displayName: text("display_name").notNull(),
+  status: text("status").notNull().default("disconnected"),
+  config: jsonb("config").notNull().default("{}"),
+  lastSyncAt: timestamp("last_sync_at"),
+  lastError: text("last_error"),
+  metricsPreview: jsonb("metrics_preview").notNull().default("{}"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+export type DiagnosticSnapshot = typeof diagnosticSnapshotsTable.$inferSelect;
+export type DiagnosticConnector = typeof diagnosticConnectorsTable.$inferSelect;

@@ -139,6 +139,9 @@ export default function BusinessDiagnostic() {
   const [roiImplCost, setRoiImplCost] = useState<string>("5000");
   const [roiMonthlySave, setRoiMonthlySave] = useState<string>("800");
   const [roiMonthlyRev, setRoiMonthlyRev] = useState<string>("2000");
+  const [connectors, setConnectors] = useState<Array<Record<string, unknown>>>([]);
+  const [connectorCatalog, setConnectorCatalog] = useState<Array<Record<string, unknown>>>([]);
+  const [serverSnapshots, setServerSnapshots] = useState<Array<Record<string, unknown>>>([]);
   const [historyCompare, setHistoryCompare] = useState<{ summary: string; healthDelta: number; pillarDeltas: Array<{ pillar: string; from: number; to: number; delta: number }> } | null>(null);
 
   const questions = useMemo(() => buildAdaptiveQuestions(answers), [answers]);
@@ -252,6 +255,21 @@ export default function BusinessDiagnostic() {
         const histKey = "cintexa-diagnostic-snapshots";
         const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
         localStorage.setItem(histKey, JSON.stringify([snap, ...(Array.isArray(hist) ? hist : [])].slice(0, 25)));
+        void diagnosticApi.saveSnapshot({
+          companyName: company.name || "Company",
+          industry: company.industry,
+          mode,
+          overallScore: calculateBusinessHealth(derived),
+          severity: scoreSeverity(calculateBusinessHealth(derived)),
+          pillarScores: derived,
+          scores: derived,
+          health: calculateBusinessHealth(derived),
+          metrics,
+          answers: next,
+          competitors,
+          goals,
+          payload: snap,
+        }).catch(() => { /* server optional */ });
       } catch { /* ignore */ }
       setStage("results");
       void logTaskLocal(
@@ -344,6 +362,9 @@ export default function BusinessDiagnostic() {
       const existing = JSON.parse(localStorage.getItem("cintexa-diagnostic-task-history") || "[]");
       if (Array.isArray(existing) && existing.length) setTaskHistory(existing);
     } catch { /* ignore */ }
+    void diagnosticApi.connectorCatalog().then((r) => setConnectorCatalog(r.items || [])).catch(() => {});
+    void diagnosticApi.listConnectors().then((r) => setConnectors(r.items || [])).catch(() => {});
+    void diagnosticApi.listSnapshots({ limit: 20 }).then((r) => setServerSnapshots(r.items || [])).catch(() => {});
     try {
       const q = new URLSearchParams(window.location.search);
       if (q.get("history") === "1") {
@@ -1133,6 +1154,108 @@ export default function BusinessDiagnostic() {
                   </li>
                 ))}
               </ul>
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Server-side history chart */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Org diagnostic history</CardTitle>
+          <CardDescription>Server snapshots (when API/DB available). Bars show overall health over time.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <div className="flex gap-2">
+            <Button type="button" variant="outline" size="sm" onClick={() => {
+              void diagnosticApi.listSnapshots({ company: company.name || undefined, limit: 20 })
+                .then(r => setServerSnapshots(r.items || []))
+                .catch(() => setServerSnapshots([]));
+            }}>Refresh server history</Button>
+            {serverSnapshots.length >= 2 && (
+              <Button type="button" variant="outline" size="sm" onClick={() => {
+                const a = serverSnapshots[1] as any;
+                const b = serverSnapshots[0] as any;
+                if (a?.id && b?.id) {
+                  void diagnosticApi.compareSnapshots(Number(a.id), Number(b.id)).then((r: any) => {
+                    setHistoryCompare({
+                      summary: String(r.summary || ""),
+                      healthDelta: Number(r.healthDelta || 0),
+                      pillarDeltas: Array.isArray(r.pillarDeltas) ? r.pillarDeltas : [],
+                    });
+                  }).catch(() => {});
+                }
+              }}>Compare last two server snapshots</Button>
+            )}
+          </div>
+          {serverSnapshots.length === 0 ? (
+            <p className="text-muted-foreground">No server snapshots yet. Completing a diagnostic will attempt to persist one.</p>
+          ) : (
+            <div className="space-y-2">
+              {serverSnapshots.slice(0, 12).map((s: any) => {
+                const score = Number(s.overallScore ?? s.overall_score ?? 0);
+                return (
+                  <div key={s.id || s.capturedAt} className="flex items-center gap-3">
+                    <div className="w-28 text-xs text-muted-foreground shrink-0">
+                      {String(s.capturedAt || s.captured_at || "").slice(0, 10) || "—"}
+                    </div>
+                    <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden">
+                      <div className="h-full bg-primary/80 rounded-full transition-all" style={{ width: `${Math.min(100, score)}%` }} />
+                    </div>
+                    <div className="w-12 text-right font-semibold tabular-nums">{score}</div>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Data connectors */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Business data connectors</CardTitle>
+          <CardDescription>CRM, analytics and ads — register now; live OAuth sync plugs into the same interface later. Metrics stay UNKNOWN until a real sync runs.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4 text-sm">
+          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {connectorCatalog.map((c: any) => (
+              <button
+                key={c.provider}
+                type="button"
+                className="text-left border rounded-lg p-3 hover:bg-muted/50 transition"
+                onClick={() => {
+                  void diagnosticApi.registerConnector({ provider: String(c.provider), displayName: String(c.displayName) })
+                    .then(() => diagnosticApi.listConnectors())
+                    .then(r => setConnectors(r.items || []))
+                    .catch(() => {});
+                }}
+              >
+                <div className="font-semibold">{c.displayName}</div>
+                <p className="text-xs text-muted-foreground mt-1">{c.description}</p>
+                <Badge variant="outline" className="mt-2">{c.category}</Badge>
+              </button>
+            ))}
+          </div>
+          {connectors.length > 0 && (
+            <div className="border-t pt-3 space-y-2">
+              <div className="font-medium">Registered</div>
+              {connectors.map((c: any) => (
+                <div key={c.id || c.provider} className="flex items-center justify-between gap-2 border rounded-lg p-2">
+                  <div>
+                    <span className="font-medium">{c.displayName || c.provider}</span>
+                    <Badge variant="outline" className="ml-2">{c.status}</Badge>
+                  </div>
+                  {c.id != null && (
+                    <Button type="button" size="sm" variant="outline" onClick={() => {
+                      void diagnosticApi.syncConnector(Number(c.id))
+                        .then(() => diagnosticApi.listConnectors())
+                        .then(r => setConnectors(r.items || []))
+                        .catch(() => {});
+                    }}>Sync</Button>
+                  )}
+                </div>
+              ))}
             </div>
           )}
         </CardContent>

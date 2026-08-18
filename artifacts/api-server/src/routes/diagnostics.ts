@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable, diagnosticTaskHistoryTable, diagnosticEvidenceTable } from "@workspace/db";
+import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable, diagnosticTaskHistoryTable, diagnosticEvidenceTable, diagnosticSnapshotsTable, diagnosticConnectorsTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { analyze, benchmarkGap, projectScenario, validateSmartGoal, buildFullReport, getBenchmarks, buildBenchmarkReport } from "../services/diagnostic-engine";
 import { researchCompanyWeb, researchCompetitorSites } from "../services/company-research";
+import { CONNECTOR_CATALOG, simulateConnectorSync, type ConnectorProvider } from "../services/data-connectors";
 
 const router = Router();
 const json = (value: unknown) => value ?? {};
@@ -290,6 +291,170 @@ router.get("/history", async (req, res) => {
     return res.json(rows);
   } catch {
     return res.json([]);
+  }
+});
+
+
+
+
+// ——— Server-side snapshots (continuous platform) ———
+router.post("/snapshots", async (req, res) => {
+  const body = req.body ?? {};
+  const companyName = String(body.companyName || body.company?.name || "").trim();
+  if (!companyName) return res.status(400).json({ error: "companyName is required" });
+  try {
+    const [row] = await db.insert(diagnosticSnapshotsTable).values({
+      profileId: body.profileId != null ? Number(body.profileId) : null,
+      sessionId: body.sessionId != null ? Number(body.sessionId) : null,
+      companyName,
+      industry: body.industry ?? body.company?.industry ?? null,
+      mode: body.mode ?? "standard",
+      overallScore: body.overallScore != null ? Number(body.overallScore) : body.health != null ? Number(body.health) : null,
+      severity: body.severity ?? null,
+      pillarScores: body.pillarScores ?? body.scores ?? {},
+      metrics: body.metrics ?? {},
+      answers: body.answers ?? {},
+      competitors: body.competitors ?? [],
+      goals: body.goals ?? [],
+      payload: body.payload ?? body,
+    } as any).returning();
+    return res.status(201).json(row);
+  } catch (err: any) {
+    // Soft-fail when DB table not migrated yet — return ephemeral snapshot
+    return res.status(201).json({
+      id: null,
+      companyName,
+      overallScore: body.overallScore ?? body.health ?? null,
+      pillarScores: body.pillarScores ?? body.scores ?? {},
+      capturedAt: new Date().toISOString(),
+      persisted: false,
+      note: err?.message || "Snapshot held in response only (DB unavailable)",
+    });
+  }
+});
+
+router.get("/snapshots", async (req, res) => {
+  const company = req.query.company ? String(req.query.company) : null;
+  const profileId = req.query.profileId ? Number(req.query.profileId) : null;
+  const limit = Math.min(100, Number(req.query.limit || 50));
+  try {
+    let rows = await db.select().from(diagnosticSnapshotsTable).orderBy(desc(diagnosticSnapshotsTable.capturedAt)).limit(limit);
+    if (profileId) rows = rows.filter((r: any) => r.profileId === profileId);
+    if (company) rows = rows.filter((r: any) => String(r.companyName || "").toLowerCase().includes(company.toLowerCase()));
+    return res.json({ items: rows, count: rows.length });
+  } catch {
+    return res.json({ items: [], count: 0, note: "Snapshots table unavailable until migration runs." });
+  }
+});
+
+router.get("/snapshots/:id", async (req, res) => {
+  try {
+    const rows = await db.select().from(diagnosticSnapshotsTable).where(eq(diagnosticSnapshotsTable.id, Number(req.params.id))).limit(1);
+    if (!rows[0]) return res.status(404).json({ error: "not found" });
+    return res.json(rows[0]);
+  } catch {
+    return res.status(404).json({ error: "not found" });
+  }
+});
+
+router.post("/snapshots/compare", async (req, res) => {
+  const { aId, bId } = req.body ?? {};
+  if (!aId || !bId) return res.status(400).json({ error: "aId and bId required" });
+  try {
+    const aRows = await db.select().from(diagnosticSnapshotsTable).where(eq(diagnosticSnapshotsTable.id, Number(aId))).limit(1);
+    const bRows = await db.select().from(diagnosticSnapshotsTable).where(eq(diagnosticSnapshotsTable.id, Number(bId))).limit(1);
+    const a = aRows[0]; const b = bRows[0];
+    if (!a || !b) return res.status(404).json({ error: "snapshot not found" });
+    const aScores = (a.pillarScores || {}) as Record<string, number>;
+    const bScores = (b.pillarScores || {}) as Record<string, number>;
+    const pillars = Array.from(new Set([...Object.keys(aScores), ...Object.keys(bScores)]));
+    const pillarDeltas = pillars.map((pillar) => ({
+      pillar,
+      from: Number(aScores[pillar] ?? 0),
+      to: Number(bScores[pillar] ?? 0),
+      delta: Number(bScores[pillar] ?? 0) - Number(aScores[pillar] ?? 0),
+    })).sort((x, y) => Math.abs(y.delta) - Math.abs(x.delta));
+    const healthDelta = Number(b.overallScore ?? 0) - Number(a.overallScore ?? 0);
+    return res.json({
+      a: { id: a.id, companyName: a.companyName, overallScore: a.overallScore, capturedAt: a.capturedAt },
+      b: { id: b.id, companyName: b.companyName, overallScore: b.overallScore, capturedAt: b.capturedAt },
+      healthDelta,
+      pillarDeltas,
+      summary: healthDelta >= 0
+        ? `Health improved or stable by ${healthDelta} points between snapshots.`
+        : `Health declined by ${Math.abs(healthDelta)} points between snapshots.`,
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "compare failed" });
+  }
+});
+
+// ——— Data connectors ———
+router.get("/connectors/catalog", (_req, res) => {
+  res.json({ items: CONNECTOR_CATALOG });
+});
+
+router.get("/connectors", async (req, res) => {
+  const profileId = req.query.profileId ? Number(req.query.profileId) : null;
+  try {
+    let rows = await db.select().from(diagnosticConnectorsTable).orderBy(desc(diagnosticConnectorsTable.updatedAt)).limit(100);
+    if (profileId) rows = rows.filter((r: any) => r.profileId === profileId);
+    return res.json({ items: rows });
+  } catch {
+    return res.json({ items: [], note: "Connectors table unavailable until migration runs." });
+  }
+});
+
+router.post("/connectors", async (req, res) => {
+  const body = req.body ?? {};
+  const provider = String(body.provider || "") as ConnectorProvider;
+  const catalog = CONNECTOR_CATALOG.find((c) => c.provider === provider);
+  if (!catalog) return res.status(400).json({ error: "Unknown provider", allowed: CONNECTOR_CATALOG.map((c) => c.provider) });
+  const sim = simulateConnectorSync(provider);
+  try {
+    const [row] = await db.insert(diagnosticConnectorsTable).values({
+      profileId: body.profileId != null ? Number(body.profileId) : null,
+      provider,
+      displayName: body.displayName || catalog.displayName,
+      status: sim.status,
+      config: body.config ?? {},
+      lastSyncAt: new Date(),
+      lastError: null,
+      metricsPreview: sim.metricsPreview,
+      updatedAt: new Date(),
+    } as any).returning();
+    return res.status(201).json({ ...row, note: sim.note, evidence: sim.evidence });
+  } catch {
+    return res.status(201).json({
+      id: null,
+      provider,
+      displayName: catalog.displayName,
+      status: sim.status,
+      metricsPreview: sim.metricsPreview,
+      note: sim.note,
+      evidence: sim.evidence,
+      persisted: false,
+    });
+  }
+});
+
+router.post("/connectors/:id/sync", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    const rows = await db.select().from(diagnosticConnectorsTable).where(eq(diagnosticConnectorsTable.id, id)).limit(1);
+    const row = rows[0];
+    if (!row) return res.status(404).json({ error: "not found" });
+    const sim = simulateConnectorSync(row.provider as ConnectorProvider);
+    const [updated] = await db.update(diagnosticConnectorsTable).set({
+      status: sim.status,
+      metricsPreview: sim.metricsPreview,
+      lastSyncAt: new Date(),
+      lastError: null,
+      updatedAt: new Date(),
+    } as any).where(eq(diagnosticConnectorsTable.id, id)).returning();
+    return res.json({ ...updated, note: sim.note, evidence: sim.evidence });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message || "sync failed", note: "Live sync requires OAuth credentials." });
   }
 });
 
