@@ -127,6 +127,7 @@ export type DiagnosticPdfReport = {
     expectedResult?: string;
     smartGoalSeed?: string;
   }>;
+  uploadedDocuments?: Array<{ name: string; evidence: string; insight?: string }>;
 };
 
 function ensureSpace(doc: jsPDF, y: number, need = 24) {
@@ -592,9 +593,9 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
   // —— Implementation ——
   if (report.ceoBrief?.length) {
     y = sectionTitle(doc, "16. CEO / Board Brief", y, margin);
-    for (const line of report.ceoBrief) {
+    for (const entry of report.ceoBrief) {
       y = ensureSpace(doc, y);
-      y = line(doc, `• ${line}`, margin, y);
+      y = line(doc, `• ${entry}`, margin, y);
     }
     y += 2;
   }
@@ -656,6 +657,15 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
   doc.setTextColor(90, 90, 90);
   y = line(doc, "This PDF is a standalone strategic document. It does not include application navigation or interface chrome.", margin, y);
   y = line(doc, "CINTEXA Nexus — diagnose → prioritize → execute → measure → adapt.", margin, y);
+
+  if (report.uploadedDocuments?.length) {
+    y = sectionTitle(doc, "Supporting Documents & Evidence", y, margin);
+    for (const d of report.uploadedDocuments) {
+      y = ensureSpace(doc, y);
+      y = line(doc, `${d.name} — ${d.evidence}${d.insight ? ` · ${d.insight}` : ""}`, margin, y);
+    }
+    y += 2;
+  }
 
   // —— Footer: date/time, copyright, powered by ——
   y = ensureSpace(doc, y, 36);

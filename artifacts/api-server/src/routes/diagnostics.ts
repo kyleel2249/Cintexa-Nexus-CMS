@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable, diagnosticTaskHistoryTable } from "@workspace/db";
+import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable, diagnosticTaskHistoryTable, diagnosticEvidenceTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { analyze, benchmarkGap, projectScenario, validateSmartGoal, buildFullReport, getBenchmarks, buildBenchmarkReport } from "../services/diagnostic-engine";
 import { researchCompanyWeb, researchCompetitorSites } from "../services/company-research";
@@ -188,6 +188,7 @@ router.post("/research", async (req, res) => {
 router.post("/documents", async (req, res) => {
   const body = req.body ?? {};
   const files = Array.isArray(body.files) ? body.files : [];
+  const sessionId = body.sessionId != null ? Number(body.sessionId) : null;
   // Accept metadata + extracted text summaries from client; store-ready payload.
   const normalized = files.map((f: any, i: number) => ({
     id: f.id ?? `doc-${i + 1}`,
@@ -198,8 +199,29 @@ router.post("/documents", async (req, res) => {
     evidence: "USER PROVIDED",
     uploadedAt: new Date().toISOString(),
   }));
+
+  // Persist as evidence rows so uploaded documents actually feed later
+  // analysis/reporting for this session, not just this response.
+  if (sessionId && normalized.length) {
+    await db.insert(diagnosticEvidenceTable).values(
+      normalized.map((d: any) => ({
+        sessionId,
+        category: "document_upload",
+        claim: d.extractedTextPreview
+          ? `Uploaded document "${d.name}" provided as supporting context.`
+          : `Uploaded document "${d.name}" (no extractable text).`,
+        evidenceType: "USER PROVIDED",
+        sourceName: d.name,
+        sourceUrl: null,
+        confidence: "medium",
+        value: { mimeType: d.mimeType, size: d.size, extractedTextPreview: d.extractedTextPreview },
+      })),
+    );
+  }
+
   res.status(201).json({
     accepted: normalized.length,
+    persisted: Boolean(sessionId),
     documents: normalized,
     analysisNotes: normalized.map((d: any) => ({
       document: d.name,
@@ -209,6 +231,14 @@ router.post("/documents", async (req, res) => {
       evidence: "USER PROVIDED",
     })),
   });
+});
+
+router.get("/sessions/:sessionId/evidence", async (req, res) => {
+  const sessionId = Number(req.params.sessionId);
+  const rows = await db.select().from(diagnosticEvidenceTable)
+    .where(eq(diagnosticEvidenceTable.sessionId, sessionId))
+    .orderBy(desc(diagnosticEvidenceTable.createdAt));
+  res.json(rows);
 });
 
 

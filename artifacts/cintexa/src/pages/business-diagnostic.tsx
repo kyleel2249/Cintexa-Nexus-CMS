@@ -505,6 +505,13 @@ export default function BusinessDiagnostic() {
         pestle: (report as any)?.pestle,
         rootCauses: (report as any)?.rootCauses,
         detailedRecommendations: (report as any)?.detailedRecommendations,
+        uploadedDocuments: uploadedDocs.map(d => ({
+          name: d.name,
+          evidence: "USER PROVIDED",
+          insight: d.text
+            ? `${Math.round(d.text.length / 5)} words of extracted text considered as supporting context.`
+            : "Binary/unreadable file — recorded as evidence but no text was extracted.",
+        })),
         moduleRecommendations: moduleRecs,
         executiveAlerts: execAlerts.map(a => ({ severity: a.severity, title: a.title, detail: a.detail, evidence: a.evidence })),
         ceoBrief,
@@ -656,7 +663,7 @@ export default function BusinessDiagnostic() {
         status: "done" as const,
         lastAction: research?.fetchError
           ? `Fetch issue: ${String(research.fetchError)}`
-          : `Live research: ${companyName || "company"}${companyWebsite ? ` · ${companyWebsite}` : ""} · ${String(research.pageTitle || niche)}`,
+          : `Live research: ${companyName || "company"}${companyWebsite ? ` · ${companyWebsite}` : ""} · ${String(research?.pageTitle || niche)}`,
       } : e));
     } catch (err: any) {
       setAiEmployees(prev => prev.map(e => e.id === "scout" ? {
