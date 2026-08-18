@@ -20,7 +20,6 @@ import {
   pillars, questionBank, scoreSeverity, initialSocialPlatforms, analyzeSocialPlatforms,
   autofillDemoProfile, seedCompetitorsForNiche, seedCaseStudies, generateDailyContentPack,
   INDUSTRY_BENCHMARKS, resolveIndustryKey, AI_EMPLOYEES,
-  derivePillarScoresFromAnswers, getDatedIndustryBenchmarks, buildDiagnosticSnapshot,
   INDUSTRY_OPTIONS, SUB_INDUSTRY_BY_INDUSTRY, MARKET_OPTIONS, OBJECTIVE_OPTIONS, inferProfileFromIdentity,
   type Competitor, type DiagnosticMode, type Goal, type Metric, type SocialAdPlatform,
   type AiEmployee, type CaseStudySeed, type ContentPackItem,
@@ -38,18 +37,6 @@ import {
   intakeSocialPatches,
 } from "@/lib/diagnostic-intake-form";
 import { createId } from "@/lib/id";
-import {
-  buildCompetitiveMatrix,
-  recommendPositioning,
-  calculateInitiativeRoi,
-  buildExecutiveAlerts,
-  buildGoalCascade,
-  detectPlanningBarriers,
-  recommendCintexaModules,
-  compareSnapshots,
-  buildCeoBrief,
-  type SnapshotSummary,
-} from "@/lib/diagnostic-frameworks";
 
 const modes: { id: DiagnosticMode; label: string; minutes: string; description: string }[] = [
   { id: "quick", label: "Quick Scan", minutes: "10–15 min", description: "Rapid health and priority scan" },
@@ -136,13 +123,6 @@ export default function BusinessDiagnostic() {
   const [pillarBenchmarks, setPillarBenchmarks] = useState<Record<string, number>>({ ...INDUSTRY_BENCHMARKS.default });
   const [aiBusy, setAiBusy] = useState(false);
   const [webResearch, setWebResearch] = useState<Record<string, unknown> | null>(null);
-  const [roiImplCost, setRoiImplCost] = useState<string>("5000");
-  const [roiMonthlySave, setRoiMonthlySave] = useState<string>("800");
-  const [roiMonthlyRev, setRoiMonthlyRev] = useState<string>("2000");
-  const [connectors, setConnectors] = useState<Array<Record<string, unknown>>>([]);
-  const [connectorCatalog, setConnectorCatalog] = useState<Array<Record<string, unknown>>>([]);
-  const [serverSnapshots, setServerSnapshots] = useState<Array<Record<string, unknown>>>([]);
-  const [historyCompare, setHistoryCompare] = useState<{ summary: string; healthDelta: number; pillarDeltas: Array<{ pillar: string; from: number; to: number; delta: number }> } | null>(null);
 
   const questions = useMemo(() => buildAdaptiveQuestions(answers), [answers]);
   const currentQuestion = questions[questionIndex];
@@ -152,56 +132,6 @@ export default function BusinessDiagnostic() {
   const strongest = [...pillars].sort((a, b) => (scores[b.id] ?? 0) - (scores[a.id] ?? 0))[0];
   const weakest = [...pillars].sort((a, b) => (scores[a.id] ?? 0) - (scores[b.id] ?? 0))[0];
   const socialAnalysis = useMemo(() => analyzeSocialPlatforms(socialPlatforms), [socialPlatforms]);
-  const competitiveMatrix = useMemo(() => buildCompetitiveMatrix({
-    companyName: company.name || "Company",
-    competitors: competitors.map(c => ({ name: c.name, score: c.score, strengths: c.strengths, weaknesses: c.weaknesses })),
-  }), [company.name, competitors]);
-  const positioning = useMemo(() => recommendPositioning({
-    industry: company.industry,
-    objective: company.objective,
-    automationScore: scores.automation,
-    competitiveScore: scores.competitive,
-  }), [company.industry, company.objective, scores.automation, scores.competitive]);
-  const execAlerts = useMemo(() => buildExecutiveAlerts({
-    health,
-    scores,
-    conversion: sales.conversion,
-    churn: metrics.find(m => m.id === "churn")?.value ?? null,
-    competitorsCount: competitors.length,
-  }), [health, scores, sales.conversion, metrics, competitors.length]);
-  const goalCascade = useMemo(() => buildGoalCascade({
-    objective: company.objective,
-    weakestPillar: weakest.label,
-    strongestPillar: strongest.label,
-  }), [company.objective, weakest.label, strongest.label]);
-  const barriers = useMemo(() => detectPlanningBarriers({
-    hasCrm: answers.sales2 === true,
-    goalCount: goals.length,
-    health,
-    objective: company.objective,
-  }), [answers.sales2, goals.length, health, company.objective]);
-  const moduleRecs = useMemo(() => recommendCintexaModules(scores), [scores]);
-  const roiModel = useMemo(() => calculateInitiativeRoi({
-    implementationCost: roiImplCost === "" ? null : Number(roiImplCost),
-    monthlySavings: roiMonthlySave === "" ? null : Number(roiMonthlySave),
-    monthlyAdditionalRevenue: roiMonthlyRev === "" ? null : Number(roiMonthlyRev),
-  }), [roiImplCost, roiMonthlySave, roiMonthlyRev]);
-  const ceoBrief = useMemo(() => buildCeoBrief({
-    companyName: company.name || "Company",
-    health,
-    severity,
-    strongest: strongest.label,
-    weakest: weakest.label,
-    alerts: execAlerts,
-    topActions: [
-      `Fund ${weakest.label} with owner and KPI this week`,
-      "Validate top findings with internal data",
-      goals[0]?.title ? `Drive: ${goals[0].title}` : "Create first SMART goal",
-      "Refresh competitor sources",
-      "Instrument weekly KPI review",
-    ],
-  }), [company.name, health, severity, strongest.label, weakest.label, execAlerts, goals]);
-
   const monthlyLeads = metrics.find(m => m.id === "monthlyLeads")?.value ?? 0;
   const customers = metrics.find(m => m.id === "customers")?.value ?? 0;
   const aov = metrics.find(m => m.id === "aov")?.value ?? 0;
@@ -231,53 +161,18 @@ export default function BusinessDiagnostic() {
     if (!currentQuestion) return;
     const next = { ...answers, [currentQuestion.id]: value };
     setAnswers(next);
-    // Recompute all pillar scores from the full answer set for consistency
-    const derived = derivePillarScoresFromAnswers(next);
-    setScores(derived);
+    const pillar = currentQuestion.pillar;
+    const positive = value === true || value === 5 || value === "Closing" || value === "Lead volume" ? 10 : 0;
+    setScores(prev => ({ ...prev, [pillar]: Math.min(100, Math.max(0, (prev[pillar] ?? 50) + positive - (value === false ? 7 : 0))) }));
     if (questionIndex < questions.length - 1) {
       setQuestionIndex(i => i + 1);
     } else {
-      // Persist snapshot when diagnostic completes
-      try {
-        const snap = buildDiagnosticSnapshot({
-          company,
-          mode,
-          answers: next,
-          scores: derived,
-          metrics,
-          goals,
-          competitors,
-          socialPlatforms,
-          webResearch,
-          health: calculateBusinessHealth(derived),
-        });
-        localStorage.setItem("cintexa-diagnostic-last-snapshot", JSON.stringify(snap));
-        const histKey = "cintexa-diagnostic-snapshots";
-        const hist = JSON.parse(localStorage.getItem(histKey) || "[]");
-        localStorage.setItem(histKey, JSON.stringify([snap, ...(Array.isArray(hist) ? hist : [])].slice(0, 25)));
-        void diagnosticApi.saveSnapshot({
-          companyName: company.name || "Company",
-          industry: company.industry,
-          mode,
-          overallScore: calculateBusinessHealth(derived),
-          severity: scoreSeverity(calculateBusinessHealth(derived)),
-          pillarScores: derived,
-          scores: derived,
-          health: calculateBusinessHealth(derived),
-          metrics,
-          answers: next,
-          competitors,
-          goals,
-          payload: snap,
-        }).catch(() => { /* server optional */ });
-      } catch { /* ignore */ }
       setStage("results");
       void logTaskLocal(
         "social_platforms",
         `Diagnosed ${socialPlatforms.filter(p => p.enabled).length} paid social platform(s)`,
         socialPlatforms.filter(p => p.enabled).map(p => p.label).join(", "),
       );
-      void logTaskLocal("diagnostic_complete", `Completed ${mode} diagnostic for ${company.name || "company"}`, `Health score recalculated from ${Object.keys(next).length} answers`);
     }
   }
 
@@ -311,50 +206,6 @@ export default function BusinessDiagnostic() {
     setGoals(prev => [...prev, goal]);
   }
 
-    function applyIntakePayload(payload: ReturnType<typeof parseIntakeFormText>) {
-    const profile = intakeToCompany(payload);
-    setCompany(prev => ({
-      ...prev,
-      name: profile.name || prev.name,
-      website: profile.website || prev.website,
-      industry: profile.industry || prev.industry,
-      subIndustry: profile.subIndustry || prev.subIndustry,
-      model: profile.model || prev.model,
-      market: profile.market || prev.market,
-      employees: profile.employees || prev.employees,
-      revenue: profile.revenue || prev.revenue,
-      objective: profile.objective || prev.objective,
-    }));
-    const patches = intakeMetricPatches(payload);
-    setMetrics(prev => prev.map(m => {
-      const v = patches[m.id];
-      return v !== undefined && v !== null ? { ...m, value: v } : m;
-    }));
-    if (payload.answers && Object.keys(payload.answers).length) {
-      setAnswers(prev => ({ ...prev, ...payload.answers }));
-      // Light pillar score nudge from answered questions
-      setScores(derivePillarScoresFromAnswers({ ...answers, ...payload.answers }));
-    }
-    if (payload.social) {
-      setSocialPlatforms(prev => intakeSocialPatches(payload, prev));
-    }
-    const comps = intakeCompetitors(payload);
-    if (comps.length) {
-      setCompetitors(comps.map(c => ({
-        id: createId(),
-        name: c.name,
-        website: c.website,
-        positioning: "From intake form",
-        score: 0,
-        pricing: "Unknown",
-        strengths: [],
-        weaknesses: [],
-      })));
-    }
-    void logTaskLocal("intake_upload", "Autofilled profile, metrics, social & assessment from intake form", payload.companyName || "form");
-  }
-
-
   function printReport() { void downloadDetailedPdf(); }
 
   useEffect(() => {
@@ -362,9 +213,6 @@ export default function BusinessDiagnostic() {
       const existing = JSON.parse(localStorage.getItem("cintexa-diagnostic-task-history") || "[]");
       if (Array.isArray(existing) && existing.length) setTaskHistory(existing);
     } catch { /* ignore */ }
-    void diagnosticApi.connectorCatalog().then((r) => setConnectorCatalog(r.items || [])).catch(() => {});
-    void diagnosticApi.listConnectors().then((r) => setConnectors(r.items || [])).catch(() => {});
-    void diagnosticApi.listSnapshots({ limit: 20 }).then((r) => setServerSnapshots(r.items || [])).catch(() => {});
     try {
       const q = new URLSearchParams(window.location.search);
       if (q.get("history") === "1") {
@@ -522,23 +370,6 @@ export default function BusinessDiagnostic() {
           "Execute 7 / 30 / 90 day roadmap; scale over 4–12 months.",
           "Instrument KPIs weekly; re-run diagnostic quarterly.",
         ],
-        porterFiveForces: (report as any)?.porterFiveForces,
-        pestle: (report as any)?.pestle,
-        rootCauses: (report as any)?.rootCauses,
-        detailedRecommendations: (report as any)?.detailedRecommendations,
-        uploadedDocuments: uploadedDocs.map(d => ({
-          name: d.name,
-          evidence: "USER PROVIDED",
-          insight: d.text
-            ? `${Math.round(d.text.length / 5)} words of extracted text considered as supporting context.`
-            : "Binary/unreadable file — recorded as evidence but no text was extracted.",
-        })),
-        moduleRecommendations: moduleRecs,
-        executiveAlerts: execAlerts.map(a => ({ severity: a.severity, title: a.title, detail: a.detail, evidence: a.evidence })),
-        ceoBrief,
-        positioningSummary: positioning.summary,
-        planningBarriers: barriers,
-        goalCascadeTitle: goalCascade.title,
       };
 
       downloadDiagnosticPdf(enriched as any);
@@ -582,6 +413,61 @@ export default function BusinessDiagnostic() {
       setResearchNotes("Research endpoint unavailable. Competitor claims remain USER PROVIDED until sources are attached.");
     }
   };
+
+
+
+  function applyIntakePayload(payload: ReturnType<typeof parseIntakeFormText>) {
+    const profile = intakeToCompany(payload);
+    setCompany(prev => ({
+      ...prev,
+      name: profile.name || prev.name,
+      website: profile.website || prev.website,
+      industry: profile.industry || prev.industry,
+      subIndustry: profile.subIndustry || prev.subIndustry,
+      model: profile.model || prev.model,
+      market: profile.market || prev.market,
+      employees: profile.employees || prev.employees,
+      revenue: profile.revenue || prev.revenue,
+      objective: profile.objective || prev.objective,
+    }));
+    const patches = intakeMetricPatches(payload);
+    setMetrics(prev => prev.map(m => {
+      const v = patches[m.id];
+      return v !== undefined && v !== null ? { ...m, value: v } : m;
+    }));
+    if (payload.answers && Object.keys(payload.answers).length) {
+      setAnswers(prev => ({ ...prev, ...payload.answers }));
+      // Light pillar score nudge from answered questions
+      setScores(prev => {
+        const next = { ...prev };
+        for (const [qid, val] of Object.entries(payload.answers || {})) {
+          const q = questionBank.find(x => x.id === qid);
+          if (!q) continue;
+          const positive = val === true || val === 5 || val === "Closing" || val === "Lead volume" ? 8 : 0;
+          const neg = val === false ? 5 : 0;
+          next[q.pillar] = Math.min(100, Math.max(0, (next[q.pillar] ?? 50) + positive - neg));
+        }
+        return next;
+      });
+    }
+    if (payload.social) {
+      setSocialPlatforms(prev => intakeSocialPatches(payload, prev));
+    }
+    const comps = intakeCompetitors(payload);
+    if (comps.length) {
+      setCompetitors(comps.map(c => ({
+        id: createId(),
+        name: c.name,
+        website: c.website,
+        positioning: "From intake form",
+        score: 0,
+        pricing: "Unknown",
+        strengths: [],
+        weaknesses: [],
+      })));
+    }
+    void logTaskLocal("intake_upload", "Autofilled profile, metrics, social & assessment from intake form", payload.companyName || "form");
+  }
 
   async function handleIntakeFormUpload(fileList: FileList | null) {
     if (!fileList?.length) return;
@@ -684,7 +570,7 @@ export default function BusinessDiagnostic() {
         status: "done" as const,
         lastAction: research?.fetchError
           ? `Fetch issue: ${String(research.fetchError)}`
-          : `Live research: ${companyName || "company"}${companyWebsite ? ` · ${companyWebsite}` : ""} · ${String(research?.pageTitle || niche)}`,
+          : `Live research: ${companyName || "company"}${companyWebsite ? ` · ${companyWebsite}` : ""} · ${String(research.pageTitle || niche)}`,
       } : e));
     } catch (err: any) {
       setAiEmployees(prev => prev.map(e => e.id === "scout" ? {
@@ -722,9 +608,10 @@ export default function BusinessDiagnostic() {
     } : e));
 
     await new Promise(r => setTimeout(r, 250));
-    const dated = getDatedIndustryBenchmarks(niche);
-    setPillarBenchmarks({ ...dated.pillars });
-    setAiEmployees(prev => prev.map(e => e.id === "benchmark" ? { ...e, status: "done" as const, lastAction: `Loaded ${dated.industryKey} band (as of ${dated.asOf}, ${dated.evidence})` } : e));
+    const key = resolveIndustryKey(niche);
+    const band = INDUSTRY_BENCHMARKS[key] || INDUSTRY_BENCHMARKS.default;
+    setPillarBenchmarks({ ...band });
+    setAiEmployees(prev => prev.map(e => e.id === "benchmark" ? { ...e, status: "done" as const, lastAction: `Loaded ${key} benchmark band` } : e));
 
     const cases = seedCaseStudies(niche, weakest.label);
     setCaseStudies(cases);
@@ -960,307 +847,6 @@ export default function BusinessDiagnostic() {
           })}
         </div>
       </CardContent></Card>
-
-
-      {/* CEO / Board view */}
-      <Card className="border-primary/20 bg-primary/5">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2"><ShieldAlert className="w-5 h-5" /> CEO / Board brief</CardTitle>
-          <CardDescription>Condition in minutes — evidence-labeled, decision-oriented.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2 text-sm">
-          {ceoBrief.map((line, i) => (
-            <div key={i} className="flex gap-2 border-b last:border-0 py-2">
-              <Badge variant="outline" className="shrink-0">{i === 0 ? "Health" : i === 1 ? "Focus" : i === 2 ? "Alerts" : `D${i - 2}`}</Badge>
-              <span>{line}</span>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      {/* Executive alerts */}
-      {execAlerts.length > 0 && (
-        <Card>
-          <CardHeader><CardTitle>Executive alerts</CardTitle><CardDescription>Generated from scores and metrics — not external surveillance.</CardDescription></CardHeader>
-          <CardContent className="space-y-2">
-            {execAlerts.map(a => (
-              <div key={a.id} className="flex gap-3 items-start border rounded-lg p-3 text-sm">
-                <Badge className={
-                  a.severity === "critical" ? "bg-rose-600" :
-                  a.severity === "warning" ? "bg-orange-500" :
-                  a.severity === "opportunity" ? "bg-emerald-600" :
-                  a.severity === "strategic" ? "bg-blue-600" : "bg-amber-500"
-                }>{a.severity}</Badge>
-                <div>
-                  <div className="font-semibold">{a.title}</div>
-                  <p className="text-muted-foreground text-xs mt-1">{a.detail}</p>
-                  <Badge variant="outline" className="mt-2 text-[10px]">{a.evidence}</Badge>
-                </div>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Competitive matrix */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Competitive scorecard matrix</CardTitle>
-          <CardDescription>{competitiveMatrix.note}</CardDescription>
-        </CardHeader>
-        <CardContent className="overflow-x-auto">
-          <table className="w-full text-xs">
-            <thead>
-              <tr className="border-b text-left">
-                <th className="p-2">Dimension</th>
-                <th className="p-2">{company.name || "You"}</th>
-                {competitors.slice(0, 4).map(c => <th key={c.id} className="p-2">{c.name}</th>)}
-                <th className="p-2">Industry</th>
-                <th className="p-2">Evidence</th>
-              </tr>
-            </thead>
-            <tbody>
-              {competitiveMatrix.rows.slice(0, 12).map(row => (
-                <tr key={row.dimension} className="border-b last:border-0">
-                  <td className="p-2 font-medium">{row.dimension}</td>
-                  <td className="p-2">{row.company ?? "—"}</td>
-                  {competitors.slice(0, 4).map((c, i) => (
-                    <td key={c.id} className="p-2">{row.competitors[i]?.score ?? "—"}</td>
-                  ))}
-                  <td className="p-2 text-muted-foreground">{row.industryBenchmark ?? "Unavailable"}</td>
-                  <td className="p-2"><Badge variant="outline">{row.evidence}</Badge></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </CardContent>
-      </Card>
-
-      {/* Positioning + ROI + cascade + barriers + modules */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader><CardTitle>Market positioning</CardTitle><CardDescription>INFERRED hints — validate with customer evidence.</CardDescription></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            <p>{positioning.summary}</p>
-            {positioning.axes.slice(0, 4).map(a => (
-              <div key={a.axis.id} className="flex justify-between border-b py-1 gap-2">
-                <span className="text-muted-foreground">{a.axis.low} ↔ {a.axis.high}</span>
-                <span className="font-semibold tabular-nums">{a.companyHint}</span>
-              </div>
-            ))}
-            <Badge variant="outline">{positioning.evidence}</Badge>
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Initiative ROI calculator</CardTitle><CardDescription>CALCULATED from your assumptions only — never invented.</CardDescription></CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            <div className="grid grid-cols-3 gap-2">
-              <div><Label>Impl. cost</Label><Input value={roiImplCost} onChange={e => setRoiImplCost(e.target.value)} /></div>
-              <div><Label>Monthly save</Label><Input value={roiMonthlySave} onChange={e => setRoiMonthlySave(e.target.value)} /></div>
-              <div><Label>Monthly rev+</Label><Input value={roiMonthlyRev} onChange={e => setRoiMonthlyRev(e.target.value)} /></div>
-            </div>
-            {roiModel.available ? (
-              <div className="grid grid-cols-2 gap-2">
-                <div className="border rounded-lg p-2">Payback<br/><b>{roiModel.paybackMonths != null ? `${roiModel.paybackMonths.toFixed(1)} mo` : "—"}</b></div>
-                <div className="border rounded-lg p-2">ROI (yr1)<br/><b>{roiModel.roiPercent != null ? `${roiModel.roiPercent.toFixed(0)}%` : "—"}</b></div>
-                <div className="border rounded-lg p-2 col-span-2">Annual profit lift<br/><b>{roiModel.expectedProfitImprovement != null ? roiModel.expectedProfitImprovement.toFixed(0) : "—"}</b></div>
-              </div>
-            ) : <p className="text-muted-foreground">{roiModel.reason}</p>}
-            <p className="text-[11px] text-muted-foreground">{roiModel.assumptions.join(" ")}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <div className="grid lg:grid-cols-2 gap-4">
-        <Card>
-          <CardHeader><CardTitle>Goal cascade</CardTitle><CardDescription>Strategy → tactical → operational → KPI</CardDescription></CardHeader>
-          <CardContent className="text-sm space-y-2">
-            <div className="font-semibold">{goalCascade.title} <Badge variant="outline">{goalCascade.level}</Badge></div>
-            {(goalCascade.children || []).map(t => (
-              <div key={t.id} className="ml-3 border-l-2 pl-3 space-y-1">
-                <div>{t.title} <span className="text-muted-foreground">· {t.owner}</span></div>
-                {(t.children || []).map(o => (
-                  <div key={o.id} className="ml-2 text-muted-foreground">↳ {o.title}</div>
-                ))}
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader><CardTitle>Planning barriers</CardTitle><CardDescription>Execution blockers and remedies</CardDescription></CardHeader>
-          <CardContent className="space-y-2 text-sm">
-            {barriers.map((b, i) => (
-              <div key={i} className="border rounded-lg p-3">
-                <div className="font-semibold">{b.barrier}</div>
-                <p className="text-muted-foreground text-xs mt-1">{b.solution}</p>
-              </div>
-            ))}
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader><CardTitle>CINTEXA module recommendations</CardTitle><CardDescription>Only modules justified by diagnostic scores</CardDescription></CardHeader>
-        <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
-          {moduleRecs.map((m, i) => (
-            <div key={i} className="border rounded-lg p-3">
-              <div className="font-semibold text-primary">{m.module}</div>
-              <p className="text-muted-foreground mt-1">{m.reason}</p>
-              <Badge variant="outline" className="mt-2">{m.justifiedBy}</Badge>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Historical diagnostic compare</CardTitle>
-          <CardDescription>Compare this run to the previous local snapshot (continuous platform).</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-3 text-sm">
-          <Button type="button" variant="outline" size="sm" onClick={() => {
-            try {
-              const hist = JSON.parse(localStorage.getItem("cintexa-diagnostic-snapshots") || "[]");
-              if (!Array.isArray(hist) || hist.length < 1) {
-                setHistoryCompare({ summary: "No prior snapshot yet. Complete another diagnostic to enable comparison.", healthDelta: 0, pillarDeltas: [] });
-                return;
-              }
-              const prev = hist[0];
-              const current: SnapshotSummary = {
-                capturedAt: new Date().toISOString(),
-                health,
-                companyName: company.name,
-                scores,
-              };
-              const prior: SnapshotSummary = {
-                capturedAt: prev.capturedAt || prev.captured_at || "",
-                health: prev.health ?? 0,
-                companyName: prev.company?.name,
-                scores: prev.scores || {},
-              };
-              setHistoryCompare(compareSnapshots(prior, current));
-            } catch {
-              setHistoryCompare({ summary: "Could not read snapshot history.", healthDelta: 0, pillarDeltas: [] });
-            }
-          }}>Compare to last snapshot</Button>
-          {historyCompare && (
-            <div>
-              <p className="font-medium">{historyCompare.summary}</p>
-              <ul className="mt-2 space-y-1">
-                {historyCompare.pillarDeltas.slice(0, 6).map(d => (
-                  <li key={d.pillar} className="flex justify-between border-b py-1">
-                    <span>{d.pillar}</span>
-                    <span>{d.from} → {d.to} ({d.delta >= 0 ? "+" : ""}{d.delta})</span>
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Server-side history chart */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Org diagnostic history</CardTitle>
-          <CardDescription>Server snapshots (when API/DB available). Bars show overall health over time.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div className="flex gap-2">
-            <Button type="button" variant="outline" size="sm" onClick={() => {
-              void diagnosticApi.listSnapshots({ company: company.name || undefined, limit: 20 })
-                .then(r => setServerSnapshots(r.items || []))
-                .catch(() => setServerSnapshots([]));
-            }}>Refresh server history</Button>
-            {serverSnapshots.length >= 2 && (
-              <Button type="button" variant="outline" size="sm" onClick={() => {
-                const a = serverSnapshots[1] as any;
-                const b = serverSnapshots[0] as any;
-                if (a?.id && b?.id) {
-                  void diagnosticApi.compareSnapshots(Number(a.id), Number(b.id)).then((r: any) => {
-                    setHistoryCompare({
-                      summary: String(r.summary || ""),
-                      healthDelta: Number(r.healthDelta || 0),
-                      pillarDeltas: Array.isArray(r.pillarDeltas) ? r.pillarDeltas : [],
-                    });
-                  }).catch(() => {});
-                }
-              }}>Compare last two server snapshots</Button>
-            )}
-          </div>
-          {serverSnapshots.length === 0 ? (
-            <p className="text-muted-foreground">No server snapshots yet. Completing a diagnostic will attempt to persist one.</p>
-          ) : (
-            <div className="space-y-2">
-              {serverSnapshots.slice(0, 12).map((s: any) => {
-                const score = Number(s.overallScore ?? s.overall_score ?? 0);
-                return (
-                  <div key={s.id || s.capturedAt} className="flex items-center gap-3">
-                    <div className="w-28 text-xs text-muted-foreground shrink-0">
-                      {String(s.capturedAt || s.captured_at || "").slice(0, 10) || "—"}
-                    </div>
-                    <div className="flex-1 h-3 rounded-full bg-muted overflow-hidden">
-                      <div className="h-full bg-primary/80 rounded-full transition-all" style={{ width: `${Math.min(100, score)}%` }} />
-                    </div>
-                    <div className="w-12 text-right font-semibold tabular-nums">{score}</div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Data connectors */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Business data connectors</CardTitle>
-          <CardDescription>CRM, analytics and ads — register now; live OAuth sync plugs into the same interface later. Metrics stay UNKNOWN until a real sync runs.</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4 text-sm">
-          <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {connectorCatalog.map((c: any) => (
-              <button
-                key={c.provider}
-                type="button"
-                className="text-left border rounded-lg p-3 hover:bg-muted/50 transition"
-                onClick={() => {
-                  void diagnosticApi.registerConnector({ provider: String(c.provider), displayName: String(c.displayName) })
-                    .then(() => diagnosticApi.listConnectors())
-                    .then(r => setConnectors(r.items || []))
-                    .catch(() => {});
-                }}
-              >
-                <div className="font-semibold">{c.displayName}</div>
-                <p className="text-xs text-muted-foreground mt-1">{c.description}</p>
-                <Badge variant="outline" className="mt-2">{c.category}</Badge>
-              </button>
-            ))}
-          </div>
-          {connectors.length > 0 && (
-            <div className="border-t pt-3 space-y-2">
-              <div className="font-medium">Registered</div>
-              {connectors.map((c: any) => (
-                <div key={c.id || c.provider} className="flex items-center justify-between gap-2 border rounded-lg p-2">
-                  <div>
-                    <span className="font-medium">{c.displayName || c.provider}</span>
-                    <Badge variant="outline" className="ml-2">{c.status}</Badge>
-                  </div>
-                  {c.id != null && (
-                    <Button type="button" size="sm" variant="outline" onClick={() => {
-                      void diagnosticApi.syncConnector(Number(c.id))
-                        .then(() => diagnosticApi.listConnectors())
-                        .then(r => setConnectors(r.items || []))
-                        .catch(() => {});
-                    }}>Sync</Button>
-                  )}
-                </div>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
       
       <Card className="overflow-hidden">
         <CardHeader>
@@ -1345,26 +931,7 @@ export default function BusinessDiagnostic() {
 
       <div className="grid xl:grid-cols-2 gap-5"><Card><CardHeader><CardTitle>Top problems</CardTitle></CardHeader><CardContent className="space-y-3">{starterProblems.map((p, i) => <div key={p.title} className="border rounded-xl p-4"><div className="flex justify-between gap-3"><div><div className="flex items-center gap-2"><span className="text-xs font-bold text-muted-foreground">0{i+1}</span><h3 className="font-semibold">{p.title}</h3></div><p className="text-sm text-muted-foreground mt-2">{p.detail}</p></div><EvidenceBadge type={p.evidence}/></div><div className="mt-3 p-3 rounded-lg bg-muted/60 text-sm"><b>Action:</b> {p.action}</div></div>)}</CardContent></Card><Card><CardHeader><CardTitle>Sales intelligence</CardTitle><CardDescription>Calculated only where source metrics exist.</CardDescription></CardHeader><CardContent className="space-y-4">{[["Lead → customer conversion", sales.conversion, "%"],["Qualified lead rate", sales.qualification, "%"],["Projected revenue from customer count", sales.revenue, "GHS"],["CAC", sales.cac, "GHS"]].map(([label,value,unit]) => <div key={String(label)} className="flex justify-between items-center border-b last:border-0 pb-3 last:pb-0"><span className="text-sm">{String(label)}</span><span className="font-semibold">{value === null ? "Unknown" : `${Number(value).toFixed(1)} ${unit}`} {value !== null && <EvidenceBadge type="CALCULATED"/>}</span></div>)}</CardContent></Card></div>
       <Card><CardHeader><CardTitle>Root-cause chain</CardTitle><CardDescription>Symptoms are kept separate from hypotheses.</CardDescription></CardHeader><CardContent><div className="grid md:grid-cols-5 gap-2 items-center">{["Observed Problem", "Evidence", "Possible Causes", "Root Cause", "Intervention"].map((x,i)=><div key={x} className="flex items-center gap-2"><div className="flex-1 border rounded-xl p-4 text-center"><div className="text-xs text-muted-foreground">STEP {i+1}</div><div className="font-semibold mt-1">{x}</div><div className="text-xs text-muted-foreground mt-2">{i === 0 ? "Sales performance signal" : i === 1 ? "User data + calculations" : i === 2 ? "Qualification / follow-up / offer" : i === 3 ? "Validate with funnel evidence" : "Target the confirmed constraint"}</div></div>{i < 4 && <ArrowRight className="w-4 h-4 text-muted-foreground shrink-0"/>}</div>)}</div></CardContent></Card>
-      <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 w-full h-auto gap-1"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger><TabsTrigger value="porter">Five Forces</TabsTrigger><TabsTrigger value="pestle">PESTLE</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores} benchmarks={pillarBenchmarks}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent>
-        <TabsContent value="porter" className="mt-4">
-          <Card><CardHeader><CardTitle>Porter Five Forces</CardTitle><CardDescription>INFERRED industry structure prompts — replace with verified market data when available.</CardDescription></CardHeader>
-          <CardContent className="space-y-3 text-sm">
-            {["Competitive rivalry","Threat of new entrants","Threat of substitutes","Buyer bargaining power","Supplier bargaining power"].map((f,i)=>(
-              <div key={f} className="border rounded-lg p-3"><div className="font-semibold">{f}</div>
-              <p className="text-muted-foreground mt-1">{i===0?"Defend non-price advantages and publish a competitor scorecard.":i===1?"Raise switching costs via integrations and depth.":i===2?"Own the full job-to-be-done vs adjacent substitutes.":i===3?"Segment buyers; tighten discount policy.":"Dual-source critical vendor dependencies."}</p>
-              <Badge variant="outline" className="mt-2">INFERRED</Badge></div>
-            ))}
-          </CardContent></Card>
-        </TabsContent>
-        <TabsContent value="pestle" className="mt-4">
-          <Card><CardHeader><CardTitle>PESTLE scan</CardTitle><CardDescription>Structured external factors for leadership review — not legal advice.</CardDescription></CardHeader>
-          <CardContent className="grid sm:grid-cols-2 gap-3 text-sm">
-            {[["Political","Track licensing and advertising rules"],["Economic","Scenario-plan under longer cycles"],["Social","Align UX and SLAs to buyer expectations"],["Technological","Prioritize high-ROI automation"],["Legal","Consent and data retention hygiene"],["Environmental","Only claim sustainability with evidence"]].map(([k,v])=>(
-              <div key={k} className="border rounded-lg p-3"><div className="font-semibold">{k}</div><p className="text-muted-foreground mt-1">{v}</p></div>
-            ))}
-          </CardContent></Card>
-        </TabsContent>
-      </Tabs>
+      <Tabs defaultValue="competitive"><TabsList className="grid grid-cols-4 w-full"><TabsTrigger value="competitive">Competition</TabsTrigger><TabsTrigger value="benchmarks">Benchmarks</TabsTrigger><TabsTrigger value="scenarios">What If?</TabsTrigger><TabsTrigger value="cases">Case Intelligence</TabsTrigger></TabsList><TabsContent value="competitive" className="mt-4"><Competitive competitors={competitors} newCompetitor={newCompetitor} setNewCompetitor={setNewCompetitor} addCompetitor={addCompetitor} newCompetitorWebsite={newCompetitorWebsite} setNewCompetitorWebsite={setNewCompetitorWebsite}/></TabsContent><TabsContent value="benchmarks" className="mt-4"><Benchmark scores={scores} benchmarks={pillarBenchmarks}/></TabsContent><TabsContent value="scenarios" className="mt-4"><Scenario monthlyLeads={Number(monthlyLeads)} customers={Number(customers)} aov={Number(aov)} conversion={scenarioConversion} setConversion={setScenarioConversion} aovLift={scenarioAov} setAovLift={setScenarioAov} projectedCustomers={scenarioCustomers} projectedRevenue={scenarioRevenue}/></TabsContent><TabsContent value="cases" className="mt-4"><CaseIntelligence weakest={weakest.label}/></TabsContent></Tabs>
       
       
       {webResearch && (

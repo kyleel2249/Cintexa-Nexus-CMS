@@ -94,40 +94,6 @@ export type DiagnosticPdfReport = {
     companyWebsite?: string | null;
     researchedAt?: string;
   } | null;
-  porterFiveForces?: {
-    industry?: string;
-    note?: string;
-    forces?: Array<{ force: string; score: number; evidence: string; implication: string; opportunity: string; response: string }>;
-  };
-  pestle?: {
-    factors?: Array<{ factor: string; condition: string; impact: string; probability: string; severity: string; horizon: string; response: string }>;
-  };
-  rootCauses?: Array<{
-    observedProblem: string;
-    evidence: string;
-    evidenceDetail?: string;
-    rootCauseHypothesis?: string;
-    confidence?: string;
-    recommendedIntervention?: string;
-  }>;
-  ceoBrief?: string[];
-  executiveAlerts?: Array<{ severity: string; title: string; detail: string; evidence: string }>;
-  moduleRecommendations?: Array<{ module: string; reason: string; justifiedBy: string }>;
-  positioningSummary?: string;
-  planningBarriers?: Array<{ barrier: string; solution: string }>;
-  goalCascadeTitle?: string;
-  detailedRecommendations?: Array<{
-    recommendation: string;
-    problem: string;
-    evidence: string;
-    priority: string;
-    owner: string;
-    timeline: string;
-    kpi: string;
-    expectedResult?: string;
-    smartGoalSeed?: string;
-  }>;
-  uploadedDocuments?: Array<{ name: string; evidence: string; insight?: string }>;
 };
 
 function ensureSpace(doc: jsPDF, y: number, need = 24) {
@@ -539,102 +505,8 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
     y += 2;
   }
 
-  // —— Porter ——
-  if (report.porterFiveForces?.forces?.length) {
-    y = sectionTitle(doc, "12. Porter Five Forces (INFERRED)", y, margin);
-    y = line(doc, report.porterFiveForces.note || "Scores are inferred from diagnostic signals until industry structure data is supplied.", margin, y);
-    y += 2;
-    for (const f of report.porterFiveForces.forces) {
-      y = ensureSpace(doc, y, 28);
-      y = line(doc, `${f.force}: ${f.score}/100 [${f.evidence}]`, margin, y);
-      y = line(doc, `Implication: ${f.implication}`, margin + 2, y);
-      y = line(doc, `Response: ${f.response}`, margin + 2, y);
-      y += 2;
-    }
-  }
-
-  // —— PESTLE ——
-  if (report.pestle?.factors?.length) {
-    y = sectionTitle(doc, "13. PESTLE Scan", y, margin);
-    for (const f of report.pestle.factors) {
-      y = ensureSpace(doc, y, 22);
-      y = line(doc, `${f.factor}: ${f.condition} (impact ${f.impact}, horizon ${f.horizon})`, margin, y);
-      y = line(doc, `Response: ${f.response}`, margin + 2, y);
-      y += 1;
-    }
-  }
-
-  // —— Root causes ——
-  if (report.rootCauses?.length) {
-    y = sectionTitle(doc, "14. Root-Cause Chains", y, margin);
-    for (const r of report.rootCauses) {
-      y = ensureSpace(doc, y, 28);
-      y = line(doc, `Problem: ${r.observedProblem}`, margin, y);
-      y = line(doc, `Evidence [${r.evidence}]: ${r.evidenceDetail || ""}`, margin + 2, y);
-      y = line(doc, `Hypothesis (${r.confidence || "medium"}): ${r.rootCauseHypothesis || ""}`, margin + 2, y);
-      y = line(doc, `Intervention: ${r.recommendedIntervention || ""}`, margin + 2, y);
-      y += 2;
-    }
-  }
-
-  // —— Detailed recommendations ——
-  if (report.detailedRecommendations?.length) {
-    y = sectionTitle(doc, "15. Detailed Recommendations", y, margin);
-    for (const d of report.detailedRecommendations) {
-      y = ensureSpace(doc, y, 32);
-      y = line(doc, `[${d.priority}] ${d.recommendation}`, margin, y);
-      y = line(doc, `Problem: ${d.problem} · Evidence: ${d.evidence}`, margin + 2, y);
-      y = line(doc, `Owner: ${d.owner} · Timeline: ${d.timeline} · KPI: ${d.kpi}`, margin + 2, y);
-      if (d.smartGoalSeed) y = line(doc, `SMART seed: ${d.smartGoalSeed}`, margin + 2, y);
-      y += 2;
-    }
-  }
-
   // —— Implementation ——
-  if (report.ceoBrief?.length) {
-    y = sectionTitle(doc, "16. CEO / Board Brief", y, margin);
-    for (const entry of report.ceoBrief) {
-      y = ensureSpace(doc, y);
-      y = line(doc, `• ${entry}`, margin, y);
-    }
-    y += 2;
-  }
-  if (report.executiveAlerts?.length) {
-    y = sectionTitle(doc, "17. Executive Alerts", y, margin);
-    for (const a of report.executiveAlerts) {
-      y = ensureSpace(doc, y);
-      y = line(doc, `[${a.severity}] ${a.title} — ${a.detail} (${a.evidence})`, margin, y);
-    }
-    y += 2;
-  }
-  if (report.positioningSummary) {
-    y = sectionTitle(doc, "18. Positioning", y, margin);
-    y = line(doc, report.positioningSummary, margin, y);
-    y += 2;
-  }
-  if (report.planningBarriers?.length) {
-    y = sectionTitle(doc, "19. Planning Barriers", y, margin);
-    for (const b of report.planningBarriers) {
-      y = ensureSpace(doc, y);
-      y = line(doc, `• ${b.barrier}: ${b.solution}`, margin, y);
-    }
-    y += 2;
-  }
-  if (report.moduleRecommendations?.length) {
-    y = sectionTitle(doc, "20. Recommended CINTEXA Modules", y, margin);
-    for (const m of report.moduleRecommendations) {
-      y = ensureSpace(doc, y);
-      y = line(doc, `• ${m.module} — ${m.reason} (${m.justifiedBy})`, margin, y);
-    }
-    y += 2;
-  }
-  if (report.goalCascadeTitle) {
-    y = sectionTitle(doc, "21. Goal Cascade Root", y, margin);
-    y = line(doc, report.goalCascadeTitle, margin, y);
-    y += 2;
-  }
-
-  y = sectionTitle(doc, "22. Implementation Guide", y, margin);
+  y = sectionTitle(doc, "12. Implementation Guide", y, margin);
   const guide =
     report.implementationGuide?.length
       ? report.implementationGuide
@@ -657,15 +529,6 @@ export function downloadDiagnosticPdf(report: DiagnosticPdfReport) {
   doc.setTextColor(90, 90, 90);
   y = line(doc, "This PDF is a standalone strategic document. It does not include application navigation or interface chrome.", margin, y);
   y = line(doc, "CINTEXA Nexus — diagnose → prioritize → execute → measure → adapt.", margin, y);
-
-  if (report.uploadedDocuments?.length) {
-    y = sectionTitle(doc, "Supporting Documents & Evidence", y, margin);
-    for (const d of report.uploadedDocuments) {
-      y = ensureSpace(doc, y);
-      y = line(doc, `${d.name} — ${d.evidence}${d.insight ? ` · ${d.insight}` : ""}`, margin, y);
-    }
-    y += 2;
-  }
 
   // —— Footer: date/time, copyright, powered by ——
   y = ensureSpace(doc, y, 36);
