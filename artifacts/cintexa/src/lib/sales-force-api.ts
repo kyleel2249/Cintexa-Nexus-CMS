@@ -120,6 +120,24 @@ export const salesForceApi = {
     request("/memory", { method: "POST", body: JSON.stringify(payload) }),
 
   seedDemo: () => request("/demo/seed", { method: "POST", body: "{}" }),
+
+  sequencesDue: () => request<{ planned: any[]; note?: string }>("/sequences/due"),
+
+  runSequences: (payload?: { execute?: boolean; autonomyLevel?: number }) =>
+    request("/sequences/run", { method: "POST", body: JSON.stringify(payload || {}) }),
+
+  performance: () => request<{ items: any[] }>("/performance"),
+
+  reactivation: () => request<Record<string, any>>("/reactivation"),
+
+  upsell: (payload: Record<string, unknown>) =>
+    request("/upsell", { method: "POST", body: JSON.stringify(payload) }),
+
+  attribution: () => request<Record<string, unknown>>("/attribution"),
+
+  command: (command: string) =>
+    request<{ intent: string; result: any; message: string }>("/command", { method: "POST", body: JSON.stringify({ command }) }),
 };
+
 
 

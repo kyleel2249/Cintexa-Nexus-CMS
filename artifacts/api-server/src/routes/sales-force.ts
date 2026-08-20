@@ -31,6 +31,14 @@ import {
   defaultEnterprisePlaybook,
 } from "../services/sales-force-engine";
 import { buildOutreachCopy, sendSalesEmail, evaluateOutreachPermission } from "../services/sales-outreach";
+import {
+  planSequenceActions,
+  scoreAgentPerformance,
+  findReactivationCandidates,
+  suggestUpsells,
+  simpleAttribution,
+  parseSalesCommand,
+} from "../services/sales-force-ops";
 
 import {
   qualifyBant,
@@ -1146,6 +1154,133 @@ router.post("/demo/seed", async (_req, res) => {
         isDemo: true,
       },
     });
+  }
+});
+
+
+
+// ——— Sequence planner (prepare only unless execute+SMTP) ———
+router.get("/sequences/due", async (_req, res) => {
+  try {
+    const leads = await db.select().from(salesLeadsTable);
+    const plan = planSequenceActions(leads as any);
+    return res.json(plan);
+  } catch {
+    return res.json({ planned: [], note: "No leads available" });
+  }
+});
+
+router.post("/sequences/run", async (req, res) => {
+  const execute = Boolean(req.body?.execute);
+  const autonomyLevel = req.body?.autonomyLevel != null ? Number(req.body.autonomyLevel) : 1;
+  try {
+    const leads = await db.select().from(salesLeadsTable);
+    const plan = planSequenceActions(leads as any);
+    const results: any[] = [];
+    for (const step of plan.planned.slice(0, 20)) {
+      const lead = leads.find((l) => l.id === step.leadId);
+      if (!lead) continue;
+      if (!execute || autonomyLevel < 3) {
+        results.push({ leadId: step.leadId, status: "prepared", ...step });
+        await logActivity({
+          leadId: step.leadId,
+          actorName: "Ryan",
+          action: "sequence_prepared",
+          summary: `${step.label} (day ${step.sequenceDay})`,
+          detail: step,
+        });
+        continue;
+      }
+      // attempt send with full guardrails
+      const permOk = lead.consentEmail && !lead.optedOut && lead.contactEmail;
+      if (!permOk) {
+        results.push({ leadId: step.leadId, status: "blocked", reason: "consent/email" });
+        continue;
+      }
+      const send = await sendSalesEmail({
+        to: String(lead.contactEmail),
+        subject: step.prepared?.subject || "Follow-up",
+        body: step.prepared?.body || "",
+        leadId: lead.id,
+      });
+      results.push({ leadId: step.leadId, status: send.status, reason: send.reason });
+      await logActivity({
+        leadId: lead.id,
+        actorName: "Ryan",
+        action: send.status === "sent" ? "sequence_email_sent" : `sequence_${send.status}`,
+        summary: send.reason,
+      });
+      if (send.status === "sent") {
+        await db.update(salesLeadsTable).set({ lastContactAt: new Date(), stage: lead.stage === "new_lead" ? "contacted" : lead.stage, updatedAt: new Date() } as any).where(eq(salesLeadsTable.id, lead.id));
+      }
+    }
+    return res.json({
+      execute,
+      autonomyLevel,
+      processed: results.length,
+      results,
+      note: execute
+        ? "Execute attempted under consent + SMTP rules."
+        : "Prepared only. Pass execute:true and autonomyLevel≥3 to send where configured.",
+    });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+router.get("/performance", async (_req, res) => {
+  try {
+    const agents = await db.select().from(salesAgentsTable);
+    const activities = await db.select().from(salesActivitiesTable);
+    const opps = await db.select().from(salesOpportunitiesTable);
+    const items = (agents.length ? agents : []).map((a) =>
+      scoreAgentPerformance({
+        agentId: a.id,
+        agentName: a.name,
+        activities: activities as any,
+        opportunities: opps as any,
+      }),
+    );
+    return res.json({ items, note: "From recorded data only." });
+  } catch {
+    return res.json({ items: [] });
+  }
+});
+
+router.get("/reactivation", async (_req, res) => {
+  try {
+    const leads = await db.select().from(salesLeadsTable);
+    const opps = await db.select().from(salesOpportunitiesTable);
+    return res.json(findReactivationCandidates(leads as any, opps as any));
+  } catch {
+    return res.json({ dormantLeads: [], lostOpportunities: [], abandonedProposals: [] });
+  }
+});
+
+router.post("/upsell", (req, res) => {
+  res.json(suggestUpsells(req.body ?? {}));
+});
+
+router.get("/attribution", async (_req, res) => {
+  try {
+    const opps = await db.select().from(salesOpportunitiesTable);
+    const activities = await db.select().from(salesActivitiesTable);
+    return res.json(simpleAttribution(opps as any, activities as any));
+  } catch {
+    return res.json(simpleAttribution([], []));
+  }
+});
+
+router.post("/command", async (req, res) => {
+  const command = String(req.body?.command || "");
+  try {
+    const leads = await db.select().from(salesLeadsTable);
+    const opps = await db.select().from(salesOpportunitiesTable);
+    const parsed = parseSalesCommand(command, { leads: leads as any, opps: opps as any });
+    await audit("Alex", "command", { reason: command, result: parsed.intent });
+    return res.json(parsed);
+  } catch (err: any) {
+    return res.json({ intent: "error", result: null, message: err?.message || "Command failed" });
   }
 });
 

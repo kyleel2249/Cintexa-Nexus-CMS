@@ -56,6 +56,11 @@ export default function SalesForcePage() {
   const [bantResult, setBantResult] = useState<Record<string, any> | null>(null);
   const [listPrice, setListPrice] = useState("10000");
   const [reqDiscount, setReqDiscount] = useState("5");
+  const [commandText, setCommandText] = useState("Show me all deals at risk");
+  const [commandResult, setCommandResult] = useState<Record<string, any> | null>(null);
+  const [seqPlan, setSeqPlan] = useState<any[]>([]);
+  const [perf, setPerf] = useState<any[]>([]);
+  const [reactivation, setReactivation] = useState<Record<string, any> | null>(null);
   const [actual, setActual] = useState("0");
 
   const refresh = useCallback(async () => {
@@ -215,6 +220,7 @@ export default function SalesForcePage() {
           <TabsTrigger value="bridge">Diagnostic bridge</TabsTrigger>
           <TabsTrigger value="sell">What to sell</TabsTrigger>
           <TabsTrigger value="ops">Ops & policy</TabsTrigger>
+          <TabsTrigger value="warroom">War room</TabsTrigger>
         </TabsList>
 
         <TabsContent value="workforce" className="mt-4 space-y-4">
@@ -714,6 +720,106 @@ export default function SalesForcePage() {
         </TabsContent>
 
       </Tabs>
+
+
+        <TabsContent value="warroom" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Command interface</CardTitle>
+              <CardDescription>Keyword commands over live data — not fabricated answers.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Input value={commandText} onChange={(e) => setCommandText(e.target.value)} placeholder='e.g. "Show me all deals at risk"' />
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={async () => setCommandResult(await salesForceApi.command(commandText))}>Run</Button>
+                {["Find uncontacted high-value leads", "Show me all deals at risk", "Top revenue opportunities", "Who should I contact today", "Deals likely to close"].map((c) => (
+                  <Button key={c} size="sm" variant="outline" onClick={async () => { setCommandText(c); setCommandResult(await salesForceApi.command(c)); }}>{c}</Button>
+                ))}
+              </div>
+              {commandResult && (
+                <div className="border rounded-lg p-3 text-sm space-y-2">
+                  <div><Badge>{commandResult.intent}</Badge> {commandResult.message}</div>
+                  <pre className="text-xs overflow-auto max-h-48 bg-muted/40 p-2 rounded">{JSON.stringify(commandResult.result, null, 2)}</pre>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          <div className="grid lg:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">Follow-up sequences</CardTitle>
+              <CardDescription>Prepare due steps; execute only with autonomy + SMTP.</CardDescription></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="flex gap-2">
+                  <Button variant="outline" onClick={async () => {
+                    const r = await salesForceApi.sequencesDue();
+                    setSeqPlan(r.planned || []);
+                  }}>Load due</Button>
+                  <Button variant="outline" onClick={async () => {
+                    await salesForceApi.runSequences({ execute: false, autonomyLevel: 1 });
+                    const r = await salesForceApi.sequencesDue();
+                    setSeqPlan(r.planned || []);
+                    await refresh();
+                  }}>Prepare run</Button>
+                </div>
+                {seqPlan.length === 0 && <p className="text-muted-foreground">No due sequence steps.</p>}
+                {seqPlan.slice(0, 10).map((s, i) => (
+                  <div key={i} className="border rounded p-2">
+                    <b>{s.companyName}</b> — {s.label} (day {s.sequenceDay})
+                    <p className="text-xs text-muted-foreground">{s.reason}</p>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Agent performance</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Button variant="outline" onClick={async () => {
+                  const r = await salesForceApi.performance();
+                  setPerf(r.items || []);
+                }}>Refresh scores</Button>
+                {perf.map((p) => (
+                  <div key={p.agentId} className="flex justify-between border-b py-1">
+                    <span>{p.agentName}</span>
+                    <span className="font-semibold tabular-nums">{p.performanceScore}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+
+            <Card className="lg:col-span-2">
+              <CardHeader><CardTitle className="text-base">Reactivation candidates</CardTitle>
+              <CardDescription>Grace / reactivation — consent required before contact.</CardDescription></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Button variant="outline" onClick={async () => setReactivation(await salesForceApi.reactivation())}>Scan</Button>
+                {reactivation && (
+                  <div className="grid md:grid-cols-3 gap-3">
+                    <div>
+                      <div className="font-medium mb-1">Dormant leads</div>
+                      {(reactivation.dormantLeads || []).slice(0, 5).map((x: any) => (
+                        <div key={x.id} className="text-xs border-b py-1">{x.companyName}</div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="font-medium mb-1">Lost opps</div>
+                      {(reactivation.lostOpportunities || []).slice(0, 5).map((x: any) => (
+                        <div key={x.id} className="text-xs border-b py-1">{x.name}</div>
+                      ))}
+                    </div>
+                    <div>
+                      <div className="font-medium mb-1">Abandoned proposals</div>
+                      {(reactivation.abandonedProposals || []).slice(0, 5).map((x: any) => (
+                        <div key={x.id} className="text-xs border-b py-1">{x.name}</div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
 
       <Card className="border-amber-500/30 bg-amber-500/5">
         <CardContent className="p-4 text-sm flex gap-3">
