@@ -24,7 +24,8 @@ import {
   type Competitor, type DiagnosticMode, type Goal, type Metric, type SocialAdPlatform,
   type AiEmployee, type CaseStudySeed, type ContentPackItem,
 } from "@/lib/business-diagnostic";
-import { diagnosticApi } from "@/lib/diagnostic-api";
+import { diagnosticApi } from "@/lib/diagnostic-api"
+import { salesForceApi } from "@/lib/sales-force-api";
 import { downloadDiagnosticPdf } from "@/lib/diagnostic-report-pdf";
 import {
   downloadIntakeHtmlForm,
@@ -818,7 +819,25 @@ export default function BusinessDiagnostic() {
 
   if (stage === "results") return (
     <div className="space-y-7 pb-12 print:pb-0">
-      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={downloadDetailedPdf} disabled={reportBusy}><Download className="w-4 h-4 mr-2"/> {reportBusy ? "Building PDF…" : "Download strategy & execution PDF"}</Button><Button variant="outline" onClick={printReport}>Print</Button></div></div>
+      <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4"><div><div className="text-primary text-sm font-semibold flex items-center gap-2"><Sparkles className="w-4 h-4"/> YOUR BUSINESS DIAGNOSIS</div><h1 className="text-3xl font-bold mt-1">{company.name || "Business"} intelligence report</h1><p className="text-muted-foreground mt-1">Evidence-led diagnosis with explicit uncertainty and actionable priorities.</p></div><div className="flex gap-2 print:hidden"><Button variant="outline" onClick={() => setStage("questions")}><RefreshCw className="w-4 h-4 mr-2"/> Reassess</Button><Button onClick={downloadDetailedPdf} disabled={reportBusy}><Download className="w-4 h-4 mr-2"/> {reportBusy ? "Building PDF…" : "Download strategy & execution PDF"}</Button>
+        <Button variant="secondary" disabled={reportBusy} onClick={async () => {
+          try {
+            await salesForceApi.fromDiagnostic({
+              companyName: company.name || "Company",
+              industry: company.industry,
+              website: company.website,
+              health,
+              weakestPillar: weakest.label,
+              pillarScores: scores,
+              objective: company.objective,
+              createRecords: true,
+            });
+            window.location.assign(`${import.meta.env.BASE_URL || "/"}sales-force`.replace(/\/\/+/g, "/"));
+          } catch (e) {
+            console.error(e);
+            alert("Could not map diagnostic to Sales Force. Ensure API is running.");
+          }
+        }}>Send to AI Sales Force</Button><Button variant="outline" onClick={printReport}>Print</Button></div></div>
       <div className="grid lg:grid-cols-[auto_1fr] gap-5"><Card><CardContent className="p-8 flex flex-col items-center justify-center min-w-[180px]"><ScoreRing score={health} label="Business Health" size="lg"/><Badge className="mt-8">{severity}</Badge></CardContent></Card><Card><CardHeader><CardTitle>Executive readout</CardTitle><CardDescription>What CINTEXA would put in front of leadership first.</CardDescription></CardHeader><CardContent className="grid sm:grid-cols-2 gap-4"><Readout title="Strongest pillar" value={`${strongest.label} — ${scores[strongest.id]}/100`} icon={TrendingUp} tone="good" /><Readout title="Priority pillar" value={`${weakest.label} — ${scores[weakest.id]}/100`} icon={AlertTriangle} tone="risk" /><Readout title="Biggest revenue leak" value="Sales funnel conversion requires validation" icon={BarChart3} tone="risk" /><Readout title="Evidence gap" value="Competitor benchmarks need dated sources" icon={ShieldAlert} tone="neutral" /></CardContent></Card></div>
       <Card className="overflow-hidden"><CardHeader><CardTitle>Diagnostic pillar scorecard</CardTitle><CardDescription>Colour and motion encode health vs industry benchmark band.</CardDescription></CardHeader><CardContent>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">

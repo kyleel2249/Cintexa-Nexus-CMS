@@ -51,4 +51,24 @@ export const salesForceApi = {
   knowledge: () => request<{ items: any[] }>("/knowledge"),
   addKnowledge: (payload: Record<string, unknown>) =>
     request("/knowledge", { method: "POST", body: JSON.stringify(payload) }),
+
+  prepareOutreach: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/outreach/prepare", { method: "POST", body: JSON.stringify(payload) }),
+
+  outreachEmail: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/outreach/email", { method: "POST", body: JSON.stringify(payload) }),
+
+  fromDiagnostic: (payload: Record<string, unknown>) =>
+    request<Record<string, unknown>>("/from-diagnostic", { method: "POST", body: JSON.stringify(payload) }),
+
+  playbooks: () => request<{ items: any[] }>("/playbooks"),
+
+  savePlaybook: (payload: Record<string, unknown>) =>
+    request("/playbooks", { method: "POST", body: JSON.stringify(payload) }),
+
+  evaluatePlaybook: (payload: { rules?: unknown[]; context: Record<string, unknown> }) =>
+    request<{ matched: any[]; actions: any[] }>("/playbooks/evaluate", { method: "POST", body: JSON.stringify(payload) }),
+
+  whatToSell: () => request<{ items: any[]; note?: string }>("/what-to-sell"),
 };
+

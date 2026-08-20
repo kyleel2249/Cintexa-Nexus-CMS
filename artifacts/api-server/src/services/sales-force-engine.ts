@@ -326,3 +326,131 @@ export const FOLLOW_UP_SEQUENCE = [
   { day: 14, label: "Alternative offer", theme: "option" },
   { day: 21, label: "Break-up / re-engage", theme: "close_loop" },
 ];
+
+export type PlaybookRule = {
+  id?: string;
+  if?: Record<string, unknown>;
+  then?: Array<{ action: string; params?: Record<string, unknown> }>;
+};
+
+export function evaluatePlaybook(rules: PlaybookRule[], context: Record<string, unknown>) {
+  const matched: Array<{ rule: PlaybookRule; actions: Array<{ action: string; params?: Record<string, unknown> }> }> = [];
+  for (const rule of rules) {
+    const cond = rule.if || {};
+    let ok = true;
+    for (const [k, v] of Object.entries(cond)) {
+      const actual = context[k];
+      if (typeof v === "object" && v && "gte" in (v as object)) {
+        if (!(Number(actual) >= Number((v as any).gte))) ok = false;
+      } else if (typeof v === "object" && v && "eq" in (v as object)) {
+        if (actual !== (v as any).eq) ok = false;
+      } else if (actual !== v) ok = false;
+    }
+    if (ok && rule.then?.length) matched.push({ rule, actions: rule.then });
+  }
+  return matched;
+}
+
+/** Map business diagnostic weaknesses to CINTEXA product opportunities */
+export function mapDiagnosticToSales(input: {
+  companyName: string;
+  industry?: string | null;
+  health?: number | null;
+  weakestPillar?: string | null;
+  pillarScores?: Record<string, number>;
+  objective?: string | null;
+}) {
+  const scores = input.pillarScores || {};
+  const recommendations: Array<{
+    product: string;
+    reason: string;
+    pitch: string;
+    confidence: "low" | "medium" | "high";
+    suggestedAgentRole: string;
+  }> = [];
+
+  if ((scores.sales ?? 100) < 55 || input.weakestPillar === "Sales") {
+    recommendations.push({
+      product: "CINTEXA CRM + Sales Force",
+      reason: "Sales pillar weak or identified as priority",
+      pitch: "Structure pipeline stages, follow-up ownership, and AI SDR support so fewer leads go cold.",
+      confidence: "high",
+      suggestedAgentRole: "ae",
+    });
+  }
+  if ((scores.marketing ?? 100) < 55 || input.weakestPillar === "Marketing") {
+    recommendations.push({
+      product: "CINTEXA Marketing Automation",
+      reason: "Marketing measurement or acquisition under pressure",
+      pitch: "Connect channels to qualified pipeline with clear CPL and handoff to sales.",
+      confidence: "medium",
+      suggestedAgentRole: "sdr",
+    });
+  }
+  if ((scores.customer ?? 100) < 55 || input.weakestPillar === "Customer") {
+    recommendations.push({
+      product: "CINTEXA Customer Service",
+      reason: "Retention / experience signals weak",
+      pitch: "Reduce churn risk with faster response and account health visibility.",
+      confidence: "medium",
+      suggestedAgentRole: "account_manager",
+    });
+  }
+  if ((scores.technology ?? 100) < 55 || (scores.automation ?? 100) < 55) {
+    recommendations.push({
+      product: "CINTEXA Integration Layer + AI Workforce",
+      reason: "Systems or automation maturity lagging",
+      pitch: "Remove spreadsheet silos and automate repetitive revenue ops tasks.",
+      confidence: "medium",
+      suggestedAgentRole: "ae",
+    });
+  }
+  if ((input.health ?? 100) < 50 && recommendations.length === 0) {
+    recommendations.push({
+      product: "CINTEXA Business Diagnostic + CRM starter",
+      reason: "Overall health below 50 without a single dominant pillar signal",
+      pitch: "Start with a structured diagnostic and system of record for opportunities.",
+      confidence: "low",
+      suggestedAgentRole: "ae",
+    });
+  }
+
+  return {
+    companyName: input.companyName,
+    industry: input.industry || null,
+    objective: input.objective || null,
+    recommendations,
+    suggestedOpportunityName: `${input.companyName} — diagnostic-led opportunity`,
+    nextStep: recommendations.length
+      ? "Create opportunity, assign AE/SDR, and draft proposal only after discovery confirms scope."
+      : "Insufficient diagnostic signal for product mapping — gather more evidence.",
+    evidence: "CALCULATED",
+  };
+}
+
+export function defaultEnterprisePlaybook(): PlaybookRule[] {
+  return [
+    {
+      id: "high-priority-enterprise",
+      if: { priorityScore: { gte: 80 }, companySize: { eq: "enterprise" } },
+      then: [
+        { action: "assign_role", params: { role: "ae" } },
+        { action: "research" },
+        { action: "prepare_outreach", params: { theme: "intro" } },
+      ],
+    },
+    {
+      id: "high-intent",
+      if: { priorityScore: { gte: 65 } },
+      then: [
+        { action: "assign_role", params: { role: "sdr" } },
+        { action: "prepare_outreach", params: { theme: "intro" } },
+      ],
+    },
+    {
+      id: "new-lead-research",
+      if: { stage: { eq: "new_lead" } },
+      then: [{ action: "research" }, { action: "score" }],
+    },
+  ];
+}

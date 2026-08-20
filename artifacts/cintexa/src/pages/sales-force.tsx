@@ -45,6 +45,10 @@ export default function SalesForcePage() {
     estimatedValue: "",
   });
   const [target, setTarget] = useState("100000");
+  const [diagForm, setDiagForm] = useState({ companyName: "", industry: "", health: "55", weakestPillar: "Sales", website: "", contactEmail: "", consentEmail: true });
+  const [diagResult, setDiagResult] = useState<Record<string, any> | null>(null);
+  const [whatSell, setWhatSell] = useState<any[]>([]);
+  const [outreachNote, setOutreachNote] = useState<string | null>(null);
   const [actual, setActual] = useState("0");
 
   const refresh = useCallback(async () => {
@@ -153,6 +157,10 @@ export default function SalesForcePage() {
         </div>
       </div>
 
+      {outreachNote && (
+        <Card className="border-primary/20"><CardContent className="p-3 text-sm">{outreachNote}</CardContent></Card>
+      )}
+
       {/* KPI strip */}
       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-3">
         {[
@@ -197,6 +205,8 @@ export default function SalesForcePage() {
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
           <TabsTrigger value="commands">Commands</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="bridge">Diagnostic bridge</TabsTrigger>
+          <TabsTrigger value="sell">What to sell</TabsTrigger>
         </TabsList>
 
         <TabsContent value="workforce" className="mt-4 space-y-4">
@@ -322,6 +332,26 @@ export default function SalesForcePage() {
                       }}
                     >
                       Draft proposal
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={async () => {
+                        const r = await salesForceApi.outreachEmail({
+                          leadId: l.id,
+                          autonomyLevel: 1,
+                          theme: "intro",
+                          agentName: "Ryan",
+                        });
+                        setOutreachNote(
+                          r.sent
+                            ? `Sent: ${r.reason}`
+                            : `Not sent (${r.status}): ${r.reason}. Prepared subject: ${(r as any).preparedMessage?.subject || ""}`,
+                        );
+                        await refresh();
+                      }}
+                    >
+                      Prepare email
                     </Button>
                   </div>
                 </CardContent>
@@ -460,6 +490,103 @@ export default function SalesForcePage() {
             </CardContent>
           </Card>
         </TabsContent>
+
+        <TabsContent value="bridge" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Business Diagnostic → Sales</CardTitle>
+              <CardDescription>
+                Map pillar scores to CINTEXA products, create a lead and opportunity. No invented diagnostics.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid sm:grid-cols-2 lg:grid-cols-3 gap-3">
+              {([
+                ["companyName", "Company *"],
+                ["industry", "Industry"],
+                ["health", "Health score"],
+                ["weakestPillar", "Weakest pillar"],
+                ["website", "Website"],
+                ["contactEmail", "Contact email"],
+              ] as const).map(([k, label]) => (
+                <div key={k}>
+                  <Label>{label}</Label>
+                  <Input value={(diagForm as any)[k]} onChange={(e) => setDiagForm((f) => ({ ...f, [k]: e.target.value }))} />
+                </div>
+              ))}
+              <div className="flex items-end gap-2">
+                <Button
+                  disabled={!diagForm.companyName.trim() || busy}
+                  onClick={async () => {
+                    setBusy(true);
+                    try {
+                      const scores: Record<string, number> = {};
+                      if (diagForm.weakestPillar) scores[diagForm.weakestPillar.toLowerCase()] = 40;
+                      const r = await salesForceApi.fromDiagnostic({
+                        ...diagForm,
+                        health: Number(diagForm.health) || null,
+                        pillarScores: scores,
+                        createRecords: true,
+                      });
+                      setDiagResult(r);
+                      await refresh();
+                    } finally {
+                      setBusy(false);
+                    }
+                  }}
+                >
+                  Map & create opportunity
+                </Button>
+              </div>
+              {diagResult && (
+                <div className="sm:col-span-2 lg:col-span-3 border rounded-lg p-3 text-sm space-y-2">
+                  <div className="font-medium">Recommendations</div>
+                  {(diagResult.mapped?.recommendations || []).map((rec: any, i: number) => (
+                    <div key={i} className="border-b last:border-0 py-2">
+                      <b>{rec.product}</b> — {rec.reason}
+                      <p className="text-xs text-muted-foreground mt-1">{rec.pitch}</p>
+                      <Badge variant="outline" className="mt-1">{rec.confidence}</Badge>
+                    </div>
+                  ))}
+                  {diagResult.lead && <p className="text-xs">Lead #{diagResult.lead.id} · Opp #{diagResult.opportunity?.id}</p>}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="sell" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">What should we sell?</CardTitle>
+              <CardDescription>Ranked from real lead priority scores — product fit still requires discovery.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  const r = await salesForceApi.whatToSell();
+                  setWhatSell(r.items || []);
+                }}
+              >
+                Refresh recommendations
+              </Button>
+              {whatSell.length === 0 && <p className="text-sm text-muted-foreground">No ranked opportunities yet. Add and score leads first.</p>}
+              {whatSell.map((item, i) => (
+                <div key={i} className="border rounded-lg p-3 text-sm">
+                  <div className="font-semibold">{i + 1}. {item.audience}</div>
+                  <p className="text-muted-foreground text-xs mt-1">{item.reason}</p>
+                  <div className="flex flex-wrap gap-2 mt-2">
+                    <Badge variant="outline">{item.recommendedAgentRole}</Badge>
+                    <Badge variant="outline">{item.recommendedChannel}</Badge>
+                    <Badge>{item.confidence}</Badge>
+                  </div>
+                  {item.recommendedPitch && <p className="text-xs mt-2">{item.recommendedPitch}</p>}
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
       </Tabs>
 
       <Card className="border-amber-500/30 bg-amber-500/5">

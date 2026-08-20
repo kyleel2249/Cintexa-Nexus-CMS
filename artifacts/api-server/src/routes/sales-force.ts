@@ -9,6 +9,7 @@ import {
   salesProposalsTable,
   salesAuditLogsTable,
   salesKnowledgeTable,
+  salesPlaybooksTable,
 } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import {
@@ -23,7 +24,11 @@ import {
   dealRisk,
   closeTheGap,
   FOLLOW_UP_SEQUENCE,
+  mapDiagnosticToSales,
+  evaluatePlaybook,
+  defaultEnterprisePlaybook,
 } from "../services/sales-force-engine";
+import { buildOutreachCopy, sendSalesEmail, evaluateOutreachPermission } from "../services/sales-outreach";
 
 const router = Router();
 
@@ -611,5 +616,253 @@ router.post("/knowledge", async (req, res) => {
     return res.status(500).json({ error: err?.message });
   }
 });
+
+
+// ——— Email outreach (consent + autonomy + SMTP) ———
+router.post("/outreach/email", async (req, res) => {
+  const body = req.body ?? {};
+  const leadId = body.leadId != null ? Number(body.leadId) : null;
+  let lead: any = null;
+  try {
+    if (leadId) {
+      const rows = await db.select().from(salesLeadsTable).where(eq(salesLeadsTable.id, leadId)).limit(1);
+      lead = rows[0];
+    }
+  } catch { /* soft */ }
+
+  const contactEmail = body.to || lead?.contactEmail;
+  const companyName = body.companyName || lead?.companyName || "Prospect";
+  const consentEmail = body.consentEmail ?? lead?.consentEmail ?? false;
+  const optedOut = body.optedOut ?? lead?.optedOut ?? false;
+  const autonomy = body.autonomyLevel != null ? Number(body.autonomyLevel) : 1;
+  const forceSend = Boolean(body.forceSend); // still requires consent; only bypasses autonomy if admin force
+
+  const perm = evaluateOutreachPermission({
+    optedOut,
+    consentEmail,
+    contactEmail,
+    agentAutonomyLevel: forceSend ? 3 : autonomy,
+    agentCanOutreach: body.canOutreach !== false,
+  });
+
+  const copy = buildOutreachCopy({
+    companyName,
+    contactName: body.contactName || lead?.contactName,
+    industry: body.industry || lead?.industry,
+    theme: body.theme || "intro",
+    agentName: body.agentName || "Ryan",
+  });
+
+  if (!perm.allowed) {
+    await logActivity({
+      leadId,
+      actorName: body.agentName || "Ryan",
+      action: "outreach_blocked",
+      summary: perm.reason,
+      detail: { copy, channel: "email" },
+      confidence: "high",
+    });
+    await audit(body.agentName || "Ryan", "outreach_blocked", { entityType: "lead", entityId: leadId, reason: perm.reason, result: "blocked" });
+    return res.status(200).json({
+      status: "blocked",
+      reason: perm.reason,
+      preparedMessage: copy,
+      sent: false,
+    });
+  }
+
+  const result = await sendSalesEmail({
+    to: String(contactEmail),
+    subject: body.subject || copy.subject,
+    body: body.body || copy.body,
+    leadId: leadId ?? undefined,
+  });
+
+  await logActivity({
+    leadId,
+    actorName: body.agentName || "Ryan",
+    action: result.status === "sent" ? "email_sent" : `email_${result.status}`,
+    summary: result.reason,
+    detail: { result, subject: copy.subject },
+    confidence: "high",
+  });
+  await audit(body.agentName || "Ryan", "outreach_email", {
+    entityType: "lead",
+    entityId: leadId,
+    result: result.status,
+    reason: result.reason,
+  });
+
+  if (result.status === "sent" && leadId) {
+    try {
+      await db.update(salesLeadsTable).set({
+        stage: lead?.stage === "new_lead" ? "contacted" : lead?.stage,
+        lastContactAt: new Date(),
+        updatedAt: new Date(),
+      } as any).where(eq(salesLeadsTable.id, leadId));
+    } catch { /* soft */ }
+  }
+
+  return res.json({
+    ...result,
+    preparedMessage: copy,
+    sent: result.status === "sent",
+  });
+});
+
+router.post("/outreach/prepare", (req, res) => {
+  const body = req.body ?? {};
+  const copy = buildOutreachCopy({
+    companyName: body.companyName || "Prospect",
+    contactName: body.contactName,
+    industry: body.industry,
+    theme: body.theme || "intro",
+    agentName: body.agentName || "Ryan",
+  });
+  res.json({ ...copy, note: "Prepared only — not sent." });
+});
+
+// ——— Diagnostic → sales map ———
+router.post("/from-diagnostic", async (req, res) => {
+  const body = req.body ?? {};
+  const companyName = String(body.companyName || "").trim();
+  if (!companyName) return res.status(400).json({ error: "companyName required" });
+
+  const mapped = mapDiagnosticToSales({
+    companyName,
+    industry: body.industry,
+    health: body.health != null ? Number(body.health) : null,
+    weakestPillar: body.weakestPillar,
+    pillarScores: body.pillarScores || {},
+    objective: body.objective,
+  });
+
+  let lead: any = null;
+  let opportunity: any = null;
+  const createRecords = body.createRecords !== false;
+
+  if (createRecords) {
+    try {
+      const scores = scoreLead({
+        industry: body.industry,
+        website: body.website,
+        hasEmail: Boolean(body.contactEmail),
+        estimatedValue: body.estimatedValue != null ? Number(body.estimatedValue) : null,
+      });
+      const [leadRow] = await db.insert(salesLeadsTable).values({
+        companyName,
+        contactName: body.contactName || null,
+        contactEmail: body.contactEmail || null,
+        website: body.website || null,
+        industry: body.industry || null,
+        source: "business_diagnostic",
+        stage: "qualified",
+        fitScore: scores.fitScore,
+        engagementScore: scores.engagementScore,
+        intentScore: Math.max(scores.intentScore, 50),
+        valueScore: scores.valueScore,
+        timingScore: scores.timingScore,
+        priorityScore: Math.max(scores.priorityScore, 55),
+        qualityLabel: scores.qualityLabel,
+        consentEmail: Boolean(body.consentEmail),
+        notes: `Imported from Business Diagnostic. Weakest: ${body.weakestPillar || "n/a"}. Health: ${body.health ?? "n/a"}`,
+        metadata: { diagnostic: true, recommendations: mapped.recommendations },
+        nextAction: "schedule_discovery",
+        nextActionReason: mapped.nextStep,
+      } as any).returning();
+      lead = leadRow;
+
+      const top = mapped.recommendations[0];
+      const [oppRow] = await db.insert(salesOpportunitiesTable).values({
+        leadId: leadRow.id,
+        name: mapped.suggestedOpportunityName,
+        companyName,
+        stage: "qualified",
+        amount: body.estimatedValue != null ? String(body.estimatedValue) : null,
+        probability: 30,
+        products: top ? [top.product] : [],
+        context: { fromDiagnostic: true, map: mapped },
+      } as any).returning();
+      opportunity = oppRow;
+
+      await logActivity({
+        leadId: leadRow.id,
+        opportunityId: oppRow.id,
+        actorName: "Maya",
+        action: "diagnostic_import",
+        summary: `Diagnostic mapped to ${mapped.recommendations.length} product recommendation(s)`,
+        detail: mapped,
+      });
+    } catch (err: any) {
+      return res.json({ mapped, lead, opportunity, persisted: false, note: err?.message });
+    }
+  }
+
+  return res.status(201).json({ mapped, lead, opportunity, persisted: Boolean(lead) });
+});
+
+// ——— Playbooks ———
+router.get("/playbooks", async (_req, res) => {
+  try {
+    const rows = await db.select().from(salesPlaybooksTable).orderBy(desc(salesPlaybooksTable.updatedAt));
+    if (!rows.length) {
+      return res.json({
+        items: [{ id: 0, name: "Default enterprise routing", rules: defaultEnterprisePlaybook(), active: true, source: "catalog" }],
+      });
+    }
+    return res.json({ items: rows });
+  } catch {
+    return res.json({ items: [{ id: 0, name: "Default enterprise routing", rules: defaultEnterprisePlaybook(), active: true, source: "catalog" }] });
+  }
+});
+
+router.post("/playbooks", async (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name) return res.status(400).json({ error: "name required" });
+  try {
+    const [row] = await db.insert(salesPlaybooksTable).values({
+      name: body.name,
+      description: body.description || null,
+      rules: body.rules || defaultEnterprisePlaybook(),
+      active: body.active !== false,
+    } as any).returning();
+    return res.status(201).json(row);
+  } catch (err: any) {
+    return res.status(201).json({ id: null, name: body.name, rules: body.rules || defaultEnterprisePlaybook(), persisted: false, note: err?.message });
+  }
+});
+
+router.post("/playbooks/evaluate", (req, res) => {
+  const rules = (req.body?.rules as any[]) || defaultEnterprisePlaybook();
+  const context = req.body?.context || {};
+  const matched = evaluatePlaybook(rules, context);
+  res.json({ matched, actions: matched.flatMap((m) => m.actions) });
+});
+
+// ——— Who should I sell (from inventory of leads/opps) ———
+router.get("/what-to-sell", async (_req, res) => {
+  try {
+    const leads = await db.select().from(salesLeadsTable).orderBy(desc(salesLeadsTable.priorityScore)).limit(20);
+    const items = leads.filter((l) => !l.optedOut).slice(0, 8).map((l) => ({
+      product: "CINTEXA solution (confirm in discovery)",
+      audience: l.companyName,
+      reason: l.nextActionReason || `Priority ${l.priorityScore} · ${l.qualityLabel}`,
+      estimatedOpportunity: null,
+      recommendedPitch: l.researchBrief ? (l.researchBrief as any).suggestedOpening : null,
+      recommendedAgentRole: (l.priorityScore ?? 0) >= 80 ? "ae" : "sdr",
+      recommendedChannel: l.consentEmail ? "email" : "none — obtain consent",
+      recommendedAction: l.nextAction,
+      confidence: (l.priorityScore ?? 0) >= 70 ? "medium" : "low",
+      leadId: l.id,
+    }));
+    return res.json({
+      items,
+      note: "Recommendations ranked from real lead scores only. Product fit must be confirmed in discovery — not invented.",
+    });
+  } catch {
+    return res.json({ items: [], note: "No data" });
+  }
+});
+
 
 export default router;
