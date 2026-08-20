@@ -1185,7 +1185,7 @@ router.post("/sequences/run", async (req, res) => {
       const lead = leads.find((l) => l.id === step.leadId);
       if (!lead) continue;
       if (!execute || autonomyLevel < 3) {
-        results.push({ leadId: step.leadId, status: "prepared", ...step });
+        results.push({ ...step, status: "prepared" });
         await logActivity({
           leadId: step.leadId,
           actorName: "Ryan",

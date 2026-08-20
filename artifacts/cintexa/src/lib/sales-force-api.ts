@@ -38,12 +38,12 @@ export const salesForceApi = {
   proposals: () => request<{ items: any[] }>("/proposals"),
   forecast: () => request<Record<string, unknown>>("/forecast"),
   closeTheGap: (payload: { target: number; actual: number; avgDealSize?: number; winRatePercent?: number }) =>
-    request("/close-the-gap", { method: "POST", body: JSON.stringify(payload) }),
+    request<Record<string, any>>("/close-the-gap", { method: "POST", body: JSON.stringify(payload) }),
   commandCenter: () => request<Record<string, unknown>>("/command-center"),
   generateSales: (target?: number) =>
-    request("/generate-sales", { method: "POST", body: JSON.stringify({ target }) }),
+    request<Record<string, any>>("/generate-sales", { method: "POST", body: JSON.stringify({ target }) }),
   whoToContact: () => request<{ items: any[] }>("/who-to-contact"),
-  objection: (text: string) => request("/objection", { method: "POST", body: JSON.stringify({ text }) }),
+  objection: (text: string) => request<Record<string, any>>("/objection", { method: "POST", body: JSON.stringify({ text }) }),
   activities: (leadId?: number) =>
     request<{ items: any[] }>(`/activities${leadId ? `?leadId=${leadId}` : ""}`),
   audit: () => request<{ items: any[] }>("/audit"),
@@ -72,13 +72,13 @@ export const salesForceApi = {
   whatToSell: () => request<{ items: any[]; note?: string }>("/what-to-sell"),
 
   qualifyBant: (payload: Record<string, unknown>) =>
-    request("/qualify/bant", { method: "POST", body: JSON.stringify(payload) }),
+    request<Record<string, any>>("/qualify/bant", { method: "POST", body: JSON.stringify(payload) }),
 
   detectIntent: (payload: Record<string, unknown>) =>
     request("/intent", { method: "POST", body: JSON.stringify(payload) }),
 
   negotiate: (payload: Record<string, unknown>) =>
-    request("/negotiate", { method: "POST", body: JSON.stringify(payload) }),
+    request<Record<string, any>>("/negotiate", { method: "POST", body: JSON.stringify(payload) }),
 
   negotiationPolicy: () => request<{ policy: Record<string, unknown> }>("/negotiation-policy"),
 
@@ -86,7 +86,7 @@ export const salesForceApi = {
     request("/handoff", { method: "POST", body: JSON.stringify(payload) }),
 
   createQuote: (payload: Record<string, unknown>) =>
-    request("/quotes", { method: "POST", body: JSON.stringify(payload) }),
+    request<Record<string, any>>("/quotes", { method: "POST", body: JSON.stringify(payload) }),
 
   markLost: (id: number, payload: Record<string, unknown>) =>
     request(`/opportunities/${id}/lost`, { method: "POST", body: JSON.stringify(payload) }),

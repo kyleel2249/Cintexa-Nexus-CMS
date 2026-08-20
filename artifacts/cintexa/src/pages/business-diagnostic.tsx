@@ -571,7 +571,7 @@ export default function BusinessDiagnostic() {
         status: "done" as const,
         lastAction: research?.fetchError
           ? `Fetch issue: ${String(research.fetchError)}`
-          : `Live research: ${companyName || "company"}${companyWebsite ? ` · ${companyWebsite}` : ""} · ${String(research.pageTitle || niche)}`,
+          : `Live research: ${companyName || "company"}${companyWebsite ? ` · ${companyWebsite}` : ""} · ${String(research?.pageTitle || niche)}`,
       } : e));
     } catch (err: any) {
       setAiEmployees(prev => prev.map(e => e.id === "scout" ? {
