@@ -20,6 +20,7 @@ import postImagesRouter from "./post-images";
 import broadcastRouter from "./broadcast";
 import postCommentsRouter from "./post-comments";
 import diagnosticsRouter from "./diagnostics";
+import salesForceRouter from "./sales-force";
 
 const router: IRouter = Router();
 
@@ -44,5 +45,6 @@ router.use("/pipeline", pipelineRouter);
 router.use("/plugins", pluginsRouter);
 router.use("/subscribers", subscribersRouter);
 router.use("/diagnostics", diagnosticsRouter);
+router.use("/sales-force", salesForceRouter);
 
 export default router;

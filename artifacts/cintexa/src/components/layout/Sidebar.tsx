@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History,
+  Puzzle, Mail, Target, Bot, History,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -15,6 +15,7 @@ const navGroups = [
   { title: "Intelligence", items: [
     { name: "Business Diagnostic", href: "/diagnostics", icon: Activity },
     { name: "Diagnostic History", href: "/diagnostics?history=1", icon: History },
+    { name: "AI Sales Force", href: "/sales-force", icon: Bot },
   ] },
   { title: "Content", items: [
     { name: "Sites", href: "/sites", icon: Globe }, { name: "Pages", href: "/pages", icon: FileText },

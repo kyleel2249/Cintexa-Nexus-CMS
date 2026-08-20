@@ -16,3 +16,4 @@ export * from "./social-broadcasts";
 export * from "./post-comments";
 export * from "./diagnostic";
 export * from "./diagnostic-intelligence";
+export * from "./sales-force";

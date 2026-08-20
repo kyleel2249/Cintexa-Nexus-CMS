@@ -46,6 +46,7 @@ const ContentPipeline = lazyWithRecovery(() => import("@/pages/pipeline"));
 const Plugins = lazyWithRecovery(() => import("@/pages/plugins"));
 const Subscribers = lazyWithRecovery(() => import("@/pages/subscribers"));
 const BusinessDiagnostic = lazyWithRecovery(() => import("@/pages/business-diagnostic"));
+const SalesForce = lazyWithRecovery(() => import("@/pages/sales-force"));
 
 const queryClient = new QueryClient();
 
@@ -89,6 +90,7 @@ function AppRoutes() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/diagnostics" component={BusinessDiagnostic} />
+            <Route path="/sales-force" component={SalesForce} />
             <Route path="/sites" component={Sites} />
             <Route path="/pages" component={Pages} />
             <Route path="/pages/new" component={PageEditor} />
