@@ -14,8 +14,14 @@ import {
   salesAgentMemoryTable,
   salesSettingsTable,
   salesMeetingsTable,
+  buyingSignalsTable,
+  salesForecastsTable,
+  salesAlertsTable,
+  salesExperimentsTable,
+  salesAttributionTable,
+  salesSequencesTable,
 } from "@workspace/db";
-import { desc, eq } from "drizzle-orm";
+import { desc, eq, and, gte, isNull, sql } from "drizzle-orm";
 import {
   DEFAULT_AGENTS,
   DEFAULT_PIPELINE_STAGES,
@@ -101,6 +107,105 @@ async function logActivity(row: {
   } catch {
     /* soft */
   }
+}
+
+/** §20 Buying Intent Detection — persist a signal row per real, observed input. Never fabricates events that weren't reported. */
+async function recordBuyingSignals(leadId: number | null, opportunityId: number | null, input: Record<string, any>) {
+  const rows: Array<{ signalType: string; weight: number; detail: string }> = [];
+  const pricingViews = Number(input.pricingPageViews || 0);
+  const proposalViews = Number(input.proposalViews || 0);
+  if (pricingViews > 0) rows.push({ signalType: "pricing_page_view", weight: Math.min(25, pricingViews * 12), detail: `${pricingViews} pricing page view(s)` });
+  if (proposalViews > 0) rows.push({ signalType: "proposal_view", weight: Math.min(20, proposalViews * 15), detail: `${proposalViews} proposal view(s)` });
+  if (input.requestedDemo) rows.push({ signalType: "demo_request", weight: 30, detail: "Demo requested" });
+  if (input.replied) rows.push({ signalType: "reply", weight: 15, detail: "Prospect replied" });
+  if (input.quoteRequested) rows.push({ signalType: "quote_request", weight: 20, detail: "Quote requested" });
+  if (input.meetingRequested) rows.push({ signalType: "meeting_request", weight: 20, detail: "Meeting requested" });
+  if (input.competitorMentioned) rows.push({ signalType: "competitor_mention", weight: 10, detail: String(input.competitorMentioned) });
+  if (!rows.length) return;
+  try {
+    await db.insert(buyingSignalsTable).values(
+      rows.map((r) => ({ leadId, opportunityId, signalType: r.signalType, weight: r.weight, detail: r.detail, source: "system", evidence: "CALCULATED" })),
+    );
+  } catch {
+    /* soft */
+  }
+}
+
+/** §38 Revenue Attribution — recorded at the moment a deal closes won, using only fields that genuinely exist. campaignId stays null since no campaign↔lead linkage exists in the data model yet — not fabricated. */
+async function recordAttribution(opp: { id: number; leadId: number | null; amount: string | number | null; assignedAgentId: number | null }) {
+  try {
+    let leadSource: string | null = null;
+    if (opp.leadId) {
+      const [lead] = await db.select().from(salesLeadsTable).where(eq(salesLeadsTable.id, opp.leadId)).limit(1);
+      leadSource = lead?.source ?? null;
+    }
+    await db.insert(salesAttributionTable).values({
+      opportunityId: opp.id,
+      revenueAmount: String(opp.amount ?? 0),
+      agentId: opp.assignedAgentId ?? null,
+      campaignId: null,
+      leadSource,
+      channel: null,
+      touchType: "last_touch",
+      weight: "1",
+    } as any);
+  } catch {
+    /* soft */
+  }
+}
+
+/** §33/§41 — generate alerts from real DB state only. Idempotent: skips creating a duplicate if an open alert for the same type+entity already exists. */
+async function generateAlerts() {
+  const existingOpen = await db.select({ type: salesAlertsTable.type, entityType: salesAlertsTable.entityType, entityId: salesAlertsTable.entityId })
+    .from(salesAlertsTable).where(eq(salesAlertsTable.status, "open"));
+  const exists = (type: string, entityType: string, entityId: number) =>
+    existingOpen.some((a) => a.type === type && a.entityType === entityType && a.entityId === entityId);
+  const toInsert: Array<typeof salesAlertsTable.$inferInsert> = [];
+
+  const opps = await db.select().from(salesOpportunitiesTable).where(sql`stage NOT IN ('closed_won','closed_lost')`);
+  for (const o of opps) {
+    const daysSinceActivity = o.updatedAt ? Math.floor((Date.now() - new Date(o.updatedAt).getTime()) / 86400000) : 0;
+    const risk = dealRisk({ stage: o.stage, daysSinceActivity, hasDecisionMaker: true, amount: o.amount != null ? Number(o.amount) : null });
+    if (risk.riskScore >= 50 && !exists("deal_at_risk", "opportunity", o.id)) {
+      toInsert.push({
+        type: "deal_at_risk", severity: risk.riskScore >= 70 ? "critical" : "warning",
+        title: `${o.name} at risk (score ${risk.riskScore})`, detail: risk.reasons.join("; "),
+        entityType: "opportunity", entityId: o.id, evidence: "CALCULATED",
+      } as any);
+    }
+  }
+
+  const leads = await db.select().from(salesLeadsTable).where(eq(salesLeadsTable.optedOut, false));
+  for (const l of leads) {
+    if ((l.priorityScore ?? 0) >= 80 && !l.lastContactAt && !exists("high_value_lead", "lead", l.id)) {
+      toInsert.push({
+        type: "high_value_lead", severity: "opportunity",
+        title: `${l.companyName} — high-priority lead not yet contacted`, detail: `Priority score ${l.priorityScore}`,
+        entityType: "lead", entityId: l.id, evidence: "CALCULATED",
+      } as any);
+    }
+    if ((l.intentScore ?? 0) >= 70 && !exists("high_intent", "lead", l.id)) {
+      toInsert.push({
+        type: "high_intent", severity: "opportunity",
+        title: `${l.companyName} showing strong buying intent`, detail: `Intent score ${l.intentScore}`,
+        entityType: "lead", entityId: l.id, evidence: "CALCULATED",
+      } as any);
+    }
+  }
+
+  const recentSignals = await db.select().from(buyingSignalsTable)
+    .where(and(eq(buyingSignalsTable.signalType, "quote_request"), gte(buyingSignalsTable.detectedAt, new Date(Date.now() - 86400000))));
+  for (const s of recentSignals) {
+    if (s.leadId && !exists("price_requested", "lead", s.leadId)) {
+      toInsert.push({
+        type: "price_requested", severity: "attention", title: "Prospect requested pricing", detail: s.detail || undefined,
+        entityType: "lead", entityId: s.leadId, evidence: s.evidence,
+      } as any);
+    }
+  }
+
+  if (toInsert.length) await db.insert(salesAlertsTable).values(toInsert);
+  return toInsert.length;
 }
 
 // ——— Bootstrap default agents ———
@@ -294,6 +399,7 @@ router.post("/leads/:id/score", async (req, res) => {
       updatedAt: new Date(),
     } as any).where(eq(salesLeadsTable.id, id)).returning();
     await logActivity({ leadId: id, actorName: "Sophia", action: "lead_rescored", summary: `Priority ${scores.priorityScore}`, detail: scores });
+    await recordBuyingSignals(id, null, body);
     return res.json(updated);
   } catch (err: any) {
     return res.status(500).json({ error: err?.message });
@@ -406,6 +512,7 @@ router.post("/opportunities/:id/stage", async (req, res) => {
     if (!row) return res.status(404).json({ error: "not found" });
     await logActivity({ opportunityId: id, actorName: "system", action: "opp_stage", summary: `→ ${stage}` });
     if (stage === "closed_won") await audit("Leo", "closed_won", { entityType: "opportunity", entityId: id, result: "won", note: "Marked won only after explicit stage change" });
+    if (stage === "closed_won") await recordAttribution(row);
     return res.json(row);
   } catch (err: any) {
     return res.status(500).json({ error: err?.message });
@@ -952,6 +1059,7 @@ router.post("/quotes", async (req, res) => {
       summary: `Quote total ${quote.currency} ${quote.total}`,
       detail: quote,
     });
+    await recordBuyingSignals(body.leadId ?? null, body.opportunityId ?? null, { quoteRequested: true });
     return res.status(201).json({ ...row, calculated: quote });
   } catch (err: any) {
     return res.status(201).json({ ...quote, persisted: false, note: err?.message });
@@ -1269,7 +1377,23 @@ router.get("/attribution", async (_req, res) => {
   try {
     const opps = await db.select().from(salesOpportunitiesTable);
     const activities = await db.select().from(salesActivitiesTable);
-    return res.json(simpleAttribution(opps as any, activities as any));
+    const live = simpleAttribution(opps as any, activities as any);
+
+    // §38 — persisted, auditable attribution records (survive later edits to the opportunity itself).
+    const rows = await db.select().from(salesAttributionTable).orderBy(desc(salesAttributionTable.createdAt)).limit(500);
+    const byAgent: Record<string, number> = {};
+    const byLeadSource: Record<string, number> = {};
+    let totalAttributedRevenue = 0;
+    for (const r of rows) {
+      const amt = Number(r.revenueAmount || 0);
+      totalAttributedRevenue += amt;
+      const agentKey = r.agentId != null ? String(r.agentId) : "unassigned";
+      byAgent[agentKey] = (byAgent[agentKey] || 0) + amt;
+      const sourceKey = r.leadSource || "unknown";
+      byLeadSource[sourceKey] = (byLeadSource[sourceKey] || 0) + amt;
+    }
+
+    return res.json({ ...live, items: rows, totalAttributedRevenue, byAgent, byLeadSource });
   } catch {
     return res.json(simpleAttribution([], []));
   }
@@ -1420,5 +1544,167 @@ router.post("/handoff/create", async (req, res) => {
   }
 });
 
+
+// ——— §41/§33 Alerts (generated from real DB state, deduped) ———
+router.get("/alerts", async (_req, res) => {
+  try {
+    await generateAlerts();
+    const rows = await db.select().from(salesAlertsTable).where(eq(salesAlertsTable.status, "open")).orderBy(desc(salesAlertsTable.createdAt)).limit(100);
+    return res.json({ items: rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+router.patch("/alerts/:id", async (req, res) => {
+  const id = Number(req.params.id);
+  const status = String(req.body?.status || "acknowledged");
+  if (!["acknowledged", "dismissed", "open"].includes(status)) return res.status(400).json({ error: "invalid status" });
+  try {
+    const [row] = await db.update(salesAlertsTable)
+      .set({ status, acknowledgedAt: status === "acknowledged" ? new Date() : null } as any)
+      .where(eq(salesAlertsTable.id, id)).returning();
+    if (!row) return res.status(404).json({ error: "not found" });
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+// ——— §32 Forecast snapshots (history, not just live compute) ———
+router.post("/forecast/snapshot", async (req, res) => {
+  const periodType = String(req.body?.periodType || "month");
+  const period = String(req.body?.period || new Date().toISOString().slice(0, 7));
+  try {
+    const opps = await db.select().from(salesOpportunitiesTable);
+    const mapped = opps.map((o) => ({ amount: o.amount != null ? Number(o.amount) : 0, probability: o.probability, stage: o.stage }));
+    const fc = forecastFromPipeline(mapped);
+    const [row] = await db.insert(salesForecastsTable).values({
+      period, periodType,
+      pipelineTotal: String(fc.pipelineTotal), weightedPipeline: String(fc.weightedPipeline),
+      bestCase: String(fc.bestCase), expectedCase: String(fc.expectedCase), worstCase: String(fc.worstCase),
+      note: fc.note, evidence: fc.evidence,
+    } as any).returning();
+    return res.status(201).json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+router.get("/forecast/history", async (req, res) => {
+  const periodType = req.query.periodType ? String(req.query.periodType) : null;
+  try {
+    const rows = periodType
+      ? await db.select().from(salesForecastsTable).where(eq(salesForecastsTable.periodType, periodType)).orderBy(desc(salesForecastsTable.createdAt)).limit(24)
+      : await db.select().from(salesForecastsTable).orderBy(desc(salesForecastsTable.createdAt)).limit(24);
+    return res.json({ items: rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+// ——— §36/§37 Experiments (A/B testing) ———
+router.get("/experiments", async (_req, res) => {
+  try {
+    const rows = await db.select().from(salesExperimentsTable).orderBy(desc(salesExperimentsTable.createdAt));
+    return res.json({ items: rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+router.post("/experiments", async (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name || !body.hypothesis || !body.variable || !body.successMetric) {
+    return res.status(400).json({ error: "name, hypothesis, variable and successMetric are required" });
+  }
+  try {
+    const [row] = await db.insert(salesExperimentsTable).values({
+      name: body.name, hypothesis: body.hypothesis, audience: body.audience || null,
+      variable: body.variable, variants: Array.isArray(body.variants) ? body.variants : [],
+      successMetric: body.successMetric, sampleSize: body.sampleSize != null ? Number(body.sampleSize) : null,
+      createdByAgentId: body.agentId != null ? Number(body.agentId) : null,
+    } as any).returning();
+    return res.status(201).json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+router.patch("/experiments/:id", async (req, res) => {
+  // Records real observed results the user/agent enters — never auto-fabricates outcomes.
+  const id = Number(req.params.id);
+  const body = req.body ?? {};
+  const allowed = ["status", "results", "winningVariant", "recommendation", "endDate"];
+  const updates: Record<string, unknown> = {};
+  for (const k of allowed) if (body[k] !== undefined) updates[k] = body[k];
+  try {
+    const [row] = await db.update(salesExperimentsTable).set(updates as any).where(eq(salesExperimentsTable.id, id)).returning();
+    if (!row) return res.status(404).json({ error: "not found" });
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+// ——— §19 Sequences (first-class enrollment/state) ———
+router.get("/sequences", async (req, res) => {
+  const status = req.query.status ? String(req.query.status) : null;
+  try {
+    const rows = status
+      ? await db.select().from(salesSequencesTable).where(eq(salesSequencesTable.status, status)).orderBy(desc(salesSequencesTable.startedAt))
+      : await db.select().from(salesSequencesTable).orderBy(desc(salesSequencesTable.startedAt));
+    return res.json({ items: rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+router.post("/sequences/enroll", async (req, res) => {
+  const leadId = Number(req.body?.leadId);
+  if (!leadId) return res.status(400).json({ error: "leadId required" });
+  try {
+    const existing = await db.select().from(salesSequencesTable)
+      .where(and(eq(salesSequencesTable.leadId, leadId), eq(salesSequencesTable.status, "active"))).limit(1);
+    if (existing.length) return res.status(409).json({ error: "lead already has an active sequence", sequence: existing[0] });
+    const [row] = await db.insert(salesSequencesTable).values({
+      leadId, sequenceName: req.body?.sequenceName || "standard_outbound",
+      totalSteps: FOLLOW_UP_SEQUENCE.length,
+      nextStepDueAt: new Date(),
+      createdByAgentId: req.body?.agentId != null ? Number(req.body.agentId) : null,
+    } as any).returning();
+    await logActivity({ leadId, actorName: "Ryan", action: "sequence_enrolled", summary: row.sequenceName });
+    return res.status(201).json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+router.post("/sequences/:id/stop", async (req, res) => {
+  const id = Number(req.params.id);
+  const reason = String(req.body?.reason || "manual"); // replied | opted_out | manual | completed
+  try {
+    const [row] = await db.update(salesSequencesTable)
+      .set({ status: reason === "replied" ? "stopped_reply" : reason === "opted_out" ? "stopped_optout" : "paused", stoppedReason: reason, updatedAt: new Date() } as any)
+      .where(eq(salesSequencesTable.id, id)).returning();
+    if (!row) return res.status(404).json({ error: "not found" });
+    return res.json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+// ——— §20 Buying signals (raw log, for drill-down behind lead/opportunity intent scores) ———
+router.get("/buying-signals", async (req, res) => {
+  const leadId = req.query.leadId ? Number(req.query.leadId) : null;
+  try {
+    const rows = leadId
+      ? await db.select().from(buyingSignalsTable).where(eq(buyingSignalsTable.leadId, leadId)).orderBy(desc(buyingSignalsTable.detectedAt))
+      : await db.select().from(buyingSignalsTable).orderBy(desc(buyingSignalsTable.detectedAt)).limit(200);
+    return res.json({ items: rows });
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
 
 export default router;

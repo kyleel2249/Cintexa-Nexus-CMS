@@ -133,7 +133,7 @@ export const salesForceApi = {
   upsell: (payload: Record<string, unknown>) =>
     request("/upsell", { method: "POST", body: JSON.stringify(payload) }),
 
-  attribution: () => request<Record<string, unknown>>("/attribution"),
+  attribution: () => request<{ lastTouchByAgent: Record<string, number>; activityInfluenceCounts: Record<string, number>; totalWonRevenue: number; items: any[]; totalAttributedRevenue: number; byAgent: Record<string, number>; byLeadSource: Record<string, number> }>("/attribution"),
 
   command: (command: string) =>
     request<{ intent: string; result: any; message: string }>("/command", { method: "POST", body: JSON.stringify({ command }) }),
@@ -152,6 +152,36 @@ export const salesForceApi = {
 
   createHandoff: (payload: Record<string, unknown>) =>
     request("/handoff/create", { method: "POST", body: JSON.stringify(payload) }),
+
+  alerts: () => request<{ items: any[] }>("/alerts"),
+
+  updateAlert: (id: number, status: "acknowledged" | "dismissed" | "open") =>
+    request(`/alerts/${id}`, { method: "PATCH", body: JSON.stringify({ status }) }),
+
+  snapshotForecast: (periodType: "week" | "month" | "quarter" | "year", period: string) =>
+    request<Record<string, any>>("/forecast/snapshot", { method: "POST", body: JSON.stringify({ periodType, period }) }),
+
+  forecastHistory: (periodType?: string) =>
+    request<{ items: any[] }>(`/forecast/history${periodType ? `?periodType=${periodType}` : ""}`),
+
+  experiments: () => request<{ items: any[] }>("/experiments"),
+
+  createExperiment: (payload: Record<string, unknown>) =>
+    request<Record<string, any>>("/experiments", { method: "POST", body: JSON.stringify(payload) }),
+
+  updateExperiment: (id: number, payload: Record<string, unknown>) =>
+    request(`/experiments/${id}`, { method: "PATCH", body: JSON.stringify(payload) }),
+
+  sequences: (status?: string) => request<{ items: any[] }>(`/sequences${status ? `?status=${status}` : ""}`),
+
+  enrollSequence: (leadId: number, sequenceName?: string, agentId?: number) =>
+    request<Record<string, any>>("/sequences/enroll", { method: "POST", body: JSON.stringify({ leadId, sequenceName, agentId }) }),
+
+  stopSequence: (id: number, reason: "replied" | "opted_out" | "manual" | "completed") =>
+    request(`/sequences/${id}/stop`, { method: "POST", body: JSON.stringify({ reason }) }),
+
+  buyingSignals: (leadId?: number) =>
+    request<{ items: any[] }>(`/buying-signals${leadId ? `?leadId=${leadId}` : ""}`),
 };
 
 

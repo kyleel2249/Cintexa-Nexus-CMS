@@ -226,3 +226,104 @@ export const salesMeetingsTable = pgTable("sales_meetings", {
 });
 
 export type SalesMeeting = typeof salesMeetingsTable.$inferSelect;
+
+/** §20 Buying Intent Detection — persisted signal log per lead/opportunity. */
+export const buyingSignalsTable = pgTable("buying_signals", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id"),
+  opportunityId: integer("opportunity_id"),
+  signalType: text("signal_type").notNull(), // pricing_page_view | proposal_view | demo_request | reply | repeat_visit | quote_request | meeting_request | document_download | competitor_mention
+  weight: integer("weight").notNull().default(0), // contribution to intent score at time of detection
+  detail: text("detail"),
+  source: text("source").notNull().default("system"), // system | agent | manual
+  evidence: text("evidence").notNull().default("CALCULATED"), // VERIFIED | CALCULATED | INFERRED | USER PROVIDED
+  detectedAt: timestamp("detected_at").notNull().defaultNow(),
+});
+export type BuyingSignal = typeof buyingSignalsTable.$inferSelect;
+
+/** §32 Sales Forecasting — periodic snapshots so forecasts can be compared over time, not just computed live. */
+export const salesForecastsTable = pgTable("sales_forecasts", {
+  id: serial("id").primaryKey(),
+  period: text("period").notNull(), // e.g. "2026-W34", "2026-08", "2026-Q3", "2026"
+  periodType: text("period_type").notNull(), // week | month | quarter | year
+  pipelineTotal: numeric("pipeline_total").notNull().default("0"),
+  weightedPipeline: numeric("weighted_pipeline").notNull().default("0"),
+  bestCase: numeric("best_case").notNull().default("0"),
+  expectedCase: numeric("expected_case").notNull().default("0"),
+  worstCase: numeric("worst_case").notNull().default("0"),
+  actualClosed: numeric("actual_closed"), // filled in after the period ends, for accuracy tracking
+  note: text("note"),
+  evidence: text("evidence").notNull().default("CALCULATED"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type SalesForecast = typeof salesForecastsTable.$inferSelect;
+
+/** §41 Real-Time Sales Alerts / §33 Deal Risk — generated from real DB state, not fabricated. */
+export const salesAlertsTable = pgTable("sales_alerts", {
+  id: serial("id").primaryKey(),
+  type: text("type").notNull(), // high_value_lead | high_intent | new_qualified_opportunity | proposal_opened | price_requested | competitor_mentioned | deal_at_risk | deal_stalled | contract_requested | purchase_signal
+  severity: text("severity").notNull().default("info"), // critical | warning | attention | opportunity | info
+  title: text("title").notNull(),
+  detail: text("detail"),
+  entityType: text("entity_type"), // lead | opportunity | agent
+  entityId: integer("entity_id"),
+  evidence: text("evidence").notNull().default("CALCULATED"),
+  status: text("status").notNull().default("open"), // open | acknowledged | dismissed
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+});
+export type SalesAlert = typeof salesAlertsTable.$inferSelect;
+
+/** §36/§37 A/B Testing & Sales Experiment Engine. */
+export const salesExperimentsTable = pgTable("sales_experiments", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  hypothesis: text("hypothesis").notNull(),
+  audience: text("audience"),
+  variable: text("variable").notNull(), // what's being tested (subject_line | opening_message | cta | offer | follow_up_interval | script | proposal_format)
+  variants: jsonb("variants").notNull().default("[]"), // [{ name, description }]
+  successMetric: text("success_metric").notNull(), // open_rate | reply_rate | meeting_rate | qualification_rate | conversion | revenue
+  sampleSize: integer("sample_size"),
+  status: text("status").notNull().default("running"), // running | completed | abandoned
+  startDate: timestamp("start_date").notNull().defaultNow(),
+  endDate: timestamp("end_date"),
+  results: jsonb("results"), // [{ variant, metricValue, sampleSize }] — entered from real observed outcomes
+  winningVariant: text("winning_variant"),
+  recommendation: text("recommendation"),
+  createdByAgentId: integer("created_by_agent_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type SalesExperiment = typeof salesExperimentsTable.$inferSelect;
+
+/** §38 Revenue Attribution — recorded at the moment a deal closes won. */
+export const salesAttributionTable = pgTable("sales_attribution", {
+  id: serial("id").primaryKey(),
+  opportunityId: integer("opportunity_id").notNull(),
+  revenueAmount: numeric("revenue_amount").notNull().default("0"),
+  agentId: integer("agent_id"),
+  campaignId: integer("campaign_id"),
+  leadSource: text("lead_source"),
+  channel: text("channel"), // email | chat | sms | whatsapp | social | phone | referral
+  touchType: text("touch_type").notNull().default("last_touch"), // first_touch | last_touch | multi_touch | ai_influenced
+  weight: numeric("weight").notNull().default("1"), // fraction of credit for multi-touch models, 0-1
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+export type SalesAttribution = typeof salesAttributionTable.$inferSelect;
+
+/** §19 Autonomous Follow-Up Engine — first-class enrollment/state, not just recomputed from lastContactAt each call. */
+export const salesSequencesTable = pgTable("sales_sequences", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id").notNull(),
+  sequenceName: text("sequence_name").notNull().default("standard_outbound"),
+  status: text("status").notNull().default("active"), // active | paused | completed | stopped_reply | stopped_optout
+  currentStep: integer("current_step").notNull().default(0),
+  totalSteps: integer("total_steps").notNull().default(6),
+  startedAt: timestamp("started_at").notNull().defaultNow(),
+  lastStepAt: timestamp("last_step_at"),
+  nextStepDueAt: timestamp("next_step_due_at"),
+  stoppedReason: text("stopped_reason"), // replied | opted_out | manual | completed
+  createdByAgentId: integer("created_by_agent_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+export type SalesSequence = typeof salesSequencesTable.$inferSelect;

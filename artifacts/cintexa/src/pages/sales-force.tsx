@@ -6,6 +6,15 @@ import {
 } from "lucide-react";
 import { salesForceApi } from "@/lib/sales-force-api";
 import { downloadProposalPdf } from "@/lib/sales-proposal-pdf";
+import {
+  downloadSalesPerformanceReport,
+  downloadPipelineReport,
+  downloadForecastReport,
+  downloadCampaignReport,
+  downloadLostDealReport,
+  downloadAuditReport,
+  downloadWorkforceReport,
+} from "@/lib/sales-report-pdf";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -69,6 +78,7 @@ export default function SalesForcePage() {
   const [meetings, setMeetings] = useState<any[]>([]);
   const [meetingTitle, setMeetingTitle] = useState("Discovery call");
   const [actual, setActual] = useState("0");
+  const [reportBusy, setReportBusy] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
@@ -92,6 +102,64 @@ export default function SalesForcePage() {
   useEffect(() => {
     void salesForceApi.bootstrap().finally(() => void refresh());
   }, [refresh]);
+
+  const runReport = useCallback(async (key: string, fn: () => Promise<void>) => {
+    setReportBusy(key);
+    try {
+      await fn();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setReportBusy(null);
+    }
+  }, []);
+
+  const genPerformanceReport = () => runReport("performance", async () => {
+    const attribution = await salesForceApi.attribution();
+    downloadSalesPerformanceReport({ leads, opportunities: opps, agents, attribution });
+  });
+
+  const genPipelineReport = () => runReport("pipeline", async () => {
+    const stageIds = Array.from(new Set(opps.map((o: any) => o.stage)));
+    const stages = stageIds
+      .filter((s) => !["closed_won", "closed_lost"].includes(s))
+      .map((s) => ({ id: s, label: s.replace(/_/g, " ") }));
+    downloadPipelineReport({ opportunities: opps, stages });
+  });
+
+  const genForecastReport = () => runReport("forecast", async () => {
+    const [current, history] = await Promise.all([
+      salesForceApi.forecast().catch(() => ({ pipelineTotal: 0, weightedPipeline: 0, bestCase: 0, expectedCase: 0, worstCase: 0 })),
+      salesForceApi.forecastHistory(),
+    ]);
+    downloadForecastReport({ current: current as any, history: history.items || [] });
+  });
+
+  const genCampaignReport = () => runReport("campaign", async () => {
+    const c = await salesForceApi.campaigns();
+    downloadCampaignReport({ campaigns: c.items || [] });
+  });
+
+  const genLostDealReport = () => runReport("lostdeal", async () => {
+    const lostOpportunities = opps.filter((o: any) => o.stage === "closed_lost");
+    downloadLostDealReport({ lostOpportunities });
+  });
+
+  const genAuditReport = () => runReport("audit", async () => {
+    const a = await salesForceApi.audit();
+    downloadAuditReport({ auditLog: a.items || [] });
+  });
+
+  const genWorkforceReport = () => runReport("workforce", async () => {
+    const attribution = await salesForceApi.attribution();
+    const activityCounts: Record<string, number> = {};
+    for (const act of activities) {
+      const key = String(act.agentId ?? "");
+      if (!key) continue;
+      activityCounts[key] = (activityCounts[key] || 0) + 1;
+    }
+    downloadWorkforceReport({ agents, attribution, activityCounts });
+  });
 
   const roleLabel = (role: string) =>
     ({
@@ -224,6 +292,7 @@ export default function SalesForcePage() {
           <TabsTrigger value="pipeline">Pipeline</TabsTrigger>
           <TabsTrigger value="commands">Commands</TabsTrigger>
           <TabsTrigger value="activity">Activity</TabsTrigger>
+          <TabsTrigger value="reports">Reports</TabsTrigger>
           <TabsTrigger value="bridge">Diagnostic bridge</TabsTrigger>
           <TabsTrigger value="sell">What to sell</TabsTrigger>
           <TabsTrigger value="ops">Ops & policy</TabsTrigger>
@@ -509,6 +578,40 @@ export default function SalesForcePage() {
                   </div>
                 </div>
               ))}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="reports" className="mt-4 space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-base">Downloadable reports</CardTitle>
+              <CardDescription>
+                Every report is generated from live data at the moment you click — nothing is pre-baked or fabricated.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="grid sm:grid-cols-2 gap-3">
+              <Button variant="outline" disabled={reportBusy === "performance"} onClick={() => void genPerformanceReport()}>
+                {reportBusy === "performance" ? "Generating…" : "Sales & agent performance PDF"}
+              </Button>
+              <Button variant="outline" disabled={reportBusy === "pipeline"} onClick={() => void genPipelineReport()}>
+                {reportBusy === "pipeline" ? "Generating…" : "Pipeline report PDF"}
+              </Button>
+              <Button variant="outline" disabled={reportBusy === "forecast"} onClick={() => void genForecastReport()}>
+                {reportBusy === "forecast" ? "Generating…" : "Revenue forecast PDF"}
+              </Button>
+              <Button variant="outline" disabled={reportBusy === "campaign"} onClick={() => void genCampaignReport()}>
+                {reportBusy === "campaign" ? "Generating…" : "Campaign report PDF"}
+              </Button>
+              <Button variant="outline" disabled={reportBusy === "lostdeal"} onClick={() => void genLostDealReport()}>
+                {reportBusy === "lostdeal" ? "Generating…" : "Lost deal report PDF"}
+              </Button>
+              <Button variant="outline" disabled={reportBusy === "audit"} onClick={() => void genAuditReport()}>
+                {reportBusy === "audit" ? "Generating…" : "Sales AI audit log PDF"}
+              </Button>
+              <Button variant="outline" disabled={reportBusy === "workforce"} onClick={() => void genWorkforceReport()}>
+                {reportBusy === "workforce" ? "Generating…" : "AI workforce report PDF"}
+              </Button>
             </CardContent>
           </Card>
         </TabsContent>
