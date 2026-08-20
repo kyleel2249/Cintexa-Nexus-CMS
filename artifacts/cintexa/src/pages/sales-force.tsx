@@ -5,6 +5,7 @@ import {
   Play, Pause, RefreshCw, Plus, Sparkles, AlertTriangle, ChevronRight,
 } from "lucide-react";
 import { salesForceApi } from "@/lib/sales-force-api";
+import { downloadProposalPdf } from "@/lib/sales-proposal-pdf";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -49,6 +50,12 @@ export default function SalesForcePage() {
   const [diagResult, setDiagResult] = useState<Record<string, any> | null>(null);
   const [whatSell, setWhatSell] = useState<any[]>([]);
   const [outreachNote, setOutreachNote] = useState<string | null>(null);
+  const [dailyBrief, setDailyBrief] = useState<Record<string, any> | null>(null);
+  const [negResult, setNegResult] = useState<Record<string, any> | null>(null);
+  const [quoteResult, setQuoteResult] = useState<Record<string, any> | null>(null);
+  const [bantResult, setBantResult] = useState<Record<string, any> | null>(null);
+  const [listPrice, setListPrice] = useState("10000");
+  const [reqDiscount, setReqDiscount] = useState("5");
   const [actual, setActual] = useState("0");
 
   const refresh = useCallback(async () => {
@@ -207,6 +214,7 @@ export default function SalesForcePage() {
           <TabsTrigger value="activity">Activity</TabsTrigger>
           <TabsTrigger value="bridge">Diagnostic bridge</TabsTrigger>
           <TabsTrigger value="sell">What to sell</TabsTrigger>
+          <TabsTrigger value="ops">Ops & policy</TabsTrigger>
         </TabsList>
 
         <TabsContent value="workforce" className="mt-4 space-y-4">
@@ -585,6 +593,124 @@ export default function SalesForcePage() {
               ))}
             </CardContent>
           </Card>
+        </TabsContent>
+
+
+        <TabsContent value="ops" className="mt-4 space-y-4">
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" onClick={async () => setDailyBrief(await salesForceApi.dailyBrief(Number(target) || undefined))}>
+              Daily brief
+            </Button>
+            <Button variant="outline" onClick={async () => { await salesForceApi.seedDemo(); await refresh(); }}>
+              Seed demo data
+            </Button>
+          </div>
+          {dailyBrief && (
+            <Card>
+              <CardHeader><CardTitle className="text-base">{dailyBrief.title}</CardTitle>
+              <CardDescription>{String(dailyBrief.note || "")}</CardDescription></CardHeader>
+              <CardContent className="text-sm space-y-2">
+                <div>Target: <b>{dailyBrief.revenueTarget ?? "—"}</b> · Closed: <b>{dailyBrief.revenueClosed}</b> · Gap: <b>{dailyBrief.revenueGap ?? "—"}</b></div>
+                <div>Uncontacted: {dailyBrief.leadsRequiringContact} · High intent: {dailyBrief.highIntentProspects}</div>
+                <ul className="list-disc pl-5">
+                  {(dailyBrief.recommendedActions || []).map((a: string, i: number) => <li key={i}>{a}</li>)}
+                </ul>
+              </CardContent>
+            </Card>
+          )}
+
+          <div className="grid lg:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader><CardTitle className="text-base">BANT qualification</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Button variant="outline" onClick={async () => {
+                  setBantResult(await salesForceApi.qualifyBant({
+                    budget: "Confirmed annual software budget",
+                    authority: "Ops director",
+                    need: "Need CRM follow-up discipline",
+                    timeline: "This quarter",
+                  }));
+                }}>Run sample BANT</Button>
+                {bantResult && (
+                  <div className="border rounded-lg p-3">
+                    Score <b>{bantResult.score}</b> · {bantResult.label} · {bantResult.confidence}
+                    <p className="text-xs text-muted-foreground mt-1">Missing: {(bantResult.missing || []).join(", ") || "none"}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Negotiation policy check</CardTitle>
+              <CardDescription>Escalates when outside approved limits — never invents discounts.</CardDescription></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div className="grid grid-cols-2 gap-2">
+                  <div><Label>List price</Label><Input value={listPrice} onChange={e => setListPrice(e.target.value)} /></div>
+                  <div><Label>Requested discount %</Label><Input value={reqDiscount} onChange={e => setReqDiscount(e.target.value)} /></div>
+                </div>
+                <Button variant="outline" onClick={async () => {
+                  setNegResult(await salesForceApi.negotiate({
+                    listPrice: Number(listPrice) || 0,
+                    requestedDiscountPercent: Number(reqDiscount) || 0,
+                    packageName: "Growth",
+                  }));
+                }}>Evaluate</Button>
+                {negResult && (
+                  <div className="border rounded-lg p-3">
+                    <Badge className={negResult.escalate ? "bg-rose-600" : "bg-emerald-600"}>{negResult.decision}</Badge>
+                    <p className="mt-2">{negResult.reason}</p>
+                    {negResult.finalPrice != null && <p>Final price: <b>{negResult.finalPrice}</b></p>}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Quotation engine</CardTitle></CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <Button variant="outline" onClick={async () => {
+                  setQuoteResult(await salesForceApi.createQuote({
+                    lineItems: [
+                      { name: "CINTEXA CRM annual", quantity: 1, unitPrice: 8000 },
+                      { name: "Onboarding", quantity: 1, unitPrice: 2000 },
+                    ],
+                    discountPercent: 5,
+                    taxPercent: 0,
+                    currency: "GHS",
+                  }));
+                }}>Build sample quote</Button>
+                {quoteResult && (
+                  <div className="border rounded-lg p-3">
+                    Total: <b>{quoteResult.currency || quoteResult.calculated?.currency} {quoteResult.total || quoteResult.calculated?.total}</b>
+                    <p className="text-xs text-muted-foreground mt-1">{quoteResult.note || quoteResult.calculated?.note}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader><CardTitle className="text-base">Proposal PDF</CardTitle></CardHeader>
+              <CardContent>
+                <Button variant="outline" onClick={() => {
+                  downloadProposalPdf({
+                    title: "CINTEXA Proposal",
+                    companyName: leadForm.companyName || "Customer",
+                    contactName: leadForm.contactName,
+                    body: {
+                      executiveSummary: "Proposal based on discovery — scope subject to confirmation.",
+                      customerProblem: "To be confirmed",
+                      proposedSolution: "CINTEXA modules justified by diagnostic/sales evidence",
+                      scope: ["Discovery", "Configuration", "Training"],
+                      deliverables: ["Implementation plan", "Configured workspace"],
+                      timeline: "To be confirmed",
+                      pricing: { amount: null, currency: "GHS", note: "Requires authorized quote" },
+                      nextSteps: ["Review", "Clarify", "Confirm terms within policy"],
+                    },
+                  });
+                }}>Download proposal PDF</Button>
+              </CardContent>
+            </Card>
+          </div>
         </TabsContent>
 
       </Tabs>

@@ -10,6 +10,8 @@ import {
   salesAuditLogsTable,
   salesKnowledgeTable,
   salesPlaybooksTable,
+  salesQuotesTable,
+  salesAgentMemoryTable,
 } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import {
@@ -29,6 +31,20 @@ import {
   defaultEnterprisePlaybook,
 } from "../services/sales-force-engine";
 import { buildOutreachCopy, sendSalesEmail, evaluateOutreachPermission } from "../services/sales-outreach";
+
+import {
+  qualifyBant,
+  detectBuyingIntent,
+  negotiate,
+  buildHandoffBrief,
+  buildQuote,
+  analyzeLostDeal,
+  dailySalesBrief,
+  sequenceStepDue,
+  nextBestOffer,
+  DEFAULT_NEGOTIATION_POLICY,
+} from "../services/sales-force-advanced";
+
 
 const router = Router();
 
@@ -861,6 +877,275 @@ router.get("/what-to-sell", async (_req, res) => {
     });
   } catch {
     return res.json({ items: [], note: "No data" });
+  }
+});
+
+
+
+// ——— Qualification BANT ———
+router.post("/qualify/bant", (req, res) => {
+  res.json(qualifyBant(req.body ?? {}));
+});
+
+router.post("/intent", (req, res) => {
+  res.json(detectBuyingIntent(req.body ?? {}));
+});
+
+router.post("/negotiate", (req, res) => {
+  const result = negotiate(req.body ?? {});
+  res.json(result);
+});
+
+router.get("/negotiation-policy", (_req, res) => {
+  res.json({ policy: DEFAULT_NEGOTIATION_POLICY, note: "Override per agent permissions in production admin." });
+});
+
+router.post("/handoff", (req, res) => {
+  res.json(buildHandoffBrief(req.body ?? {}));
+});
+
+router.post("/quotes", async (req, res) => {
+  const body = req.body ?? {};
+  const lineItems = Array.isArray(body.lineItems) ? body.lineItems : [];
+  if (!lineItems.length) return res.status(400).json({ error: "lineItems required" });
+  const quote = buildQuote({
+    lineItems: lineItems.map((i: any) => ({
+      name: String(i.name || "Item"),
+      quantity: Number(i.quantity || 1),
+      unitPrice: Number(i.unitPrice || 0),
+    })),
+    discountPercent: body.discountPercent != null ? Number(body.discountPercent) : 0,
+    taxPercent: body.taxPercent != null ? Number(body.taxPercent) : 0,
+    currency: body.currency || "GHS",
+    maxDiscountPercent: body.maxDiscountPercent != null ? Number(body.maxDiscountPercent) : 10,
+  });
+  try {
+    const [row] = await db.insert(salesQuotesTable).values({
+      opportunityId: body.opportunityId != null ? Number(body.opportunityId) : null,
+      leadId: body.leadId != null ? Number(body.leadId) : null,
+      lineItems: quote.lineItems,
+      subtotal: String(quote.subtotal),
+      discount: String(quote.discount),
+      tax: String(quote.tax),
+      total: String(quote.total),
+      currency: quote.currency,
+      status: "draft",
+      createdByAgentId: body.agentId != null ? Number(body.agentId) : null,
+    } as any).returning();
+    await logActivity({
+      leadId: body.leadId,
+      opportunityId: body.opportunityId,
+      actorName: "Max",
+      action: "quote_created",
+      summary: `Quote total ${quote.currency} ${quote.total}`,
+      detail: quote,
+    });
+    return res.status(201).json({ ...row, calculated: quote });
+  } catch (err: any) {
+    return res.status(201).json({ ...quote, persisted: false, note: err?.message });
+  }
+});
+
+router.post("/opportunities/:id/lost", async (req, res) => {
+  const id = Number(req.params.id);
+  const body = req.body ?? {};
+  const analysis = analyzeLostDeal({
+    lostReason: body.lostReason,
+    competitor: body.competitor,
+    stage: body.stage,
+    amount: body.amount != null ? Number(body.amount) : null,
+  });
+  try {
+    const [row] = await db.update(salesOpportunitiesTable).set({
+      stage: "closed_lost",
+      lostAt: new Date(),
+      lostReason: body.lostReason || null,
+      updatedAt: new Date(),
+      context: { lostAnalysis: analysis },
+    } as any).where(eq(salesOpportunitiesTable.id, id)).returning();
+    if (!row) return res.status(404).json({ error: "not found", analysis });
+    await logActivity({ opportunityId: id, actorName: "Zoe", action: "lost_deal_analysis", summary: analysis.categories.join(", "), detail: analysis });
+    return res.json({ opportunity: row, analysis });
+  } catch (err: any) {
+    return res.json({ analysis, persisted: false, note: err?.message });
+  }
+});
+
+router.get("/daily-brief", async (req, res) => {
+  const target = req.query.target != null ? Number(req.query.target) : null;
+  try {
+    const leads = await db.select().from(salesLeadsTable);
+    const opps = await db.select().from(salesOpportunitiesTable);
+    const won = opps.filter((o) => o.stage === "closed_won");
+    const open = opps.filter((o) => !["closed_won", "closed_lost"].includes(o.stage));
+    const revenueClosed = won.reduce((s, o) => s + (o.amount != null ? Number(o.amount) : 0), 0);
+    const pipelineValue = open.reduce((s, o) => s + (o.amount != null ? Number(o.amount) : 0), 0);
+    const brief = dailySalesBrief({
+      target,
+      revenueClosed,
+      pipelineValue,
+      leadsTotal: leads.length,
+      highIntent: leads.filter((l) => (l.priorityScore ?? 0) >= 65).length,
+      uncontacted: leads.filter((l) => l.stage === "new_lead" && !l.optedOut).length,
+      openOpps: open.length,
+      atRisk: open
+        .filter((o) => (o.riskScore ?? 0) >= 50)
+        .map((o) => ({ name: o.name, riskScore: o.riskScore ?? undefined })),
+      topOpps: open
+        .slice()
+        .sort((a, b) => Number(b.amount || 0) - Number(a.amount || 0))
+        .slice(0, 10)
+        .map((o) => ({ name: o.name, amount: o.amount != null ? Number(o.amount) : null })),
+    });
+    return res.json(brief);
+  } catch {
+    return res.json(dailySalesBrief({ target }));
+  }
+});
+
+router.post("/sequence/check", (req, res) => {
+  res.json(sequenceStepDue(req.body ?? {}));
+});
+
+router.post("/next-offer", (req, res) => {
+  res.json(nextBestOffer(req.body ?? {}));
+});
+
+// ——— Campaigns ———
+router.get("/campaigns", async (_req, res) => {
+  try {
+    const rows = await db.select().from(salesCampaignsTable).orderBy(desc(salesCampaignsTable.updatedAt));
+    return res.json({ items: rows });
+  } catch {
+    return res.json({ items: [] });
+  }
+});
+
+router.post("/campaigns", async (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name) return res.status(400).json({ error: "name required" });
+  try {
+    const [row] = await db.insert(salesCampaignsTable).values({
+      name: body.name,
+      objective: body.objective || null,
+      status: body.status || "draft",
+      audience: body.audience || {},
+      channels: body.channels || ["email"],
+      sequence: body.sequence || [],
+      product: body.product || null,
+      offer: body.offer || null,
+      startDate: body.startDate || null,
+      endDate: body.endDate || null,
+    } as any).returning();
+    await audit("Maya", "campaign_created", { entityType: "campaign", entityId: row.id, result: row.name });
+    return res.status(201).json(row);
+  } catch (err: any) {
+    return res.status(201).json({ id: null, ...body, persisted: false, note: err?.message });
+  }
+});
+
+// ——— Create custom agent ———
+router.post("/agents", async (req, res) => {
+  const body = req.body ?? {};
+  if (!body.name || !body.role) return res.status(400).json({ error: "name and role required" });
+  const slug = String(body.slug || body.name).toLowerCase().replace(/[^a-z0-9]+/g, "-");
+  try {
+    const [row] = await db.insert(salesAgentsTable).values({
+      name: body.name,
+      slug,
+      role: body.role,
+      personality: body.personality || null,
+      specialization: body.specialization || null,
+      status: "active",
+      autonomyLevel: body.autonomyLevel != null ? Number(body.autonomyLevel) : 1,
+      territory: body.territory || null,
+      products: body.products || [],
+      permissions: body.permissions || {},
+      targets: body.targets || {},
+      isSystem: false,
+      config: body.config || {},
+    } as any).returning();
+    await audit("system", "agent_created", { entityType: "agent", entityId: row.id, result: row.name });
+    return res.status(201).json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+// ——— Agent memory ———
+router.get("/memory", async (req, res) => {
+  const leadId = req.query.leadId ? Number(req.query.leadId) : null;
+  const agentId = req.query.agentId ? Number(req.query.agentId) : null;
+  try {
+    let rows = await db.select().from(salesAgentMemoryTable).orderBy(desc(salesAgentMemoryTable.createdAt)).limit(100);
+    if (leadId) rows = rows.filter((r) => r.leadId === leadId);
+    if (agentId) rows = rows.filter((r) => r.agentId === agentId);
+    return res.json({ items: rows });
+  } catch {
+    return res.json({ items: [] });
+  }
+});
+
+router.post("/memory", async (req, res) => {
+  const body = req.body ?? {};
+  if (!body.agentId || !body.category || !body.content) {
+    return res.status(400).json({ error: "agentId, category, content required" });
+  }
+  try {
+    const [row] = await db.insert(salesAgentMemoryTable).values({
+      agentId: Number(body.agentId),
+      leadId: body.leadId != null ? Number(body.leadId) : null,
+      opportunityId: body.opportunityId != null ? Number(body.opportunityId) : null,
+      category: body.category,
+      content: body.content,
+    } as any).returning();
+    return res.status(201).json(row);
+  } catch (err: any) {
+    return res.status(500).json({ error: err?.message });
+  }
+});
+
+// ——— Demo seed (clearly marked) ———
+router.post("/demo/seed", async (_req, res) => {
+  try {
+    await db.insert(salesLeadsTable).values({
+      companyName: "Demo Retail Co",
+      contactName: "Ama Mensah",
+      contactEmail: "demo@example.com",
+      industry: "Retail",
+      companySize: "50-200",
+      source: "demo",
+      stage: "new_lead",
+      priorityScore: 62,
+      qualityLabel: "mql",
+      consentEmail: true,
+      isDemo: true,
+      notes: "DEMO DATA — not a real customer",
+      nextAction: "research_then_score",
+      nextActionReason: "Demo seed",
+    } as any);
+    await db.insert(salesOpportunitiesTable).values({
+      name: "Demo Retail Co — CRM evaluation",
+      companyName: "Demo Retail Co",
+      stage: "discovery",
+      amount: "15000",
+      currency: "GHS",
+      probability: 40,
+      riskScore: 35,
+      isDemo: true,
+      notes: "DEMO DATA",
+    } as any);
+    return res.status(201).json({ ok: true, note: "Demo lead and opportunity created (isDemo=true)" });
+  } catch (err: any) {
+    return res.status(201).json({
+      ok: true,
+      persisted: false,
+      note: err?.message || "DB unavailable",
+      demo: {
+        companyName: "Demo Retail Co",
+        isDemo: true,
+      },
+    });
   }
 });
 

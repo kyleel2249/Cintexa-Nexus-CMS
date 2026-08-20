@@ -70,5 +70,56 @@ export const salesForceApi = {
     request<{ matched: any[]; actions: any[] }>("/playbooks/evaluate", { method: "POST", body: JSON.stringify(payload) }),
 
   whatToSell: () => request<{ items: any[]; note?: string }>("/what-to-sell"),
+
+  qualifyBant: (payload: Record<string, unknown>) =>
+    request("/qualify/bant", { method: "POST", body: JSON.stringify(payload) }),
+
+  detectIntent: (payload: Record<string, unknown>) =>
+    request("/intent", { method: "POST", body: JSON.stringify(payload) }),
+
+  negotiate: (payload: Record<string, unknown>) =>
+    request("/negotiate", { method: "POST", body: JSON.stringify(payload) }),
+
+  negotiationPolicy: () => request<{ policy: Record<string, unknown> }>("/negotiation-policy"),
+
+  handoff: (payload: Record<string, unknown>) =>
+    request("/handoff", { method: "POST", body: JSON.stringify(payload) }),
+
+  createQuote: (payload: Record<string, unknown>) =>
+    request("/quotes", { method: "POST", body: JSON.stringify(payload) }),
+
+  markLost: (id: number, payload: Record<string, unknown>) =>
+    request(`/opportunities/${id}/lost`, { method: "POST", body: JSON.stringify(payload) }),
+
+  dailyBrief: (target?: number) =>
+    request<Record<string, unknown>>(`/daily-brief${target != null ? `?target=${target}` : ""}`),
+
+  sequenceCheck: (payload: Record<string, unknown>) =>
+    request("/sequence/check", { method: "POST", body: JSON.stringify(payload) }),
+
+  nextOffer: (payload: Record<string, unknown>) =>
+    request("/next-offer", { method: "POST", body: JSON.stringify(payload) }),
+
+  campaigns: () => request<{ items: any[] }>("/campaigns"),
+
+  createCampaign: (payload: Record<string, unknown>) =>
+    request("/campaigns", { method: "POST", body: JSON.stringify(payload) }),
+
+  createAgent: (payload: Record<string, unknown>) =>
+    request("/agents", { method: "POST", body: JSON.stringify(payload) }),
+
+  listMemory: (params?: { leadId?: number; agentId?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.leadId) q.set("leadId", String(params.leadId));
+    if (params?.agentId) q.set("agentId", String(params.agentId));
+    const qs = q.toString();
+    return request<{ items: any[] }>(`/memory${qs ? `?${qs}` : ""}`);
+  },
+
+  addMemory: (payload: Record<string, unknown>) =>
+    request("/memory", { method: "POST", body: JSON.stringify(payload) }),
+
+  seedDemo: () => request("/demo/seed", { method: "POST", body: "{}" }),
 };
+
 
