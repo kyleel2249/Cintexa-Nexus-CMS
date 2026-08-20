@@ -284,3 +284,38 @@ export function parseSalesCommand(command: string, ctx: {
       "Supported: uncontacted high-value leads, at-risk deals, top opportunities, who to contact, deals likely to close. Commands use live data only.",
   };
 }
+
+export const DEFAULT_SALES_SETTINGS = {
+  globalAutonomyCap: 2,
+  maxDailyEmails: 50,
+  maxDiscountPercent: 10,
+  quietHoursStart: 20,
+  quietHoursEnd: 8,
+  contactFrequencyDays: 2,
+  revenueTargetMonthly: 0,
+  requireConsent: true,
+  escalateAboveAmount: 50000,
+  calendarIntegration: false,
+  smsIntegration: false,
+  whatsappIntegration: false,
+};
+
+export function trainingCoverage(input: {
+  knowledgeCount: number;
+  memoryCount: number;
+  playbookCount: number;
+  lastTrainedAt?: string | null;
+}) {
+  const knowledge = Math.min(40, input.knowledgeCount * 5);
+  const memory = Math.min(30, input.memoryCount * 3);
+  const playbooks = Math.min(20, input.playbookCount * 10);
+  const recency = input.lastTrainedAt ? 10 : 0;
+  const score = Math.min(100, knowledge + memory + playbooks + recency);
+  return {
+    trainingScore: score,
+    knowledgeCoverage: Math.min(100, input.knowledgeCount * 10),
+    confidence: score >= 70 ? "high" : score >= 40 ? "medium" : "low",
+    lastTrained: input.lastTrainedAt || null,
+    evidence: "CALCULATED",
+  };
+}

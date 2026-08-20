@@ -199,3 +199,30 @@ export const salesAgentMemoryTable = pgTable("sales_agent_memory", {
 export type SalesAgent = typeof salesAgentsTable.$inferSelect;
 export type SalesLead = typeof salesLeadsTable.$inferSelect;
 export type SalesOpportunity = typeof salesOpportunitiesTable.$inferSelect;
+
+/** Admin settings for sales force autonomy, limits, targets */
+export const salesSettingsTable = pgTable("sales_settings", {
+  id: serial("id").primaryKey(),
+  key: text("key").notNull().unique(),
+  value: jsonb("value").notNull().default("{}"),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+});
+
+/** Meetings booked by AI or humans */
+export const salesMeetingsTable = pgTable("sales_meetings", {
+  id: serial("id").primaryKey(),
+  leadId: integer("lead_id"),
+  opportunityId: integer("opportunity_id"),
+  title: text("title").notNull(),
+  scheduledAt: text("scheduled_at"),
+  durationMinutes: integer("duration_minutes").default(30),
+  status: text("status").notNull().default("scheduled"), // scheduled | completed | cancelled | no_show
+  attendees: jsonb("attendees").notNull().default("[]"),
+  notes: text("notes"),
+  createdByAgentId: integer("created_by_agent_id"),
+  calendarSynced: boolean("calendar_synced").notNull().default(false),
+  isDemo: boolean("is_demo").notNull().default(false),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+});
+
+export type SalesMeeting = typeof salesMeetingsTable.$inferSelect;

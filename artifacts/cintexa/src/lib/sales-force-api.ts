@@ -137,7 +137,23 @@ export const salesForceApi = {
 
   command: (command: string) =>
     request<{ intent: string; result: any; message: string }>("/command", { method: "POST", body: JSON.stringify({ command }) }),
+
+  getSettings: () => request<{ settings: Record<string, any>; source?: string }>("/settings"),
+
+  saveSettings: (settings: Record<string, unknown>) =>
+    request("/settings", { method: "PUT", body: JSON.stringify(settings) }),
+
+  meetings: () => request<{ items: any[] }>("/meetings"),
+
+  bookMeeting: (payload: Record<string, unknown>) =>
+    request("/meetings", { method: "POST", body: JSON.stringify(payload) }),
+
+  training: () => request<Record<string, any>>("/training"),
+
+  createHandoff: (payload: Record<string, unknown>) =>
+    request("/handoff/create", { method: "POST", body: JSON.stringify(payload) }),
 };
+
 
 
 

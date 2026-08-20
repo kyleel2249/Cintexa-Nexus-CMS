@@ -12,6 +12,8 @@ import {
   salesPlaybooksTable,
   salesQuotesTable,
   salesAgentMemoryTable,
+  salesSettingsTable,
+  salesMeetingsTable,
 } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import {
@@ -38,6 +40,8 @@ import {
   suggestUpsells,
   simpleAttribution,
   parseSalesCommand,
+  DEFAULT_SALES_SETTINGS,
+  trainingCoverage,
 } from "../services/sales-force-ops";
 
 import {
@@ -1281,6 +1285,138 @@ router.post("/command", async (req, res) => {
     return res.json(parsed);
   } catch (err: any) {
     return res.json({ intent: "error", result: null, message: err?.message || "Command failed" });
+  }
+});
+
+
+
+// ——— Admin settings ———
+router.get("/settings", async (_req, res) => {
+  try {
+    const rows = await db.select().from(salesSettingsTable);
+    const map: Record<string, unknown> = { ...DEFAULT_SALES_SETTINGS };
+    for (const r of rows) {
+      map[r.key] = r.value;
+    }
+    // flatten if stored as single blob
+    const global = rows.find((r) => r.key === "global");
+    if (global && typeof global.value === "object") Object.assign(map, global.value);
+    return res.json({ settings: map, source: rows.length ? "db" : "defaults" });
+  } catch {
+    return res.json({ settings: DEFAULT_SALES_SETTINGS, source: "defaults" });
+  }
+});
+
+router.put("/settings", async (req, res) => {
+  const body = req.body ?? {};
+  const settings = { ...DEFAULT_SALES_SETTINGS, ...body };
+  try {
+    const existing = await db.select().from(salesSettingsTable).where(eq(salesSettingsTable.key, "global")).limit(1);
+    if (existing[0]) {
+      await db.update(salesSettingsTable).set({ value: settings, updatedAt: new Date() } as any).where(eq(salesSettingsTable.key, "global"));
+    } else {
+      await db.insert(salesSettingsTable).values({ key: "global", value: settings } as any);
+    }
+    await audit("system", "settings_updated", { dataUsed: settings, result: "ok" });
+    return res.json({ settings, persisted: true });
+  } catch (err: any) {
+    return res.json({ settings, persisted: false, note: err?.message });
+  }
+});
+
+// ——— Meetings ———
+router.get("/meetings", async (_req, res) => {
+  try {
+    const rows = await db.select().from(salesMeetingsTable).orderBy(desc(salesMeetingsTable.createdAt)).limit(100);
+    return res.json({ items: rows });
+  } catch {
+    return res.json({ items: [] });
+  }
+});
+
+router.post("/meetings", async (req, res) => {
+  const body = req.body ?? {};
+  const title = String(body.title || "").trim();
+  if (!title) return res.status(400).json({ error: "title required" });
+  try {
+    const [row] = await db.insert(salesMeetingsTable).values({
+      leadId: body.leadId != null ? Number(body.leadId) : null,
+      opportunityId: body.opportunityId != null ? Number(body.opportunityId) : null,
+      title,
+      scheduledAt: body.scheduledAt || null,
+      durationMinutes: body.durationMinutes != null ? Number(body.durationMinutes) : 30,
+      status: body.status || "scheduled",
+      attendees: body.attendees || [],
+      notes: body.notes || null,
+      createdByAgentId: body.agentId != null ? Number(body.agentId) : null,
+      calendarSynced: false,
+      isDemo: Boolean(body.isDemo),
+    } as any).returning();
+    await logActivity({
+      leadId: body.leadId,
+      opportunityId: body.opportunityId,
+      actorName: body.agentName || "Ryan",
+      action: "meeting_booked",
+      summary: title,
+      detail: { scheduledAt: body.scheduledAt, calendarSynced: false },
+    });
+    return res.status(201).json({
+      ...row,
+      note: "Meeting recorded in CRM. Calendar sync requires a configured calendar integration.",
+    });
+  } catch (err: any) {
+    return res.status(201).json({
+      id: null,
+      title,
+      scheduledAt: body.scheduledAt || null,
+      calendarSynced: false,
+      persisted: false,
+      note: err?.message || "DB unavailable",
+    });
+  }
+});
+
+// ——— Training coverage ———
+router.get("/training", async (_req, res) => {
+  try {
+    const knowledge = await db.select().from(salesKnowledgeTable);
+    const memory = await db.select().from(salesAgentMemoryTable);
+    const playbooks = await db.select().from(salesPlaybooksTable);
+    const coverage = trainingCoverage({
+      knowledgeCount: knowledge.length,
+      memoryCount: memory.length,
+      playbookCount: playbooks.length,
+    });
+    return res.json({
+      ...coverage,
+      knowledgeItems: knowledge.slice(0, 50),
+      playbookCount: playbooks.length,
+      memoryCount: memory.length,
+    });
+  } catch {
+    return res.json(trainingCoverage({ knowledgeCount: 0, memoryCount: 0, playbookCount: 0 }));
+  }
+});
+
+router.post("/handoff/create", async (req, res) => {
+  const body = req.body ?? {};
+  const brief = buildHandoffBrief(body);
+  try {
+    if (body.leadId) {
+      await logActivity({
+        leadId: Number(body.leadId),
+        opportunityId: body.opportunityId != null ? Number(body.opportunityId) : null,
+        actorName: "Maya",
+        action: "human_handoff",
+        summary: brief.title,
+        detail: brief,
+        confidence: "high",
+      });
+      await audit("Maya", "handoff", { entityType: "lead", entityId: body.leadId, result: "escalated" });
+    }
+    return res.json({ brief, escalated: true });
+  } catch {
+    return res.json({ brief, escalated: true, persisted: false });
   }
 });
 

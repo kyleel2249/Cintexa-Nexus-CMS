@@ -61,6 +61,13 @@ export default function SalesForcePage() {
   const [seqPlan, setSeqPlan] = useState<any[]>([]);
   const [perf, setPerf] = useState<any[]>([]);
   const [reactivation, setReactivation] = useState<Record<string, any> | null>(null);
+  const [adminSettings, setAdminSettings] = useState<Record<string, any>>({});
+  const [newAgent, setNewAgent] = useState({ name: "", role: "sdr", personality: "", specialization: "", autonomyLevel: "1" });
+  const [knowledgeTitle, setKnowledgeTitle] = useState("");
+  const [knowledgeContent, setKnowledgeContent] = useState("");
+  const [trainingInfo, setTrainingInfo] = useState<Record<string, any> | null>(null);
+  const [meetings, setMeetings] = useState<any[]>([]);
+  const [meetingTitle, setMeetingTitle] = useState("Discovery call");
   const [actual, setActual] = useState("0");
 
   const refresh = useCallback(async () => {
@@ -221,6 +228,7 @@ export default function SalesForcePage() {
           <TabsTrigger value="sell">What to sell</TabsTrigger>
           <TabsTrigger value="ops">Ops & policy</TabsTrigger>
           <TabsTrigger value="warroom">War room</TabsTrigger>
+          <TabsTrigger value="admin">Admin</TabsTrigger>
         </TabsList>
 
         <TabsContent value="workforce" className="mt-4 space-y-4">
@@ -815,6 +823,130 @@ export default function SalesForcePage() {
                     </div>
                   </div>
                 )}
+              </CardContent>
+            </Card>
+          </div>
+        </TabsContent>
+
+
+
+        <TabsContent value="admin" className="mt-4 space-y-4">
+          <div className="grid lg:grid-cols-2 gap-4">
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Sales AI control center</CardTitle>
+                <CardDescription>Autonomy caps, communication limits, targets. Stored when DB is available.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-3 text-sm">
+                <Button variant="outline" size="sm" onClick={async () => {
+                  const r = await salesForceApi.getSettings();
+                  setAdminSettings(r.settings || {});
+                }}>Load settings</Button>
+                {Object.keys(adminSettings).length > 0 && (
+                  <>
+                    {(["globalAutonomyCap", "maxDailyEmails", "maxDiscountPercent", "contactFrequencyDays", "revenueTargetMonthly", "escalateAboveAmount"] as const).map((k) => (
+                      <div key={k}>
+                        <Label>{k}</Label>
+                        <Input
+                          value={String(adminSettings[k] ?? "")}
+                          onChange={(e) => setAdminSettings((s) => ({ ...s, [k]: e.target.value === "" ? "" : Number(e.target.value) }))}
+                        />
+                      </div>
+                    ))}
+                    <Button onClick={async () => {
+                      await salesForceApi.saveSettings(adminSettings);
+                    }}>Save settings</Button>
+                  </>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Create AI employee</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div><Label>Name</Label><Input value={newAgent.name} onChange={(e) => setNewAgent((a) => ({ ...a, name: e.target.value }))} /></div>
+                <div><Label>Role</Label><Input value={newAgent.role} onChange={(e) => setNewAgent((a) => ({ ...a, role: e.target.value }))} placeholder="sdr | ae | closer | ..." /></div>
+                <div><Label>Specialization</Label><Input value={newAgent.specialization} onChange={(e) => setNewAgent((a) => ({ ...a, specialization: e.target.value }))} /></div>
+                <div><Label>Autonomy 0–4</Label><Input value={newAgent.autonomyLevel} onChange={(e) => setNewAgent((a) => ({ ...a, autonomyLevel: e.target.value }))} /></div>
+                <Button disabled={!newAgent.name.trim()} onClick={async () => {
+                  await salesForceApi.createAgent({
+                    name: newAgent.name,
+                    role: newAgent.role,
+                    specialization: newAgent.specialization,
+                    personality: newAgent.personality,
+                    autonomyLevel: Number(newAgent.autonomyLevel) || 1,
+                  });
+                  setNewAgent({ name: "", role: "sdr", personality: "", specialization: "", autonomyLevel: "1" });
+                  await refresh();
+                }}>Create employee</Button>
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Knowledge base</CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div><Label>Title</Label><Input value={knowledgeTitle} onChange={(e) => setKnowledgeTitle(e.target.value)} /></div>
+                <div><Label>Content</Label><Textarea value={knowledgeContent} onChange={(e) => setKnowledgeContent(e.target.value)} rows={4} /></div>
+                <Button disabled={!knowledgeTitle.trim()} onClick={async () => {
+                  await salesForceApi.addKnowledge({ title: knowledgeTitle, content: knowledgeContent, category: "playbook" });
+                  setKnowledgeTitle("");
+                  setKnowledgeContent("");
+                  setTrainingInfo(await salesForceApi.training());
+                }}>Add knowledge</Button>
+                <Button variant="outline" onClick={async () => setTrainingInfo(await salesForceApi.training())}>Training coverage</Button>
+                {trainingInfo && (
+                  <div className="border rounded-lg p-3">
+                    Training score: <b>{trainingInfo.trainingScore}</b> · Confidence: {trainingInfo.confidence}
+                    <p className="text-xs text-muted-foreground mt-1">Knowledge items: {(trainingInfo.knowledgeItems || []).length}</p>
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-base">Meetings & handoff</CardTitle>
+                <CardDescription>CRM meeting records. Calendar sync only when integration is configured.</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-2 text-sm">
+                <div><Label>Meeting title</Label><Input value={meetingTitle} onChange={(e) => setMeetingTitle(e.target.value)} /></div>
+                <Button onClick={async () => {
+                  await salesForceApi.bookMeeting({
+                    title: meetingTitle,
+                    scheduledAt: new Date(Date.now() + 86400000).toISOString(),
+                    durationMinutes: 30,
+                    agentName: "Ryan",
+                    leadId: leads[0]?.id,
+                  });
+                  const m = await salesForceApi.meetings();
+                  setMeetings(m.items || []);
+                  await refresh();
+                }}>Book meeting (CRM)</Button>
+                <Button variant="outline" onClick={async () => {
+                  const lead = leads[0];
+                  if (!lead) return;
+                  await salesForceApi.createHandoff({
+                    companyName: lead.companyName,
+                    contactName: lead.contactName,
+                    stage: lead.stage,
+                    priorityScore: lead.priorityScore,
+                    leadId: lead.id,
+                    nextStep: "Human discovery",
+                    conversationSummary: "Escalated from AI Sales Force",
+                  });
+                  await refresh();
+                }}>Handoff first lead to human</Button>
+                <Button variant="outline" onClick={async () => {
+                  const m = await salesForceApi.meetings();
+                  setMeetings(m.items || []);
+                }}>List meetings</Button>
+                {meetings.slice(0, 5).map((m) => (
+                  <div key={m.id} className="border-b py-1 text-xs">{m.title} · {m.scheduledAt || "unscheduled"} · cal:{String(m.calendarSynced)}</div>
+                ))}
               </CardContent>
             </Card>
           </div>
