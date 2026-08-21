@@ -47,6 +47,8 @@ const Plugins = lazyWithRecovery(() => import("@/pages/plugins"));
 const Subscribers = lazyWithRecovery(() => import("@/pages/subscribers"));
 const BusinessDiagnostic = lazyWithRecovery(() => import("@/pages/business-diagnostic"));
 const SalesForce = lazyWithRecovery(() => import("@/pages/sales-force"));
+const CdOptimizer = lazyWithRecovery(() => import("@/pages/cd-optimizer"));
+const NexusFinance = lazyWithRecovery(() => import("@/pages/nexus-finance"));
 
 const queryClient = new QueryClient();
 
@@ -91,6 +93,10 @@ function AppRoutes() {
             <Route path="/" component={Dashboard} />
             <Route path="/diagnostics" component={BusinessDiagnostic} />
             <Route path="/sales-force" component={SalesForce} />
+            <Route path="/nexus/cd-optimizer" component={CdOptimizer} />
+            <Route path="/cd-optimizer" component={CdOptimizer} />
+            <Route path="/nexus/finance" component={NexusFinance} />
+            <Route path="/finance-intel" component={NexusFinance} />
             <Route path="/sites" component={Sites} />
             <Route path="/pages" component={Pages} />
             <Route path="/pages/new" component={PageEditor} />

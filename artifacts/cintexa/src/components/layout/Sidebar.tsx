@@ -1,9 +1,9 @@
 import { Link, useLocation } from "wouter";
-import {
+import { Archive, LineChart, 
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
   Puzzle, Mail, Target, Bot, History,
-} from "lucide-react";
+ } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
@@ -16,6 +16,11 @@ const navGroups = [
     { name: "Business Diagnostic", href: "/diagnostics", icon: Activity },
     { name: "Diagnostic History", href: "/diagnostics?history=1", icon: History },
     { name: "AI Sales Force", href: "/sales-force", icon: Bot },
+  ]},
+  { title: "Nexus Tools", items: [
+    { name: "CD Optimizer", href: "/nexus/cd-optimizer", icon: Archive },
+    { name: "Nexus Finance", href: "/nexus/finance", icon: LineChart },
+
   ] },
   { title: "Content", items: [
     { name: "Sites", href: "/sites", icon: Globe }, { name: "Pages", href: "/pages", icon: FileText },

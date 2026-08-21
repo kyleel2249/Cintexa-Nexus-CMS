@@ -21,6 +21,8 @@ import broadcastRouter from "./broadcast";
 import postCommentsRouter from "./post-comments";
 import diagnosticsRouter from "./diagnostics";
 import salesForceRouter from "./sales-force";
+import cdOptimizerRouter from "./cd-optimizer";
+import nexusFinanceRouter from "./nexus-finance";
 
 const router: IRouter = Router();
 
@@ -46,5 +48,9 @@ router.use("/plugins", pluginsRouter);
 router.use("/subscribers", subscribersRouter);
 router.use("/diagnostics", diagnosticsRouter);
 router.use("/sales-force", salesForceRouter);
+router.use("/nexus/cd-optimizer", cdOptimizerRouter);
+router.use("/cd-optimizer", cdOptimizerRouter);
+router.use("/nexus/finance", nexusFinanceRouter);
+router.use("/finance-intel", nexusFinanceRouter);
 
 export default router;
