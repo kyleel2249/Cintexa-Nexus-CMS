@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 
-const SPLASH_MS = 2_500;
+const SPLASH_MS = 10_000;
 
 type SplashScreenProps = {
   /** When true, force-hide immediately (e.g. after auth ready). */
