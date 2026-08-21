@@ -59,7 +59,7 @@ router.get("/jobs", enforceModuleAuth("cd_optimizer.view", { optional: true }), 
 });
 
 router.get("/jobs/:id", enforceModuleAuth("cd_optimizer.view", { optional: true }), (req, res) => {
-  const job = getJob(req.params.id);
+  const job = getJob(String(req.params.id));
   if (!job) return res.status(404).json({ error: "Job not found" });
   if (!tenantMatch(job.organizationId, req.organizationId)) {
     return res.status(403).json({ error: "Tenant mismatch" });
@@ -68,8 +68,8 @@ router.get("/jobs/:id", enforceModuleAuth("cd_optimizer.view", { optional: true 
 });
 
 router.get("/jobs/:id/download", enforceModuleAuth("cd_optimizer.download", { optional: true }), (req, res) => {
-  const job = getJob(req.params.id);
-  const data = getJobResult(req.params.id);
+  const job = getJob(String(req.params.id));
+  const data = getJobResult(String(req.params.id));
   if (!job || !data) return res.status(404).json({ error: "Result not found" });
   if (!tenantMatch(job.organizationId, req.organizationId)) {
     return res.status(403).json({ error: "Tenant mismatch" });

@@ -58,10 +58,10 @@ router.get("/analyses", enforceModuleAuth("finance.view", { optional: true }), a
 });
 
 router.get("/analyses/:id", enforceModuleAuth("finance.view", { optional: true }), async (req, res) => {
-  let a = analyses.get(req.params.id);
+  let a = analyses.get(String(req.params.id));
   if (!a) {
     const rows = await loadFinanceAnalysesFromDb(req.organizationId, 200);
-    const row = rows.find((r) => r.id === req.params.id);
+    const row = rows.find((r) => r.id === String(req.params.id));
     if (row) {
       a = {
         id: row.id,
