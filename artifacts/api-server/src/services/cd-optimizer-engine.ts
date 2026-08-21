@@ -170,6 +170,7 @@ export async function compressJob(input: {
             filename: job.originalName,
             dataBase64: input.buffer.toString("base64"),
           }),
+          signal: AbortSignal.timeout(Number(process.env.CD_OPTIMIZER_TIMEOUT_MS || 60_000)),
         });
         if (res.ok) {
           const json = (await res.json()) as any;

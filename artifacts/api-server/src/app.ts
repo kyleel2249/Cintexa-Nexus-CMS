@@ -10,6 +10,12 @@ const app: Express = express();
 app.use(
   pinoHttp({
     logger,
+    autoLogging: {
+      ignore: (req) => {
+        const u = req.url || "";
+        return u.includes("/health") || u.includes("/metrics");
+      },
+    },
     serializers: {
       req(req) {
         return {
@@ -28,8 +34,16 @@ app.use(
 );
 app.use(cors({ origin: true, credentials: true }));
 app.use(cookieParser());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+// Limit payload size for tool uploads (base64 files can be large but bounded)
+app.use(express.json({ limit: process.env.JSON_BODY_LIMIT || "15mb" }));
+app.use(express.urlencoded({ extended: true, limit: process.env.JSON_BODY_LIMIT || "15mb" }));
+
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "SAMEORIGIN");
+  res.setHeader("Referrer-Policy", "strict-origin-when-cross-origin");
+  next();
+});
 
 app.use("/api", router);
 

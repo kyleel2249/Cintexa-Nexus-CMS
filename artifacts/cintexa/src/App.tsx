@@ -50,7 +50,16 @@ const SalesForce = lazyWithRecovery(() => import("@/pages/sales-force"));
 const CdOptimizer = lazyWithRecovery(() => import("@/pages/cd-optimizer"));
 const NexusFinance = lazyWithRecovery(() => import("@/pages/nexus-finance"));
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 30_000,
+      gcTime: 5 * 60_000,
+      refetchOnWindowFocus: false,
+      retry: 1,
+    },
+  },
+});
 
 function PageLoader() {
   return <div className="flex-1 flex items-center justify-center min-h-[400px]"><div className="w-5 h-5 border-2 border-primary border-t-transparent rounded-full animate-spin" /></div>;

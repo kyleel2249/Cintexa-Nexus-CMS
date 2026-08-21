@@ -1,4 +1,5 @@
 import { Router, type IRouter } from "express";
+import { memoryCache } from "../lib/http-cache";
 import healthRouter from "./health";
 import authRouter from "./auth";
 import dashboardRouter from "./dashboard";
@@ -25,6 +26,14 @@ import cdOptimizerRouter from "./cd-optimizer";
 import nexusFinanceRouter from "./nexus-finance";
 
 const router: IRouter = Router();
+
+// Short TTL cache for read-heavy tool endpoints
+router.use("/nexus/cd-optimizer/metrics", memoryCache(15_000));
+router.use("/cd-optimizer/metrics", memoryCache(15_000));
+router.use("/nexus/cd-optimizer/health", memoryCache(30_000));
+router.use("/nexus/finance/health", memoryCache(30_000));
+router.use("/sales-force/pipeline", memoryCache(10_000));
+router.use("/sales-force/agents", memoryCache(20_000));
 
 router.use(healthRouter);
 router.use("/auth", authRouter);

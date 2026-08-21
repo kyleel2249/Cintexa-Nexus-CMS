@@ -30,7 +30,7 @@ export default defineConfig({
       : []),
   ],
   optimizeDeps: {
-    include: ["jspdf", "jspdf-autotable"],
+    include: ["jspdf", "jspdf-autotable", "framer-motion", "@tanstack/react-query"],
   },
   resolve: {
     alias: {
@@ -43,6 +43,26 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, "dist/public"),
     emptyOutDir: true,
+    target: "es2022",
+    cssCodeSplit: true,
+    sourcemap: false,
+    reportCompressedSize: false,
+    chunkSizeWarningLimit: 900,
+    rollupOptions: {
+      output: {
+        manualChunks(id) {
+          if (id.includes("node_modules")) {
+            if (id.includes("jspdf") || id.includes("jspdf-autotable")) return "vendor-pdf";
+            if (id.includes("framer-motion")) return "vendor-motion";
+            if (id.includes("@tanstack")) return "vendor-query";
+            if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
+            if (id.includes("react-dom") || id.includes("/react/")) return "vendor-react";
+            if (id.includes("lucide-react")) return "vendor-icons";
+            return "vendor";
+          }
+        },
+      },
+    },
   },
   server: {
     host: "0.0.0.0",

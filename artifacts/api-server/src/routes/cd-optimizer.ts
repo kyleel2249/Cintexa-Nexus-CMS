@@ -12,6 +12,7 @@ import {
 } from "../services/cd-optimizer-engine";
 import { persistCdJob, loadCdJobsFromDb } from "../services/nexus-tool-store";
 import { enforceModuleAuth, tenantMatch } from "../lib/permissions";
+import { clearCache } from "../lib/http-cache";
 
 const router = Router();
 
@@ -107,6 +108,7 @@ router.post("/compress", enforceModuleAuth("cd_optimizer.compress", { optional: 
       userId: req.auth?.sub != null ? String(req.auth.sub) : null,
     });
     await persistCdJob(job);
+    clearCache("cd-optimizer");
     res.status(201).json(job);
   } catch (err: any) {
     res.status(400).json({ error: err?.message || "Compress failed" });

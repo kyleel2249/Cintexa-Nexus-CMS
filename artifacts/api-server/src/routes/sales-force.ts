@@ -466,7 +466,7 @@ router.post("/next-action", (req, res) => {
 // ——— Opportunities ———
 router.get("/opportunities", async (_req, res) => {
   try {
-    const rows = await db.select().from(salesOpportunitiesTable).orderBy(desc(salesOpportunitiesTable.updatedAt)).limit(200);
+    const rows = await db.select().from(salesOpportunitiesTable).orderBy(desc(salesOpportunitiesTable.updatedAt)).limit(100);
     return res.json({ items: rows });
   } catch {
     return res.json({ items: [] });
@@ -599,9 +599,9 @@ router.post("/close-the-gap", (req, res) => {
 // ——— Command center metrics (real counts only) ———
 router.get("/command-center", async (_req, res) => {
   try {
-    const leads = await db.select().from(salesLeadsTable);
-    const opps = await db.select().from(salesOpportunitiesTable);
-    const agents = await db.select().from(salesAgentsTable);
+    const leads = await db.select().from(salesLeadsTable).limit(500);
+    const opps = await db.select().from(salesOpportunitiesTable).limit(500);
+    const agents = await db.select().from(salesAgentsTable).limit(100);
     const activities = await db.select().from(salesActivitiesTable).orderBy(desc(salesActivitiesTable.createdAt)).limit(30);
     const won = opps.filter((o) => o.stage === "closed_won");
     const revenueClosed = won.reduce((s, o) => s + (o.amount != null ? Number(o.amount) : 0), 0);
@@ -640,8 +640,8 @@ router.get("/command-center", async (_req, res) => {
 router.post("/generate-sales", async (req, res) => {
   const target = Number(req.body?.target || 0);
   try {
-    const leads = await db.select().from(salesLeadsTable);
-    const opps = await db.select().from(salesOpportunitiesTable);
+    const leads = await db.select().from(salesLeadsTable).limit(500);
+    const opps = await db.select().from(salesOpportunitiesTable).limit(500);
     const highIntent = leads.filter((l) => (l.priorityScore ?? 0) >= 65 && !l.optedOut);
     const uncontacted = leads.filter((l) => l.stage === "new_lead" && !l.optedOut);
     const abandoned = opps.filter((o) => ["proposal_sent", "negotiation"].includes(o.stage));
@@ -740,7 +740,7 @@ router.get("/follow-up-sequence", (_req, res) => {
 
 router.get("/knowledge", async (_req, res) => {
   try {
-    const rows = await db.select().from(salesKnowledgeTable).orderBy(desc(salesKnowledgeTable.updatedAt));
+    const rows = await db.select().from(salesKnowledgeTable).orderBy(desc(salesKnowledgeTable.updatedAt)).limit(100);
     return res.json({ items: rows });
   } catch {
     return res.json({ items: [] });
@@ -950,7 +950,7 @@ router.post("/from-diagnostic", async (req, res) => {
 // ——— Playbooks ———
 router.get("/playbooks", async (_req, res) => {
   try {
-    const rows = await db.select().from(salesPlaybooksTable).orderBy(desc(salesPlaybooksTable.updatedAt));
+    const rows = await db.select().from(salesPlaybooksTable).orderBy(desc(salesPlaybooksTable.updatedAt)).limit(50);
     if (!rows.length) {
       return res.json({
         items: [{ id: 0, name: "Default enterprise routing", rules: defaultEnterprisePlaybook(), active: true, source: "catalog" }],
@@ -1105,8 +1105,8 @@ router.post("/opportunities/:id/lost", async (req, res) => {
 router.get("/daily-brief", async (req, res) => {
   const target = req.query.target != null ? Number(req.query.target) : null;
   try {
-    const leads = await db.select().from(salesLeadsTable);
-    const opps = await db.select().from(salesOpportunitiesTable);
+    const leads = await db.select().from(salesLeadsTable).limit(500);
+    const opps = await db.select().from(salesOpportunitiesTable).limit(500);
     const won = opps.filter((o) => o.stage === "closed_won");
     const open = opps.filter((o) => !["closed_won", "closed_lost"].includes(o.stage));
     const revenueClosed = won.reduce((s, o) => s + (o.amount != null ? Number(o.amount) : 0), 0);
@@ -1145,7 +1145,7 @@ router.post("/next-offer", (req, res) => {
 // ——— Campaigns ———
 router.get("/campaigns", async (_req, res) => {
   try {
-    const rows = await db.select().from(salesCampaignsTable).orderBy(desc(salesCampaignsTable.updatedAt));
+    const rows = await db.select().from(salesCampaignsTable).orderBy(desc(salesCampaignsTable.updatedAt)).limit(50);
     return res.json({ items: rows });
   } catch {
     return res.json({ items: [] });
@@ -1285,7 +1285,7 @@ router.post("/demo/seed", async (_req, res) => {
 // ——— Sequence planner (prepare only unless execute+SMTP) ———
 router.get("/sequences/due", async (_req, res) => {
   try {
-    const leads = await db.select().from(salesLeadsTable);
+    const leads = await db.select().from(salesLeadsTable).limit(500);
     const plan = planSequenceActions(leads as any);
     return res.json(plan);
   } catch {
@@ -1297,7 +1297,7 @@ router.post("/sequences/run", async (req, res) => {
   const execute = Boolean(req.body?.execute);
   const autonomyLevel = req.body?.autonomyLevel != null ? Number(req.body.autonomyLevel) : 1;
   try {
-    const leads = await db.select().from(salesLeadsTable);
+    const leads = await db.select().from(salesLeadsTable).limit(500);
     const plan = planSequenceActions(leads as any);
     const results: any[] = [];
     for (const step of plan.planned.slice(0, 20)) {
@@ -1353,9 +1353,9 @@ router.post("/sequences/run", async (req, res) => {
 
 router.get("/performance", async (_req, res) => {
   try {
-    const agents = await db.select().from(salesAgentsTable);
+    const agents = await db.select().from(salesAgentsTable).limit(100);
     const activities = await db.select().from(salesActivitiesTable);
-    const opps = await db.select().from(salesOpportunitiesTable);
+    const opps = await db.select().from(salesOpportunitiesTable).limit(500);
     const items = (agents.length ? agents : []).map((a) =>
       scoreAgentPerformance({
         agentId: a.id,
@@ -1372,8 +1372,8 @@ router.get("/performance", async (_req, res) => {
 
 router.get("/reactivation", async (_req, res) => {
   try {
-    const leads = await db.select().from(salesLeadsTable);
-    const opps = await db.select().from(salesOpportunitiesTable);
+    const leads = await db.select().from(salesLeadsTable).limit(500);
+    const opps = await db.select().from(salesOpportunitiesTable).limit(500);
     return res.json(findReactivationCandidates(leads as any, opps as any));
   } catch {
     return res.json({ dormantLeads: [], lostOpportunities: [], abandonedProposals: [] });
@@ -1386,7 +1386,7 @@ router.post("/upsell", (req, res) => {
 
 router.get("/attribution", async (_req, res) => {
   try {
-    const opps = await db.select().from(salesOpportunitiesTable);
+    const opps = await db.select().from(salesOpportunitiesTable).limit(500);
     const activities = await db.select().from(salesActivitiesTable);
     const live = simpleAttribution(opps as any, activities as any);
 
@@ -1413,8 +1413,8 @@ router.get("/attribution", async (_req, res) => {
 router.post("/command", async (req, res) => {
   const command = String(req.body?.command || "");
   try {
-    const leads = await db.select().from(salesLeadsTable);
-    const opps = await db.select().from(salesOpportunitiesTable);
+    const leads = await db.select().from(salesLeadsTable).limit(500);
+    const opps = await db.select().from(salesOpportunitiesTable).limit(500);
     const parsed = parseSalesCommand(command, { leads: leads as any, opps: opps as any });
     await audit("Alex", "command", { reason: command, result: parsed.intent });
     return res.json(parsed);
@@ -1587,7 +1587,7 @@ router.post("/forecast/snapshot", async (req, res) => {
   const periodType = String(req.body?.periodType || "month");
   const period = String(req.body?.period || new Date().toISOString().slice(0, 7));
   try {
-    const opps = await db.select().from(salesOpportunitiesTable);
+    const opps = await db.select().from(salesOpportunitiesTable).limit(500);
     const mapped = opps.map((o) => ({ amount: o.amount != null ? Number(o.amount) : 0, probability: o.probability, stage: o.stage }));
     const fc = forecastFromPipeline(mapped);
     const [row] = await db.insert(salesForecastsTable).values({
