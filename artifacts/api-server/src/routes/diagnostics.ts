@@ -1,22 +1,33 @@
 import { Router } from "express";
-import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable, diagnosticTaskHistoryTable } from "@workspace/db";
+import { db, diagnosticProfilesTable, diagnosticSessionsTable, diagnosticCompetitorsTable, diagnosticGoalsTable, diagnosticTaskHistoryTable, diagnosticEvidenceTable } from "@workspace/db";
 import { desc, eq } from "drizzle-orm";
 import { analyze, benchmarkGap, projectScenario, validateSmartGoal, buildFullReport, getBenchmarks, buildBenchmarkReport } from "../services/diagnostic-engine";
 import { researchCompanyWeb, researchCompetitorSites } from "../services/company-research";
+import { enforceModuleAuth, attachTenant, tenantMatch } from "../lib/permissions";
 
 const router = Router();
 const json = (value: unknown) => value ?? {};
 
-router.get("/profiles", async (_req, res) => {
+// Baseline auth + tenant gate on every route in this module — previously
+// this router had zero auth of any kind. Matches the blanket-gate pattern
+// already shipped in sales-force.ts. Root-level tenant filtering is applied
+// on diagnostic_profiles below (the tenant boundary); child records
+// (sessions/competitors/goals) inherit isolation transitively via
+// profile_id/session_id, same simplification used elsewhere in this file set.
+router.use(enforceModuleAuth("diagnostic.view", { optional: true }));
+
+router.get("/profiles", attachTenant, async (req, res) => {
   const rows = await db.select().from(diagnosticProfilesTable).orderBy(desc(diagnosticProfilesTable.updatedAt));
-  res.json(rows);
+  const filtered = rows.filter((r) => tenantMatch(r.organizationId, req.organizationId));
+  res.json(filtered);
 });
 
-router.post("/profiles", async (req, res) => {
+router.post("/profiles", attachTenant, enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   if (!body.companyName?.trim()) return res.status(400).json({ error: "companyName is required" });
   const numeric = ["employeeCount","monthlyRevenue","grossMargin","netMargin","avgTransactionValue","customerLifetimeValue","customerAcquisitionCost","monthlyLeads","monthlyQualifiedLeads","monthlyCustomers","conversionRate","customerChurn","retentionRate","salesCycleDays"];
   const values: Record<string, unknown> = {
+    organizationId: req.organizationId ?? null,
     companyName: body.companyName.trim(), industry: body.industry ?? null, subIndustry: body.subIndustry ?? null,
     businessModel: body.businessModel ?? null, customerType: body.customerType ?? null, geographicMarkets: body.geographicMarkets ?? null,
     targetCustomers: body.targetCustomers ?? null, companySize: body.companySize ?? null, revenueRange: body.revenueRange ?? null,
@@ -36,14 +47,14 @@ router.get("/profiles/:profileId/sessions", async (req, res) => {
   res.json(rows);
 });
 
-router.post("/sessions", async (req, res) => {
+router.post("/sessions", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   if (!body.profileId) return res.status(400).json({ error: "profileId is required" });
   const [session] = await db.insert(diagnosticSessionsTable).values({ profileId: Number(body.profileId), mode: body.mode ?? "standard", status: body.status ?? "in_progress", currentStep: Number(body.currentStep ?? 0), totalSteps: Number(body.totalSteps ?? 10), answers: json(body.answers), pillarScores: json(body.pillarScores), overallScore: body.overallScore == null ? null : Number(body.overallScore), aiAnalysis: json(body.aiAnalysis), recommendations: json(body.recommendations), smartGoals: json(body.smartGoals), executionRoadmap: json(body.executionRoadmap), swotAnalysis: json(body.swotAnalysis), competitiveAnalysis: json(body.competitiveAnalysis), benchmarkComparison: json(body.benchmarkComparison) }).returning();
   res.status(201).json(session);
 });
 
-router.patch("/sessions/:id", async (req, res) => {
+router.patch("/sessions/:id", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const id = Number(req.params.id); const body = req.body ?? {}; const updates: Record<string, unknown> = {};
   const fields = ["mode","status","currentStep","totalSteps","answers","pillarScores","overallScore","aiAnalysis","recommendations","smartGoals","executionRoadmap","swotAnalysis","competitiveAnalysis","benchmarkComparison","completedAt"];
   for (const field of fields) if (body[field] !== undefined) updates[field] = body[field];
@@ -53,22 +64,22 @@ router.patch("/sessions/:id", async (req, res) => {
   res.json(session);
 });
 
-router.post("/analyze", async (req, res) => {
+router.post("/analyze", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   const result = analyze(body.metrics ?? {}, body.pillarScores ?? {});
   res.json({ ...result, generatedAt: new Date().toISOString(), evidencePolicy: "Conclusions are calculated from supplied values; missing benchmarks and external facts remain UNKNOWN." });
 });
 
-router.post("/benchmark", async (req, res) => {
+router.post("/benchmark", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   res.json({ metric: body.metric ?? null, actual: body.actual ?? null, benchmark: body.benchmark ?? null, ...benchmarkGap(body.actual, body.benchmark) });
 });
 
-router.post("/scenario", async (req, res) => {
+router.post("/scenario", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   res.json({ ...projectScenario(req.body ?? {}), generatedAt: new Date().toISOString() });
 });
 
-router.post("/smart/validate", async (req, res) => {
+router.post("/smart/validate", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   res.json(validateSmartGoal(req.body ?? {}));
 });
 
@@ -78,7 +89,7 @@ router.get("/sessions/:sessionId/competitors", async (req, res) => {
   res.json(await db.select().from(diagnosticCompetitorsTable).where(eq(diagnosticCompetitorsTable.profileId, session.profileId)));
 });
 
-router.post("/competitors", async (req, res) => {
+router.post("/competitors", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   if (!body.profileId || !body.name?.trim()) return res.status(400).json({ error: "profileId and name are required" });
   const [competitor] = await db.insert(diagnosticCompetitorsTable).values({ profileId: Number(body.profileId), name: body.name.trim(), website: body.website ?? null, positioning: body.positioning ?? null, strengths: body.strengths ?? null, weaknesses: body.weaknesses ?? null, pricing: body.pricing ?? null, targetCustomers: body.targetCustomers ?? null, marketShare: body.marketShare ?? null, scorecard: json(body.scorecard), strategyAnalysis: json(body.strategyAnalysis) }).returning();
@@ -89,7 +100,7 @@ router.get("/sessions/:sessionId/goals", async (req, res) => {
   res.json(await db.select().from(diagnosticGoalsTable).where(eq(diagnosticGoalsTable.sessionId, Number(req.params.sessionId))).orderBy(desc(diagnosticGoalsTable.updatedAt)));
 });
 
-router.post("/goals", async (req, res) => {
+router.post("/goals", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   if (!body.sessionId || !body.title?.trim()) return res.status(400).json({ error: "sessionId and title are required" });
   const smart = validateSmartGoal(body);
@@ -98,7 +109,7 @@ router.post("/goals", async (req, res) => {
 });
 
 
-router.post("/report", async (req, res) => {
+router.post("/report", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   const report = buildFullReport({
     companyName: body.companyName,
@@ -115,7 +126,7 @@ router.get("/benchmarks", async (req, res) => {
   res.json({ industry: industry ?? "default", benchmarks: getBenchmarks(industry), note: "Benchmarks are documented public research summaries. Apply only when industry match is reasonable." });
 });
 
-router.post("/research", async (req, res) => {
+router.post("/research", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   const company = String(body.companyName ?? "").trim();
   const companyWebsite = String(body.companyWebsite ?? body.website ?? "").trim();
@@ -185,9 +196,10 @@ router.post("/research", async (req, res) => {
   });
 });
 
-router.post("/documents", async (req, res) => {
+router.post("/documents", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   const files = Array.isArray(body.files) ? body.files : [];
+  const sessionId = body.sessionId != null ? Number(body.sessionId) : null;
   // Accept metadata + extracted text summaries from client; store-ready payload.
   const normalized = files.map((f: any, i: number) => ({
     id: f.id ?? `doc-${i + 1}`,
@@ -198,8 +210,28 @@ router.post("/documents", async (req, res) => {
     evidence: "USER PROVIDED",
     uploadedAt: new Date().toISOString(),
   }));
+
+  // Persist as evidence rows so uploaded documents actually feed later
+  // analysis/reporting for this session, not just this response.
+  if (sessionId && normalized.length) {
+    await db.insert(diagnosticEvidenceTable).values(
+      normalized.map((d: any) => ({
+        sessionId,
+        category: "document_upload",
+        claim: d.extractedTextPreview
+          ? `Uploaded document "${d.name}" provided as supporting context.`
+          : `Uploaded document "${d.name}" (no extractable text).`,
+        evidenceType: "USER PROVIDED",
+        sourceName: d.name,
+        confidence: "medium",
+        value: { mimeType: d.mimeType, size: d.size, extractedTextPreview: d.extractedTextPreview },
+      })),
+    );
+  }
+
   res.status(201).json({
     accepted: normalized.length,
+    persisted: Boolean(sessionId),
     documents: normalized,
     analysisNotes: normalized.map((d: any) => ({
       document: d.name,
@@ -211,8 +243,16 @@ router.post("/documents", async (req, res) => {
   });
 });
 
+router.get("/sessions/:sessionId/evidence", enforceModuleAuth("diagnostic.view", { optional: true }), async (req, res) => {
+  const sessionId = Number(req.params.sessionId);
+  const rows = await db.select().from(diagnosticEvidenceTable)
+    .where(eq(diagnosticEvidenceTable.sessionId, sessionId))
+    .orderBy(desc(diagnosticEvidenceTable.createdAt));
+  res.json(rows);
+});
 
-router.post("/history", async (req, res) => {
+
+router.post("/history", enforceModuleAuth("diagnostic.analyze", { optional: true }), async (req, res) => {
   const body = req.body ?? {};
   if (!body.title || !body.taskType) return res.status(400).json({ error: "taskType and title are required" });
   try {

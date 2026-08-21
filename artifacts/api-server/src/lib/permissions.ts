@@ -15,23 +15,29 @@ export type ModulePermission =
   | "finance.admin"
   | "sales.view"
   | "sales.act"
-  | "sales.admin";
+  | "sales.admin"
+  | "diagnostic.view"
+  | "diagnostic.analyze"
+  | "diagnostic.admin";
 
 const ROLE_PERMS: Record<string, ModulePermission[]> = {
   admin: [
     "cd_optimizer.view", "cd_optimizer.upload", "cd_optimizer.compress", "cd_optimizer.download", "cd_optimizer.admin",
     "finance.view", "finance.analyze", "finance.audit", "finance.export", "finance.admin",
     "sales.view", "sales.act", "sales.admin",
+    "diagnostic.view", "diagnostic.analyze", "diagnostic.admin",
   ],
   editor: [
     "cd_optimizer.view", "cd_optimizer.upload", "cd_optimizer.compress", "cd_optimizer.download",
     "finance.view", "finance.analyze", "finance.export",
     "sales.view", "sales.act",
+    "diagnostic.view", "diagnostic.analyze",
   ],
   viewer: [
     "cd_optimizer.view", "cd_optimizer.download",
     "finance.view",
     "sales.view",
+    "diagnostic.view",
   ],
 };
 

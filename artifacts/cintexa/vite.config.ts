@@ -58,6 +58,9 @@ export default defineConfig({
             if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
             if (id.includes("react-dom") || id.includes("/react/")) return "vendor-react";
             if (id.includes("lucide-react")) return "vendor-icons";
+            if (id.includes("@radix-ui")) return "vendor-radix";
+            if (id.includes("firebase")) return "vendor-firebase";
+            if (id.includes("@dnd-kit")) return "vendor-dnd";
             return "vendor";
           }
         },
