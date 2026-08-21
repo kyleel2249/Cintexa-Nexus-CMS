@@ -1,4 +1,6 @@
 import { Router } from "express";
+import { enforceModuleAuth, attachTenant } from "../lib/permissions";
+import { optionalAuth } from "../lib/auth-middleware";
 import {
   db,
   salesAgentsTable,
@@ -65,6 +67,15 @@ import {
 
 
 const router = Router();
+
+// Auth + tenant context for all sales-force routes (enforced in production / AUTH_ENFORCE)
+router.use((req, res, next) => {
+  void optionalAuth(req, res, () => {
+    attachTenant(req, res, next);
+  });
+});
+router.use(enforceModuleAuth("sales.view", { optional: true }));
+
 
 async function audit(agentName: string, action: string, extra: Record<string, unknown> = {}) {
   try {

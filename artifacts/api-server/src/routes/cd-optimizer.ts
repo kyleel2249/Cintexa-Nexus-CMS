@@ -10,6 +10,8 @@ import {
   getMaxFileSize,
   type CompressionMode,
 } from "../services/cd-optimizer-engine";
+import { persistCdJob, loadCdJobsFromDb } from "../services/nexus-tool-store";
+import { enforceModuleAuth, tenantMatch } from "../lib/permissions";
 
 const router = Router();
 
@@ -25,33 +27,59 @@ router.get("/health", (_req, res) => {
   });
 });
 
-router.get("/metrics", (_req, res) => {
+router.get("/metrics", enforceModuleAuth("cd_optimizer.view", { optional: true }), (_req, res) => {
   if (!featureEnabled()) return res.status(403).json({ error: "CD Optimizer disabled" });
   res.json(metricsSummary());
 });
 
-router.get("/jobs", (_req, res) => {
+router.get("/jobs", enforceModuleAuth("cd_optimizer.view", { optional: true }), async (req, res) => {
   if (!featureEnabled()) return res.status(403).json({ error: "CD Optimizer disabled" });
-  res.json({ items: listJobs() });
+  const mem = listJobs();
+  const dbRows = await loadCdJobsFromDb(req.organizationId);
+  const fromDb = dbRows.map((r) => ({
+    id: r.id,
+    status: r.status,
+    mode: r.mode,
+    originalName: r.originalName,
+    originalSize: r.originalSize,
+    optimizedSize: r.optimizedSize,
+    percentSaved: r.percentSaved != null ? Number(r.percentSaved) : undefined,
+    pipeline: r.pipeline,
+    algorithm: r.algorithm,
+    createdAt: r.createdAt?.toISOString?.() || r.createdAt,
+    organizationId: r.organizationId,
+  }));
+  const byId = new Map<string, any>();
+  for (const j of fromDb) byId.set(j.id, j);
+  for (const j of mem) {
+    if (tenantMatch(j.organizationId, req.organizationId)) byId.set(j.id, j);
+  }
+  res.json({ items: [...byId.values()].slice(0, 50) });
 });
 
-router.get("/jobs/:id", (req, res) => {
+router.get("/jobs/:id", enforceModuleAuth("cd_optimizer.view", { optional: true }), (req, res) => {
   const job = getJob(req.params.id);
   if (!job) return res.status(404).json({ error: "Job not found" });
+  if (!tenantMatch(job.organizationId, req.organizationId)) {
+    return res.status(403).json({ error: "Tenant mismatch" });
+  }
   res.json(job);
 });
 
-router.get("/jobs/:id/download", (req, res) => {
+router.get("/jobs/:id/download", enforceModuleAuth("cd_optimizer.download", { optional: true }), (req, res) => {
   const job = getJob(req.params.id);
   const data = getJobResult(req.params.id);
   if (!job || !data) return res.status(404).json({ error: "Result not found" });
+  if (!tenantMatch(job.organizationId, req.organizationId)) {
+    return res.status(403).json({ error: "Tenant mismatch" });
+  }
   const name = `${job.originalName}.optimized`;
   res.setHeader("Content-Type", "application/octet-stream");
   res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
   res.send(data);
 });
 
-router.post("/analyze", async (req, res) => {
+router.post("/analyze", enforceModuleAuth("cd_optimizer.compress", { optional: true }), async (req, res) => {
   if (!featureEnabled()) return res.status(403).json({ error: "CD Optimizer disabled" });
   try {
     const { filename, dataBase64 } = req.body ?? {};
@@ -64,7 +92,7 @@ router.post("/analyze", async (req, res) => {
   }
 });
 
-router.post("/compress", async (req, res) => {
+router.post("/compress", enforceModuleAuth("cd_optimizer.compress", { optional: true }), async (req, res) => {
   if (!featureEnabled()) return res.status(403).json({ error: "CD Optimizer disabled" });
   try {
     const { filename, dataBase64, mode, mimeType } = req.body ?? {};
@@ -75,14 +103,17 @@ router.post("/compress", async (req, res) => {
       originalName: filename || "upload.bin",
       mimeType,
       mode: (mode as CompressionMode) || "balanced",
+      organizationId: req.organizationId,
+      userId: req.auth?.sub != null ? String(req.auth.sub) : null,
     });
+    await persistCdJob(job);
     res.status(201).json(job);
   } catch (err: any) {
     res.status(400).json({ error: err?.message || "Compress failed" });
   }
 });
 
-router.post("/batch", async (req, res) => {
+router.post("/batch", enforceModuleAuth("cd_optimizer.compress", { optional: true }), async (req, res) => {
   if (!featureEnabled()) return res.status(403).json({ error: "CD Optimizer disabled" });
   const files = Array.isArray(req.body?.files) ? req.body.files : [];
   if (!files.length) return res.status(400).json({ error: "files[] required" });
@@ -96,7 +127,10 @@ router.post("/batch", async (req, res) => {
         originalName: f.filename || "file.bin",
         mimeType: f.mimeType,
         mode,
+        organizationId: req.organizationId,
+        userId: req.auth?.sub != null ? String(req.auth.sub) : null,
       });
+      await persistCdJob(job);
       jobs.push(job);
     } catch (err: any) {
       jobs.push({ status: "failed", error: err?.message, originalName: f.filename });

@@ -24,4 +24,7 @@ app.listen(port, (err) => {
 
   logger.info({ port }, "Server listening");
   startScheduler();
+  import("./lib/job-worker")
+    .then(({ startJobWorkers }) => startJobWorkers())
+    .catch((e) => logger.warn({ err: e }, "Job workers not started"));
 });

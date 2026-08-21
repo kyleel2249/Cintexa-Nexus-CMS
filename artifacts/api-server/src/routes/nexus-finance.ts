@@ -9,6 +9,8 @@ import {
   type StatementInput,
 } from "../services/nexus-finance-engine";
 import { randomUUID } from "crypto";
+import { persistFinanceAnalysis, loadFinanceAnalysesFromDb } from "../services/nexus-tool-store";
+import { enforceModuleAuth, tenantMatch } from "../lib/permissions";
 
 const router = Router();
 
@@ -22,6 +24,8 @@ type AnalysisRecord = {
   distress: ReturnType<typeof distressSignals>;
   survival: ReturnType<typeof survivalEstimate>;
   createdAt: string;
+  organizationId?: string | null;
+  userId?: string | null;
 };
 
 const analyses = new Map<string, AnalysisRecord>();
@@ -30,19 +34,57 @@ router.get("/health", (_req, res) => {
   res.json({ ok: true, enabled: featureEnabled() });
 });
 
-router.get("/analyses", (_req, res) => {
+router.get("/analyses", enforceModuleAuth("finance.view", { optional: true }), async (req, res) => {
   if (!featureEnabled()) return res.status(403).json({ error: "Nexus Finance disabled" });
-  const items = [...analyses.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
-  res.json({ items });
+  const mem = [...analyses.values()].filter((a) => tenantMatch(a.organizationId, req.organizationId));
+  const dbRows = await loadFinanceAnalysesFromDb(req.organizationId);
+  const byId = new Map<string, any>();
+  for (const r of dbRows) {
+    byId.set(r.id, {
+      id: r.id,
+      companyName: r.companyName,
+      periodLabel: r.periodLabel,
+      currency: r.currency,
+      input: r.input,
+      health: r.health,
+      distress: r.distress,
+      survival: r.survival,
+      createdAt: r.createdAt?.toISOString?.() || r.createdAt,
+      organizationId: r.organizationId,
+    });
+  }
+  for (const a of mem) byId.set(a.id, a);
+  res.json({ items: [...byId.values()].sort((a, b) => String(b.createdAt).localeCompare(String(a.createdAt))) });
 });
 
-router.get("/analyses/:id", (req, res) => {
-  const a = analyses.get(req.params.id);
+router.get("/analyses/:id", enforceModuleAuth("finance.view", { optional: true }), async (req, res) => {
+  let a = analyses.get(req.params.id);
+  if (!a) {
+    const rows = await loadFinanceAnalysesFromDb(req.organizationId, 200);
+    const row = rows.find((r) => r.id === req.params.id);
+    if (row) {
+      a = {
+        id: row.id,
+        companyName: row.companyName,
+        periodLabel: row.periodLabel || undefined,
+        currency: row.currency || undefined,
+        input: row.input as any,
+        health: row.health as any,
+        distress: row.distress as any,
+        survival: row.survival as any,
+        createdAt: row.createdAt?.toISOString?.() || String(row.createdAt),
+        organizationId: row.organizationId,
+      };
+    }
+  }
   if (!a) return res.status(404).json({ error: "Not found" });
+  if (!tenantMatch(a.organizationId, req.organizationId)) {
+    return res.status(403).json({ error: "Tenant mismatch" });
+  }
   res.json(a);
 });
 
-router.post("/analyze", (req, res) => {
+router.post("/analyze", enforceModuleAuth("finance.analyze", { optional: true }), async (req, res) => {
   if (!featureEnabled()) return res.status(403).json({ error: "Nexus Finance disabled" });
   const body = req.body ?? {};
   const companyName = String(body.companyName || "Company").trim();
@@ -84,31 +126,39 @@ router.post("/analyze", (req, res) => {
     distress,
     survival,
     createdAt: new Date().toISOString(),
+    organizationId: req.organizationId,
+    userId: req.auth?.sub != null ? String(req.auth.sub) : null,
   };
   analyses.set(id, record);
+  await persistFinanceAnalysis(record);
   res.status(201).json(record);
 });
 
-router.post("/ratios", (req, res) => {
+router.post("/ratios", enforceModuleAuth("finance.view", { optional: true }), (req, res) => {
   res.json({ ratios: calculateRatios(req.body ?? {}) });
 });
 
-router.post("/scenarios", (req, res) => {
+router.post("/scenarios", enforceModuleAuth("finance.analyze", { optional: true }), (req, res) => {
   const base = req.body?.base ?? req.body ?? {};
   const changes = req.body?.changes ?? {};
   res.json(scenarioSimulate(base, changes));
 });
 
-router.post("/cfo-chat", (req, res) => {
+router.post("/cfo-chat", enforceModuleAuth("finance.view", { optional: true }), (req, res) => {
   const q = String(req.body?.question || "").toLowerCase();
   const analysisId = req.body?.analysisId ? String(req.body.analysisId) : null;
-  const analysis = analysisId ? analyses.get(analysisId) : [...analyses.values()].sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
+  const analysis = analysisId
+    ? analyses.get(analysisId)
+    : [...analyses.values()].filter((a) => tenantMatch(a.organizationId, req.organizationId)).sort((a, b) => b.createdAt.localeCompare(a.createdAt))[0];
   if (!analysis) {
     return res.json({
       answer: "No analysis is loaded. Run a financial analysis with statement inputs first.",
       confidence: "low",
       evidence: "UNKNOWN",
     });
+  }
+  if (!tenantMatch(analysis.organizationId, req.organizationId)) {
+    return res.status(403).json({ error: "Tenant mismatch" });
   }
   const h = analysis.health;
   let answer = `Based on the analysis for ${analysis.companyName}, overall health is ${h.overall}/100 (${h.rating}).`;

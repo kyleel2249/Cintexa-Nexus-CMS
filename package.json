@@ -3,7 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "license": "MIT",
-  "workspaces": ["artifacts/*", "lib/*", "lib/integrations/*", "scripts"],
+  "workspaces": [
+    "artifacts/*",
+    "lib/*",
+    "lib/integrations/*",
+    "scripts"
+  ],
   "scripts": {
     "preinstall": "node scripts/preinstall.mjs",
     "install:clean": "npm install",
@@ -16,9 +21,13 @@
     "build:app": "npm run build --workspace=@workspace/cintexa",
     "preview": "npm run serve --workspace=@workspace/cintexa",
     "start:api": "npm run start --workspace=@workspace/api-server",
-    "admin:create": "npm run admin:create --workspace=@workspace/scripts"
+    "admin:create": "npm run admin:create --workspace=@workspace/scripts",
+    "test:engines": "node --test artifacts/api-server/src/tests/engines.test.mjs"
   },
-  "engines": { "node": ">=20.19.0", "npm": ">=10.0.0" },
+  "engines": {
+    "node": ">=20.19.0",
+    "npm": ">=10.0.0"
+  },
   "devDependencies": {
     "concurrently": "^9.2.1",
     "prettier": "^3.8.3",

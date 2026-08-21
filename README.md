@@ -46,6 +46,20 @@ Windows users: follow **[WINDOWS.md](./WINDOWS.md)**.
 | `npm run build:app` | Build frontend only |
 | `npm run preview` | Preview production frontend |
 
+## Product map
+
+| Area | Routes | Notes |
+|------|--------|--------|
+| CMS | `/sites`, `/pages`, `/posts`, `/media`, … | Multi-site content |
+| Business Diagnostic | `/diagnostics` | Strategy diagnosis, PDF, research |
+| AI Sales Force | `/sales-force` | Agents, pipeline, outreach (consent + SMTP) |
+| CD Optimizer | `/nexus/cd-optimizer` | Compression; optional Python sidecar |
+| Nexus Finance | `/nexus/finance` | Health, ratios, survival (analytical only) |
+
+Feature flags: `CD_OPTIMIZER_ENABLED`, `NEXUS_FINANCE_ENABLED`, `AUTH_ENFORCE`, `CD_OPTIMIZER_SERVICE_URL`.
+
+See `docs/NEXUS_MODULE_INTEGRATION.md` and `docs/SIDECAR_SERVICES.md`.
+
 ## Stack
 
 - **Frontend**: React 19, Vite, Tailwind CSS 4, shadcn/ui, Framer Motion, TanStack Query, Wouter

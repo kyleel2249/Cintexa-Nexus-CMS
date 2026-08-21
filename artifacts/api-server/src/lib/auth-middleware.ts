@@ -13,6 +13,7 @@ export interface AuthPayload {
   email: string;
   role: string;
   firebase?: boolean;
+  organizationId?: string;
 }
 
 declare global {
