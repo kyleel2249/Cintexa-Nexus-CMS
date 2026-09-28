@@ -1,0 +1,2 @@
+# Client-side routes only. Cloudflare Pages Functions handle /api/* with higher priority.
+/*    /index.html   200

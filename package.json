@@ -1,0 +1,27 @@
+{
+  "name": "cintexa-nexus-cms",
+  "version": "1.0.0",
+  "private": true,
+  "license": "MIT",
+  "workspaces": ["artifacts/*", "lib/*", "lib/integrations/*", "scripts"],
+  "scripts": {
+    "preinstall": "node scripts/preinstall.mjs",
+    "install:clean": "npm install",
+    "build": "npm run typecheck && npm run build:app",
+    "typecheck:libs": "tsc --build",
+    "typecheck": "npm run typecheck:libs && npm run typecheck --workspace=@workspace/cintexa --if-present && npm run typecheck --workspace=@workspace/api-server --if-present && npm run typecheck --workspace=@workspace/mockup-sandbox --if-present && npm run typecheck --workspace=@workspace/scripts --if-present",
+    "dev": "npm run dev --workspace=@workspace/cintexa",
+    "dev:api": "npm run dev --workspace=@workspace/api-server",
+    "dev:all": "concurrently \"npm run dev --workspace=@workspace/cintexa\" \"npm run dev --workspace=@workspace/api-server\"",
+    "build:app": "npm run build --workspace=@workspace/cintexa",
+    "preview": "npm run serve --workspace=@workspace/cintexa",
+    "start:api": "npm run start --workspace=@workspace/api-server",
+    "admin:create": "npm run admin:create --workspace=@workspace/scripts"
+  },
+  "engines": { "node": ">=20.19.0", "npm": ">=10.0.0" },
+  "devDependencies": {
+    "concurrently": "^9.2.1",
+    "prettier": "^3.8.3",
+    "typescript": "~5.9.3"
+  }
+}

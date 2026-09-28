@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5" />
+
+    <!-- Primary Meta -->
+    <title>CINTEXA CMS — AI-Powered Enterprise Content Management</title>
+    <meta name="description" content="CINTEXA is an AI-powered enterprise CMS with a visual drag-and-drop page builder, multi-site management, and built-in AI content generation." />
+    <meta name="keywords" content="CMS, content management, page builder, AI content, enterprise CMS, multi-site" />
+    <meta name="author" content="CINTEXA" />
+    <meta name="robots" content="index, follow" />
+    <meta name="theme-color" content="#0B0F14" />
+    <meta name="color-scheme" content="dark light" />
+
+    <!-- Apple / PWA -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="CINTEXA" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="CINTEXA CMS" />
+    <meta property="og:title" content="CINTEXA CMS — AI-Powered Enterprise Content Management" />
+    <meta property="og:description" content="CINTEXA is an AI-powered enterprise CMS with a visual drag-and-drop page builder, multi-site management, and built-in AI content generation." />
+    <meta property="og:image" content="/opengraph.jpg" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="CINTEXA CMS dashboard preview" />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="CINTEXA CMS — AI-Powered Enterprise Content Management" />
+    <meta name="twitter:description" content="CINTEXA is an AI-powered enterprise CMS with a visual drag-and-drop page builder, multi-site management, and built-in AI content generation." />
+    <meta name="twitter:image" content="/opengraph.jpg" />
+
+    <!-- Icons -->
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="apple-touch-icon" href="/favicon.svg" />
+
+    <!-- DNS Prefetch & Preconnect -->
+    <link rel="dns-prefetch" href="https://fonts.googleapis.com" />
+    <link rel="dns-prefetch" href="https://fonts.gstatic.com" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Font: load non-blocking via media trick, then swap to all -->
+    <link
+      rel="stylesheet"
+      href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap"
+      media="print"
+      onload="this.media='all'"
+    />
+    <noscript>
+      <link
+        rel="stylesheet"
+        href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Manrope:wght@400;500;600;700&family=DM+Mono:wght@400;500&display=swap"
+      />
+    </noscript>
+
+    <!-- Inline critical styles: prevent flash of unstyled/white content -->
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        background-color: #0B0F14;
+        color: #F7F4EE;
+        font-family: Manrope, Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        -webkit-font-smoothing: antialiased;
+        -moz-osx-font-smoothing: grayscale;
+        min-height: 100svh;
+      }
+      #root { min-height: 100svh; }
+    </style>
+  </head>
+  <body>
+    </div>
+
+    <div id="root"></div>
+
+    <noscript>
+      <style>
+        body { display: flex; align-items: center; justify-content: center; min-height: 100vh; text-align: center; padding: 2rem; }
+      </style>
+      <p style="color: #F7F4EE;font-size:1.125rem;">
+        CINTEXA CMS requires JavaScript to run. Please enable JavaScript in your browser.
+      </p>
+    </noscript>
+
+    <script type="module" src="/src/main.tsx"></script>
+</body>
+</html>
