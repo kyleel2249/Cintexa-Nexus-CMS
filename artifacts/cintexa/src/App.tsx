@@ -47,6 +47,8 @@ const Plugins = lazyWithRecovery(() => import("@/pages/plugins"));
 const Subscribers = lazyWithRecovery(() => import("@/pages/subscribers"));
 const BusinessDiagnostic = lazyWithRecovery(() => import("@/pages/business-diagnostic"));
 const PublicIntake = lazyWithRecovery(() => import("@/pages/public-intake"));
+const WebsiteIntelligence = lazyWithRecovery(() => import("@/pages/website-intelligence"));
+const WebsiteIntelligenceShared = lazyWithRecovery(() => import("@/pages/website-intelligence/shared"));
 
 const queryClient = new QueryClient();
 
@@ -90,6 +92,14 @@ function AppRoutes() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/diagnostics" component={BusinessDiagnostic} />
+            <Route path="/website-intelligence" component={WebsiteIntelligence} />
+            <Route path="/website-intelligence/new" component={WebsiteIntelligence} />
+            <Route path="/website-intelligence/audits" component={WebsiteIntelligence} />
+            <Route path="/website-intelligence/audits/:auditId" component={WebsiteIntelligence} />
+            <Route path="/website-intelligence/audits/:auditId/findings" component={WebsiteIntelligence} />
+            <Route path="/website-intelligence/audits/:auditId/recommendations" component={WebsiteIntelligence} />
+            <Route path="/website-intelligence/audits/:auditId/report" component={WebsiteIntelligence} />
+            <Route path="/website-intelligence/settings" component={WebsiteIntelligence} />
             <Route path="/sites" component={Sites} />
             <Route path="/pages" component={Pages} />
             <Route path="/pages/new" component={PageEditor} />
@@ -132,6 +142,15 @@ function App() {
                       <PublicIntake />
                     </Suspense>
                   </RouteErrorBoundary>
+                </Route>
+                <Route path="/website-intelligence/shared/:token">
+                  {(params) => (
+                    <RouteErrorBoundary>
+                      <Suspense fallback={<PageLoader />}>
+                        <WebsiteIntelligenceShared token={params.token} />
+                      </Suspense>
+                    </RouteErrorBoundary>
+                  )}
                 </Route>
                 <Route>
                   <AppRoutes />

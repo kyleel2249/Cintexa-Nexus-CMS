@@ -177,6 +177,7 @@ const PUBLIC_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: "POST", pattern: /^\/public\/forms\/\d+\/submissions$/ },
   { method: "GET", pattern: /^\/subscribers\/unsubscribe$/ },
   { method: "GET", pattern: /^\/seo\/(sitemap\.xml|robots\.txt)$/ },
+  { method: "GET", pattern: /^\/v1\/website-audits\/public\/[A-Za-z0-9_-]{24,64}$/ },
 ];
 
 function isPublic(req: Request): boolean {

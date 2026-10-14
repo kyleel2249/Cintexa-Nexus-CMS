@@ -11,6 +11,9 @@ export const WEBHOOK_EVENTS = [
   "intake.submitted",
   "media.uploaded",
   "webhook.test",
+  "website_audit.completed",
+  "website_audit.failed",
+  "website_audit.regression",
 ] as const;
 
 export type WebhookEvent = (typeof WEBHOOK_EVENTS)[number];
