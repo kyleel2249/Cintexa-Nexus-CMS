@@ -1,4 +1,5 @@
 import { CintexaLogo } from "@/components/SplashScreen";
+import { WebsiteIntelligenceCard } from "@/components/website-intelligence-card";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
@@ -275,6 +276,9 @@ export default function Dashboard() {
         </Card>
       </motion.div>
 
+      <motion.div variants={fadeUp}>
+        <WebsiteIntelligenceCard />
+      </motion.div>
 
       <motion.div
         className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"
