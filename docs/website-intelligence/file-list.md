@@ -13,10 +13,10 @@ Paths are relative to the repository root. Every file is a complete replacement/
 | `artifacts/api-server/src/services/website-intelligence/__tests__/*` | Unit, security, integration, authorisation tests |
 | `artifacts/cintexa/src/lib/website-intelligence/{api,pdf-kit,report-pdf,deliver}.ts` | Data hooks, PDF engine, delivery |
 | `artifacts/cintexa/src/pages/website-intelligence/*.tsx` | 10 pages + shared components |
-| `artifacts/wi-browser-worker/` | Isolated Playwright worker (own Dockerfile) |
+| `services/wi-browser-worker/` | Isolated Playwright worker (own Dockerfile) |
 | `docs/website-intelligence/*.md` | This documentation |
 
 ## Modified (full replacements supplied)
 `lib/db/src/bootstrap.ts` · `lib/wi-core` referenced from `tsconfig.json` · `artifacts/api-server/{package.json,tsconfig.json,.env.example}` · `artifacts/api-server/src/{index.ts,routes/index.ts,lib/auth-middleware.ts,lib/webhooks.ts}` · `artifacts/cintexa/{package.json}` · `artifacts/cintexa/src/{App.tsx,lib/api.ts,components/layout/Sidebar.tsx}`
 
-Unzip the archive at the repository root; paths line up one-to-one. Then run `npm install` (new workspaces: `lib/wi-core`, `artifacts/wi-browser-worker`, new devDependency `tsx`).
+Unzip the archive at the repository root; paths line up one-to-one. Then run `npm install` (new workspace: `lib/wi-core`; new devDependency `tsx`. The browser worker in `services/wi-browser-worker` is deliberately NOT an npm workspace: it has its own package.json and Dockerfile, so Playwright is never installed in the CMS build).

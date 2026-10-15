@@ -8,5 +8,5 @@ API host (`artifacts/api-server/.env.example`): existing variables plus
 | `SMTP_HOST/PORT/SECURE/USER/PASS/FROM` | Notification e-mail | In-app and webhooks only |
 | `OPENROUTER_API_KEY` | AI explanations (always labelled as AI) | Explain action returns "not configured" |
 
-Worker (`artifacts/wi-browser-worker/.env.example`): `PORT`, `HOST`, `WI_BROWSER_WORKER_TOKEN`, `WI_WORKER_MAX_CONCURRENT`.
+Worker (`services/wi-browser-worker/.env.example`): `PORT`, `HOST`, `WI_BROWSER_WORKER_TOKEN`, `WI_WORKER_MAX_CONCURRENT`.
 Frontend: no new variables.
