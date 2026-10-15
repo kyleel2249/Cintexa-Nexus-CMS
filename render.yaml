@@ -1,0 +1,30 @@
+# Render blueprint for the CINTEXA NEXUS API. Create it with: Render dashboard -> New -> Blueprint -> select this repo.
+# Secrets marked sync: false are entered in the dashboard; nothing secret lives in this file.
+services:
+  - type: web
+    name: cintexa-nexus-api
+    runtime: docker
+    plan: starter            # must stay always-on: Website Intelligence audits run in-process
+    healthCheckPath: /api/healthz
+    envVars:
+      - key: PORT
+        value: "8080"
+      - key: DATABASE_URL
+        fromDatabase:
+          name: cintexa-nexus-db
+          property: connectionString
+      - key: FIREBASE_PROJECT_ID
+        value: cintexa-nexus
+      - key: ADMIN_EMAILS
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: PUBLIC_APP_URL
+        value: https://cintexa-nexus-cms.pages.dev
+      - key: OPENROUTER_API_KEY
+        sync: false
+      - key: PAGESPEED_API_KEY
+        sync: false
+databases:
+  - name: cintexa-nexus-db
+    plan: basic-256mb
