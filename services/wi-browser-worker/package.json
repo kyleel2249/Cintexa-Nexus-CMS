@@ -1,0 +1,14 @@
+{
+  "name": "wi-browser-worker",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Isolated browser worker for the CINTEXA NEXUS Website Intelligence Engine. Runs Playwright in its own process/container and refuses private network destinations.",
+  "scripts": {
+    "start": "node ./server.mjs",
+    "test": "node --test ./test/*.test.mjs"
+  },
+  "dependencies": {
+    "playwright": "^1.49.0"
+  }
+}

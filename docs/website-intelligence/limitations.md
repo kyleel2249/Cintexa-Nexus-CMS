@@ -1,0 +1,11 @@
+# Known limitations (stated plainly)
+- Audits run in-process; the API host must be always-on and a single instance (no distributed queue).
+- Rendered checks need the browser worker; without it they are `not_tested`.
+- Colour contrast is measured only for text over solid backgrounds; text over images/gradients is reported as not measured, and hover/focus states are not covered.
+- The CI gate endpoint authenticates with a Firebase ID token (no long-lived API keys are issued yet), so pipelines must obtain a short-lived token.
+- Keyboard/focus/navigation checks are heuristics; they cannot replace manual accessibility testing and automated tools find only a subset of WCAG issues.
+- PageSpeed/CrUX data requires a key; CrUX has no data for low-traffic sites.
+- Authenticated-area auditing supports only explicitly authorised, passive scopes; credentials are never stored.
+- PDFs are generated client-side with jsPDF; very large audits produce long reports.
+- robots.txt disallowed pages are not fetched, so their tests are `blocked`.
+- Single-vantage-point measurements: results reflect the API host's region/network.

@@ -1,0 +1,171 @@
+/**
+ * Website Intelligence Engine tables.
+ *
+ * Raw audit output (pages, check results, performance samples) is stored separately from derived
+ * data (findings, recommendations, scores) so that scores can be recomputed when the scoring
+ * version changes without re-crawling. Every statement is idempotent.
+ */
+export const WI_SCHEMA_STATEMENTS: string[] = [
+  `CREATE TABLE IF NOT EXISTS wi_audits (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  owner_email TEXT,
+  workspace TEXT,
+  hostname TEXT NOT NULL,
+  url TEXT NOT NULL,
+  name TEXT,
+  kind TEXT NOT NULL DEFAULT 'audit',
+  website_type TEXT NOT NULL DEFAULT 'corporate',
+  profile TEXT NOT NULL DEFAULT 'standard',
+  status TEXT NOT NULL DEFAULT 'queued',
+  stage TEXT,
+  stages JSONB NOT NULL DEFAULT '[]'::jsonb,
+  progress JSONB NOT NULL DEFAULT '{}'::jsonb,
+  config JSONB NOT NULL DEFAULT '{}'::jsonb,
+  scores JSONB,
+  coverage JSONB,
+  environment JSONB,
+  scoring_version TEXT NOT NULL DEFAULT '1.0.0',
+  schema_version INTEGER NOT NULL DEFAULT 1,
+  previous_audit_id TEXT,
+  parent_audit_id TEXT,
+  monitor_id TEXT,
+  error TEXT,
+  cancel_requested BOOLEAN NOT NULL DEFAULT FALSE,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  share_token TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  started_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  heartbeat_at TIMESTAMPTZ,
+  deleted_at TIMESTAMPTZ
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_wi_audits_owner ON wi_audits(owner_id, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_wi_audits_host ON wi_audits(owner_id, hostname, created_at DESC)`,
+  `CREATE INDEX IF NOT EXISTS idx_wi_audits_status ON wi_audits(status)`,
+  `CREATE INDEX IF NOT EXISTS idx_wi_audits_share ON wi_audits(share_token) WHERE share_token IS NOT NULL`,
+  `CREATE TABLE IF NOT EXISTS wi_pages (
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  url TEXT NOT NULL,
+  facts JSONB NOT NULL,
+  score REAL,
+  skipped_reason TEXT,
+  PRIMARY KEY (audit_id, url)
+)`,
+  `CREATE TABLE IF NOT EXISTS wi_checks (
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  url TEXT NOT NULL DEFAULT '',
+  results JSONB NOT NULL,
+  PRIMARY KEY (audit_id, url)
+)`,
+  `CREATE TABLE IF NOT EXISTS wi_performance (
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  idx INTEGER NOT NULL,
+  data JSONB NOT NULL,
+  PRIMARY KEY (audit_id, idx)
+)`,
+  `CREATE TABLE IF NOT EXISTS wi_findings (
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  fingerprint TEXT NOT NULL,
+  test_id TEXT NOT NULL,
+  category TEXT NOT NULL,
+  severity TEXT NOT NULL,
+  kind TEXT NOT NULL,
+  priority REAL NOT NULL DEFAULT 0,
+  data JSONB NOT NULL,
+  PRIMARY KEY (audit_id, fingerprint)
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_wi_findings_sev ON wi_findings(audit_id, severity)`,
+  `CREATE TABLE IF NOT EXISTS wi_finding_workflow (
+  id TEXT PRIMARY KEY,
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  fingerprint TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'open',
+  owner TEXT,
+  notes TEXT NOT NULL DEFAULT '',
+  rationale TEXT,
+  due_date DATE,
+  retest_status TEXT NOT NULL DEFAULT 'none',
+  retest_audit_id TEXT,
+  verified_at TIMESTAMPTZ,
+  verified_by TEXT,
+  verification_method TEXT,
+  lineage TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (audit_id, fingerprint)
+)`,
+  `CREATE TABLE IF NOT EXISTS wi_recommendations (
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  fingerprint TEXT NOT NULL,
+  rank INTEGER NOT NULL,
+  data JSONB NOT NULL,
+  PRIMARY KEY (audit_id, fingerprint)
+)`,
+  `CREATE TABLE IF NOT EXISTS wi_tasks (
+  id TEXT PRIMARY KEY,
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  fingerprint TEXT,
+  title TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  owner TEXT,
+  due_date DATE,
+  status TEXT NOT NULL DEFAULT 'todo',
+  horizon TEXT NOT NULL DEFAULT 'short',
+  notes TEXT NOT NULL DEFAULT '',
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_wi_tasks_audit ON wi_tasks(audit_id)`,
+  `CREATE TABLE IF NOT EXISTS wi_events (
+  id BIGSERIAL PRIMARY KEY,
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  level TEXT NOT NULL DEFAULT 'info',
+  stage TEXT,
+  message TEXT NOT NULL,
+  data JSONB
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_wi_events_audit ON wi_events(audit_id, id)`,
+  `CREATE TABLE IF NOT EXISTS wi_reports (
+  id TEXT PRIMARY KEY,
+  audit_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  type TEXT NOT NULL,
+  filename TEXT NOT NULL,
+  bytes INTEGER NOT NULL DEFAULT 0,
+  pages INTEGER NOT NULL DEFAULT 0,
+  sha256 TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  meta JSONB NOT NULL DEFAULT '{}'::jsonb
+)`,
+  `CREATE TABLE IF NOT EXISTS wi_comparisons (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  current_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  previous_id TEXT NOT NULL REFERENCES wi_audits(id) ON DELETE CASCADE,
+  data JSONB NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (current_id, previous_id)
+)`,
+  `CREATE TABLE IF NOT EXISTS wi_monitors (
+  id TEXT PRIMARY KEY,
+  owner_id TEXT NOT NULL,
+  workspace TEXT,
+  url TEXT NOT NULL,
+  hostname TEXT NOT NULL,
+  name TEXT,
+  config JSONB NOT NULL,
+  frequency TEXT NOT NULL DEFAULT 'weekly',
+  enabled BOOLEAN NOT NULL DEFAULT TRUE,
+  notify JSONB NOT NULL DEFAULT '{}'::jsonb,
+  next_run_at TIMESTAMPTZ,
+  last_run_at TIMESTAMPTZ,
+  last_audit_id TEXT,
+  last_score REAL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+)`,
+  `CREATE INDEX IF NOT EXISTS idx_wi_monitors_due ON wi_monitors(enabled, next_run_at)`,
+];

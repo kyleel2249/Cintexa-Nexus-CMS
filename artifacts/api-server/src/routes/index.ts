@@ -23,6 +23,7 @@ import diagnosticsRouter from "./diagnostics";
 import diagnosticRouter from "./diagnostic";
 import intakePublicRouter from "./intake-public";
 import settingsRouter from "./settings";
+import websiteAuditsRouter from "./website-audits";
 import { apiGuard } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
@@ -56,5 +57,6 @@ router.use("/diagnostics", diagnosticsRouter);
 router.use("/diagnostic", diagnosticRouter);
 router.use("/intake", intakePublicRouter);
 router.use("/settings", settingsRouter);
+router.use("/v1/website-audits", websiteAuditsRouter);
 
 export default router;
