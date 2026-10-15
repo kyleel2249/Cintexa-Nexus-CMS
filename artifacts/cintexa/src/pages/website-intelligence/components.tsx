@@ -105,7 +105,17 @@ export function EmptyState({ title, body, action }: { title: string; body: strin
 
 export function ErrorNote({ error }: { error: unknown }) {
   const message = error instanceof Error ? error.message : "Something went wrong.";
-  return <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">{message}</div>;
+  const backendDown = /unreachable|API backend|API_ORIGIN|not configured/i.test(message) && /api|backend/i.test(message);
+  return (
+    <div role="alert" className="rounded-lg border border-red-500/30 bg-red-500/10 px-3 py-2 text-sm text-red-300">
+      {message}
+      {backendDown && (
+        <div className="mt-2 text-xs text-red-200/90">
+          Website Intelligence needs the CINTEXA API server, which runs the audits and stores their history. Deploy it (the repository includes a Dockerfile and render.yaml), then set <code>API_ORIGIN</code> in Cloudflare Pages to its address without <code>/api</code> and redeploy. Step by step: <code>docs/website-intelligence/api-host-setup.md</code>.
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function Loading({ text = "Loading" }: { text?: string }) {

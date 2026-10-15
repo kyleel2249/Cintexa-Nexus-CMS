@@ -230,7 +230,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     {
       error: "API backend not configured",
       hint:
-        "Deploy the Express API (see DEPLOYMENT.md) and set API_ORIGIN in Cloudflare Pages -> Settings -> Environment variables to its base URL, without /api. Content, media, forms, SEO, API keys, webhooks and intake share links all need it.",
+        "Deploy the Express API (see docs/website-intelligence/api-host-setup.md, or the Dockerfile and render.yaml at the repo root) and set API_ORIGIN in Cloudflare Pages -> Settings -> Environment variables to its base URL, without /api. Content, media, forms, SEO, API keys, webhooks and intake share links all need it.",
       path: subpath,
       method,
     },
