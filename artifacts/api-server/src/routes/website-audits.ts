@@ -5,6 +5,7 @@ import {
   buildRoadmap, compareAudits, parseAuditUrl, reportFileName, validateTransition, PRIORITY_FORMULA, SCORE_FORMULA, aggregateOutcomes,
   type AuditBundle, type CheckResult, type FindingStatus, type FindingView, type Horizon, type TestStatus,
 } from "@workspace/wi-core";
+import { evaluateGate, findingsToCsv, findingsToSarif } from "../services/website-intelligence/export";
 import { normalizeConfig } from "../services/website-intelligence/config";
 import { explainFinding } from "../services/website-intelligence/explain";
 import { integrationStatuses } from "../services/website-intelligence/integrations";
@@ -365,6 +366,29 @@ router.post("/:id/report", async (req, res) => {
   const filename = typeof b.filename === "string" && /^CINTEXA-NEXUS-Website-Audit-[A-Za-z0-9.-]+-\d{4}-\d{2}-\d{2}(-[a-z]+)?\.pdf$/.test(b.filename) ? b.filename : reportFileName(row.hostname);
   const saved = await store.saveReport({ auditId: row.id, type: b.type, filename, bytes: Math.round(Number(b.bytes)), pages: Math.round(Number(b.pages)), sha256: typeof b.sha256 === "string" && /^[a-f0-9]{64}$/.test(b.sha256) ? b.sha256 : null, createdBy: email(req), meta: { scoringVersion: SCORING_VERSION, sections: Array.isArray(b.sections) ? b.sections.slice(0, 40).map(String) : [] } });
   res.status(201).json({ ...saved, filename });
+});
+
+// ---- exports and CI gate
+router.get("/:id/export", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const format = String(req.query.format ?? "json");
+  if (!["json", "csv", "sarif"].includes(format)) return bad(res, "format must be json, csv or sarif.", 400, "format");
+  const bundle = await buildBundle(row.id); if (!bundle) return bad(res, "Audit not found.", 404);
+  const base = reportFileName(row.hostname).replace(/\.pdf$/, "").replace("Website-Audit", "Findings");
+  res.setHeader("cache-control", "no-store");
+  res.setHeader("content-disposition", `attachment; filename="${base}.${format === "sarif" ? "sarif" : format}"`);
+  if (format === "csv") { res.type("text/csv; charset=utf-8").send(findingsToCsv(bundle)); return; }
+  if (format === "sarif") { res.type("application/sarif+json").send(JSON.stringify(findingsToSarif(bundle, SCORING_VERSION), null, 2)); return; }
+  res.type("application/json").send(JSON.stringify(bundle, null, 2));
+});
+
+/** CI/CD quality gate. 200 always carries the verdict; add strict=1 to get HTTP 422 on failure so `curl --fail` can break a pipeline. */
+router.get("/:id/gate", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const num = (v: unknown, d: number | null, lo: number, hi: number): number | null => { if (v === undefined || v === "") return d; const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, n)) : d; };
+  const bundle = await buildBundle(row.id); if (!bundle) return bad(res, "Audit not found.", 404);
+  const result = evaluateGate(bundle, { minScore: num(req.query.minScore, 70, 0, 100), maxCritical: num(req.query.maxCritical, 0, 0, 1000) ?? 0, maxHigh: num(req.query.maxHigh, null, 0, 1000), requireComplete: req.query.requireComplete !== "0" });
+  res.status(req.query.strict === "1" && !result.passed ? 422 : 200).json(result);
 });
 
 // ---- comparison

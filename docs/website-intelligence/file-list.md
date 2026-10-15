@@ -7,7 +7,8 @@ Paths are relative to the repository root. Every file is a complete replacement/
 |---|---|
 | `lib/wi-core/` (package.json, tsconfig.json, `src/*`, `src/__tests__/*`) | Shared catalogue, scoring, findings, workflow, compare, URL/IP rules |
 | `lib/db/src/wi-schema.ts` | 12 `wi_*` table DDL statements |
-| `artifacts/api-server/src/routes/website-audits.ts` | REST router |
+| `artifacts/api-server/src/routes/website-audits.ts` | REST router (incl. export and gate) |
+| `artifacts/api-server/src/services/website-intelligence/export.ts` | CSV, SARIF and CI-gate logic |
 | `artifacts/api-server/src/services/website-intelligence/*.ts` | Engine, crawler, analyzers, store, queue, integrations, etc. |
 | `artifacts/api-server/src/services/website-intelligence/__tests__/*` | Unit, security, integration, authorisation tests |
 | `artifacts/cintexa/src/lib/website-intelligence/{api,pdf-kit,report-pdf,deliver}.ts` | Data hooks, PDF engine, delivery |

@@ -26,7 +26,7 @@ t("a user cannot read, cancel, delete, patch or share another user's audit; admi
   const owner = { sub: "owner-1", role: "editor" }; const other = { sub: "other-2", role: "editor" }; const admin = { sub: "adm", role: "admin" };
   assert.equal((await call("GET", "/:id", owner, { id: a.id })).status, 200);
   assert.equal((await call("GET", "/:id", admin, { id: a.id })).status, 200);
-  for (const [m, p] of [["GET", "/:id"], ["GET", "/:id/bundle"], ["GET", "/:id/events"], ["POST", "/:id/cancel"], ["POST", "/:id/retry"], ["DELETE", "/:id"], ["GET", "/:id/findings"], ["PATCH", "/:id/findings/:fp"], ["GET", "/:id/recommendations"], ["POST", "/:id/tasks"], ["GET", "/:id/report"], ["POST", "/:id/share"], ["POST", "/:id/retest"], ["GET", "/:id/comparison"]] as const) {
+  for (const [m, p] of [["GET", "/:id"], ["GET", "/:id/bundle"], ["GET", "/:id/events"], ["POST", "/:id/cancel"], ["POST", "/:id/retry"], ["DELETE", "/:id"], ["GET", "/:id/findings"], ["PATCH", "/:id/findings/:fp"], ["GET", "/:id/recommendations"], ["POST", "/:id/tasks"], ["GET", "/:id/report"], ["POST", "/:id/share"], ["POST", "/:id/retest"], ["GET", "/:id/comparison"], ["GET", "/:id/export"], ["GET", "/:id/gate"]] as const) {
     const r = await call(m, p, other, { id: a.id, fp: "x" });
     assert.equal(r.status, 404, `${m} ${p} must not reveal another tenant's audit (got ${r.status})`);
   }

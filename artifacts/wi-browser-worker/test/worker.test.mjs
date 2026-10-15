@@ -65,3 +65,25 @@ test("worker inspects a page, measures real defects, enforces auth", { timeout: 
     assert.ok(origCheck);
   } finally { await browser.close(); }
 });
+
+test("contrast: measures real ratios, honours large-text threshold, refuses to guess over images", { timeout: 60000 }, async () => {
+  const { inspectPage } = await import("../inspect.mjs");
+  const { chromium } = await import("playwright");
+  const serve = (body) => new Promise((resolve) => { const srv = http.createServer((q, r) => { r.setHeader("content-type", "text/html"); r.end(`<!doctype html><html lang=en><head><meta name=viewport content="width=device-width"></head><body style="margin:0">${body}</body></html>`); }).listen(0, "127.0.0.1", () => resolve(srv)); });
+  const browser = await chromium.launch({ executablePath: process.env.CHROMIUM_PATH || undefined, args: ["--no-sandbox"] });
+  const servers = [];
+  try {
+    const run = async (body) => { const srv = await serve(body); servers.push(srv); const res = await inspectPage(browser, `http://127.0.0.1:${srv.address().port}/`, ["desktop"], { allowLoopbackForTests: true, __skipPort: true }); return res.find((r) => r.testId === "a11y.contrast"); };
+    const good = await run('<p style="color:#111;background:#fff">Readable body copy</p>');
+    assert.equal(good.status, "passed");
+    const bad = await run('<p style="color:#aaa;background:#fff">Faint grey text</p>');
+    assert.equal(bad.status, "failed");
+    assert.match(bad.actual, /Faint grey text/);
+    const largeMid = await run('<p style="color:#8a8a8a;background:#fff;font-size:32px">Large mid grey</p>');
+    assert.equal(largeMid.status, "passed", "~3.4:1 passes the 3:1 large-text rule");
+    const smallMid = await run('<p style="color:#8a8a8a;background:#fff;font-size:14px">Small mid grey</p>');
+    assert.equal(smallMid.status, "failed", "the same colour fails at normal size");
+    const onImage = await run('<p style="color:#fff;background-image:linear-gradient(#000,#fff)">On gradient</p>');
+    assert.equal(onImage.status, "inconclusive", "gradients are not guessed");
+  } finally { await browser.close(); servers.forEach((s) => s.close()); }
+});

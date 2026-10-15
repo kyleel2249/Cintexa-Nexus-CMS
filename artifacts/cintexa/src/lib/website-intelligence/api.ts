@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AuditBundle, AuditComparison, AuditConfig, AuditStatus, AuditSummary, CategoryId, FindingStatus, FindingView, Horizon, Recommendation, RemediationTask, ReportType, Roadmap, TaskStatus,
 } from "@workspace/wi-core";
-import { apiJson } from "@/lib/api";
+import { apiFetch, apiJson } from "@/lib/api";
 
 const BASE = "/v1/website-audits";
 
@@ -166,6 +166,33 @@ export function useMonitorMutations() {
 export function useSaveSettings() {
   const inv = useInvalidate();
   return useMutation({ mutationFn: (s: Partial<WiSettings>) => apiJson<WiSettings>(`${BASE}/settings`, { method: "PUT", ...json(s) }), onSuccess: () => inv("settings", "meta") });
+}
+
+export interface WiGateResult {
+  passed: boolean;
+  options: { minScore: number | null; maxCritical: number; maxHigh: number | null; requireComplete: boolean };
+  score: number | null;
+  provisional: boolean;
+  readiness: string;
+  counts: { critical: number; high: number };
+  reasons: string[];
+}
+export function useGate(id: string | undefined, p: { minScore: number; maxCritical: number; maxHigh: number | null; requireComplete: boolean }, enabled: boolean) {
+  const qs = new URLSearchParams({ minScore: String(p.minScore), maxCritical: String(p.maxCritical), requireComplete: p.requireComplete ? "1" : "0" });
+  if (p.maxHigh != null) qs.set("maxHigh", String(p.maxHigh));
+  return useQuery({ queryKey: ["wi", "gate", id, qs.toString()], enabled: Boolean(id) && enabled, queryFn: () => apiJson<WiGateResult>(`${BASE}/${id}/gate?${qs}`) });
+}
+
+export type ExportFormat = "csv" | "json" | "sarif";
+/** Downloads an export through the authenticated fetch (a plain link would not carry the bearer token). */
+export async function downloadExport(id: string, format: ExportFormat): Promise<void> {
+  const res = await apiFetch(`${BASE}/${id}/export?format=${format}`);
+  if (!res.ok) throw new Error(`Export failed (HTTP ${res.status}).`);
+  const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `findings.${format}`;
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement("a");
+  a.href = url; a.download = name; document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(() => URL.revokeObjectURL(url), 10_000);
 }
 
 export type { FindingView, Horizon };

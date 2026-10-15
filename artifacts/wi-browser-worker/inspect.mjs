@@ -51,6 +51,51 @@ export async function inspectPage(browser, url, devices, opts = {}) {
     });
     add({ testId: "a11y.target_size", status: targets.count === 0 ? "passed" : targets.count > 3 ? "failed" : "warning", url, device, actual: targets.count ? `${targets.count} of ${targets.checked} targets under 24x24 CSS px: ${targets.small.join("; ")}` : `${targets.checked} targets checked`, expected: "At least 24x24 CSS px (WCAG 2.5.8)" });
 
+    const contrast = await page.evaluate(() => {
+      const parse = (c) => { const m = /rgba?\(([^)]+)\)/.exec(c); if (!m) return null; const [r, g, b, a = 1] = m[1].split(/[ ,/]+/).filter(Boolean).map(Number); return { r, g, b, a }; };
+      const lum = ({ r, g, b }) => { const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4; }; return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b); };
+      const over = (top, bottom) => ({ r: top.r * top.a + bottom.r * (1 - top.a), g: top.g * top.a + bottom.g * (1 - top.a), b: top.b * top.a + bottom.b * (1 - top.a), a: 1 });
+      const backdrop = (el) => {
+        const layers = [];
+        for (let n = el; n; n = n.parentElement) {
+          const cs = getComputedStyle(n);
+          if (cs.backgroundImage && cs.backgroundImage !== "none") return null;
+          const c = parse(cs.backgroundColor);
+          if (c && c.a > 0) { layers.push(c); if (c.a >= 1) break; }
+        }
+        let base = { r: 255, g: 255, b: 255, a: 1 };
+        for (let i = layers.length - 1; i >= 0; i--) base = over(layers[i], base);
+        return base;
+      };
+      const out = { checked: 0, skipped: 0, failures: [] };
+      const seen = new Set();
+      const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+      for (let n = walker.nextNode(); n && out.checked + out.skipped < 400; n = walker.nextNode()) {
+        if (!n.nodeValue || !n.nodeValue.trim()) continue;
+        const el = n.parentElement;
+        if (!el || seen.has(el) || ["SCRIPT", "STYLE", "NOSCRIPT"].includes(el.tagName)) continue;
+        seen.add(el);
+        const cs = getComputedStyle(el);
+        const r = el.getBoundingClientRect();
+        if (cs.visibility === "hidden" || cs.display === "none" || r.width === 0 || r.height === 0 || parseFloat(cs.opacity) === 0) continue;
+        const bg = backdrop(el);
+        const fg0 = parse(cs.color);
+        if (!bg || !fg0 || cs.textShadow !== "none" && cs.webkitTextStrokeWidth !== "0px") { out.skipped++; continue; }
+        const fg = fg0.a < 1 ? over(fg0, bg) : fg0;
+        const l1 = lum(fg), l2 = lum(bg);
+        const ratio = (Math.max(l1, l2) + 0.05) / (Math.min(l1, l2) + 0.05);
+        const size = parseFloat(cs.fontSize);
+        const bold = parseInt(cs.fontWeight, 10) >= 700;
+        const large = size >= 24 || (size >= 18.66 && bold);
+        const need = large ? 3 : 4.5;
+        out.checked++;
+        if (ratio < need) out.failures.push({ text: n.nodeValue.trim().slice(0, 30), ratio: Math.round(ratio * 100) / 100, need });
+      }
+      return out;
+    });
+    if (contrast.checked === 0) add({ testId: "a11y.contrast", status: "inconclusive", url, device, actual: `No text could be measured (${contrast.skipped} element(s) on images, gradients or with strokes were skipped)`, note: "Contrast over background images and gradients cannot be computed reliably and is not guessed." });
+    else add({ testId: "a11y.contrast", status: contrast.failures.length ? "failed" : "passed", url, device, actual: contrast.failures.length ? `${contrast.failures.length} of ${contrast.checked} text elements below the WCAG AA ratio, e.g. ${contrast.failures.slice(0, 3).map((f) => `"${f.text}" ${f.ratio}:1 (needs ${f.need}:1)`).join("; ")}` : `${contrast.checked} text elements meet WCAG AA`, expected: "4.5:1 for normal text, 3:1 for large text (WCAG 1.4.3)", note: contrast.skipped ? `${contrast.skipped} element(s) over images or gradients were not measured.` : "Computed from rendered colours; hover/focus states and text inside images are not covered." });
+
     if (device === "mobile") {
       const nav = await page.evaluate(() => {
         const toggle = document.querySelector("[aria-label*=menu i], [aria-controls], .hamburger, .menu-toggle, button[aria-expanded]");

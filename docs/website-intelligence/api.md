@@ -14,6 +14,8 @@
 | GET | `/:id/recommendations` | Priority-ranked |
 | GET/POST | `/:id/tasks` · PATCH/DELETE `/:id/tasks/:taskId` | Remediation tasks |
 | GET/POST | `/:id/report` | Report metadata / record generation (PDF is rendered client-side) |
+| GET | `/:id/export?format=csv\|json\|sarif` | Findings CSV (formula-injection-safe), full bundle JSON, SARIF 2.1.0 for code-scanning dashboards |
+| GET | `/:id/gate?minScore=70&maxCritical=0&maxHigh=&requireComplete=1&strict=1` | CI quality gate; verdict with reasons. `strict=1` returns HTTP 422 on failure. Only outstanding (not verified/accepted/dismissed) findings count; unscored or provisional audits never silently pass |
 | GET | `/:id/comparison` | Regression vs previous audit |
 | GET/POST/DELETE | `/:id/share` | Client share link |
 | GET/POST | `/:id/benchmark(s)` | Competitor benchmarking |

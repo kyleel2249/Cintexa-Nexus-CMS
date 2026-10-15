@@ -1,14 +1,14 @@
 import { useMemo, useState } from "react";
 import { Link, useLocation } from "wouter";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import { Ban, CheckCircle2, CircleDashed, Download, FileText, ListChecks, Loader2, RefreshCw, RotateCcw, Share2, Trash2, XCircle } from "lucide-react";
+import { Ban, FileJson, FileSpreadsheet, ShieldCheck, CheckCircle2, CircleDashed, Download, FileText, ListChecks, Loader2, RefreshCw, RotateCcw, Share2, Trash2, XCircle } from "lucide-react";
 import type { AuditBundle, AuditSummary, Severity } from "@workspace/wi-core";
 import { CATEGORY_SHORT_LABELS, STAGE_LABELS } from "@workspace/wi-core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import {
-  isActive, useAudit, useAuditAction, useBenchmarkStart, useBenchmarks, useBundle, useComparison, useEvents, useRetest, useShare, useShareMutations, useTrend,
+  downloadExport, isActive, useAudit, useGate, useAuditAction, useBenchmarkStart, useBenchmarks, useBundle, useComparison, useEvents, useRetest, useShare, useShareMutations, useTrend,
 } from "@/lib/website-intelligence/api";
 import {
   AuditStatusBadge, CategoryBars, CategoryRadar, EmptyState, ErrorNote, Loading, Panel, ScoreRing, SeverityBadge, SeverityChart, Stat, WI, fmtDate, label, pct, scoreColor,
@@ -208,6 +208,8 @@ function Dashboard({ bundle, onRetest }: { bundle: AuditBundle; onRetest: (fps: 
         </Panel>
       )}
 
+      <ExportAndGate id={bundle.audit.id} />
+
       <Panel title="Next steps" className="wi-no-print">
         <div className="flex flex-wrap items-center gap-2">
           <Button size="sm" variant="outline" disabled={!immediate.length} onClick={() => onRetest(immediate)}><RefreshCw className="mr-1.5 h-4 w-4" />Retest immediate fixes ({immediate.length})</Button>
@@ -328,5 +330,42 @@ function BenchmarksView({ id }: { id: string }) {
       )}
       {b.data && <p className="text-xs text-muted-foreground">{b.data.note} * provisional.</p>}
     </div>
+  );
+}
+
+function ExportAndGate({ id }: { id: string }) {
+  const [minScore, setMinScore] = useState(70);
+  const [maxCritical, setMaxCritical] = useState(0);
+  const [maxHigh, setMaxHigh] = useState<number | null>(null);
+  const [requireComplete, setRequireComplete] = useState(true);
+  const [busy, setBusy] = useState<string | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  const gate = useGate(id, { minScore, maxCritical, maxHigh, requireComplete }, true);
+  const run = async (f: "csv" | "json" | "sarif") => { setBusy(f); setErr(null); try { await downloadExport(id, f); } catch (e) { setErr((e as Error).message); } finally { setBusy(null); } };
+  const g = gate.data;
+  return (
+    <Panel title="Export and CI quality gate" className="wi-no-print">
+      <div className="flex flex-wrap items-center gap-2">
+        <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => run("csv")}><FileSpreadsheet className="mr-1.5 h-4 w-4" />Findings CSV</Button>
+        <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => run("json")}><FileJson className="mr-1.5 h-4 w-4" />Full JSON</Button>
+        <Button size="sm" variant="outline" disabled={busy !== null} onClick={() => run("sarif")}><ShieldCheck className="mr-1.5 h-4 w-4" />SARIF 2.1.0</Button>
+        {busy && <Loader2 className="h-4 w-4 animate-spin" aria-label="Preparing export" />}
+      </div>
+      {err && <p role="alert" className="mt-2 text-xs text-red-400">{err}</p>}
+      <div className="mt-4 grid gap-3 sm:grid-cols-4">
+        <label className="text-xs">Minimum score<Input type="number" min={0} max={100} value={minScore} onChange={(e) => setMinScore(Math.min(100, Math.max(0, Number(e.target.value) || 0)))} /></label>
+        <label className="text-xs">Max critical<Input type="number" min={0} value={maxCritical} onChange={(e) => setMaxCritical(Math.max(0, Number(e.target.value) || 0))} /></label>
+        <label className="text-xs">Max high (blank = any)<Input type="number" min={0} value={maxHigh ?? ""} onChange={(e) => setMaxHigh(e.target.value === "" ? null : Math.max(0, Number(e.target.value) || 0))} /></label>
+        <label className="flex items-end gap-2 pb-2 text-xs"><input type="checkbox" checked={requireComplete} onChange={(e) => setRequireComplete(e.target.checked)} />Reject provisional scores</label>
+      </div>
+      {g && (
+        <div className={cn("mt-3 rounded-md border p-3 text-sm", g.passed ? "border-emerald-500/40" : "border-red-500/40")} role="status">
+          <b className={g.passed ? "text-emerald-400" : "text-red-400"}>{g.passed ? "Gate passed" : "Gate failed"}</b>
+          <span className="text-muted-foreground"> - score {g.score == null ? "n/a" : Math.round(g.score)}{g.provisional ? " (provisional)" : ""}, {g.counts.critical} critical and {g.counts.high} high outstanding, readiness: {g.readiness}</span>
+          {g.reasons.length > 0 && <ul className="mt-1 list-disc pl-5 text-xs">{g.reasons.map((r) => <li key={r}>{r}</li>)}</ul>}
+        </div>
+      )}
+      <p className="mt-2 text-xs text-muted-foreground">Pipelines can call <code>GET /api/v1/website-audits/{id}/gate?strict=1</code> with a signed-in user's ID token; strict mode answers HTTP 422 on failure.</p>
+    </Panel>
   );
 }
