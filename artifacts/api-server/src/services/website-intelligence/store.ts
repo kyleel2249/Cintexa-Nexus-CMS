@@ -1,5 +1,8 @@
-import { randomUUID } from "node:crypto";
 import { ensureSchema, pool } from "@workspace/db";
+import { emptyProgress, initialStages, newId, stripSecrets, type AuditPatch, type ListFilter, type NewAudit, type WorkflowPatch } from "@workspace/wi-engine/repo";
+
+export { emptyProgress, initialStages, newId, stripSecrets };
+export type { AuditPatch, ListFilter, NewAudit, WorkflowPatch };
 import {
   AUDIT_SCHEMA_VERSION, SCORING_VERSION, STAGE_IDS,
   type AuditConfig, type AuditProgress, type AuditStatus, type AuditSummary, type CheckResult, type CoverageReport, type EnvironmentRecord,
@@ -7,16 +10,11 @@ import {
   type ScoreBreakdown, type StageId, type StageState, type WebsiteType, type AuditProfile, type Horizon, type TaskStatus,
 } from "@workspace/wi-core";
 
-export const newId = (prefix: string) => `${prefix}_${randomUUID().replace(/-/g, "").slice(0, 20)}`;
-
 async function q<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
   await ensureSchema(pool);
   const r = await pool.query(sql, params);
   return r.rows as T[];
 }
-
-export const emptyProgress = (): AuditProgress => ({ discovered: 0, inspected: 0, failed: 0, skipped: 0, findings: 0, requests: 0 });
-export const initialStages = (): StageState[] => STAGE_IDS.map((id) => ({ id, status: "pending" as const }));
 
 const iso = (v: unknown): string | null => (v ? new Date(v as string).toISOString() : null);
 
@@ -28,18 +26,6 @@ function toSummary(r: any): AuditSummary {
     scoringVersion: r.scoring_version, scores: r.scores ?? null, previousAuditId: r.previous_audit_id, parentAuditId: r.parent_audit_id, error: r.error,
     config: stripSecrets(r.config), coverage: r.coverage ?? null, environment: r.environment ?? null, monitorId: r.monitor_id,
   };
-}
-
-/** The credential itself is never persisted; this guards against a leak if a caller ever passes one. */
-export function stripSecrets(cfg: AuditConfig): AuditConfig {
-  const c = JSON.parse(JSON.stringify(cfg ?? {})) as AuditConfig & { authenticated?: { credential?: string } };
-  if (c.authenticated) delete c.authenticated.credential;
-  return c;
-}
-
-export interface NewAudit {
-  id?: string; ownerId: string; ownerEmail: string | null; hostname: string; cfg: AuditConfig; kind?: "audit" | "benchmark" | "retest";
-  previousAuditId?: string | null; parentAuditId?: string | null; monitorId?: string | null; workspace?: string | null;
 }
 
 export async function createAudit(a: NewAudit): Promise<AuditSummary> {
@@ -62,8 +48,6 @@ export async function getAudit(id: string): Promise<AuditSummary | null> {
   return r ? toSummary(r) : null;
 }
 
-export interface ListFilter { ownerId?: string; hostname?: string; status?: string; kind?: string; limit?: number; offset?: number; admin?: boolean; search?: string }
-
 export async function listAudits(f: ListFilter): Promise<{ items: AuditSummary[]; total: number }> {
   const where: string[] = ["deleted_at IS NULL"];
   const p: unknown[] = [];
@@ -76,11 +60,6 @@ export async function listAudits(f: ListFilter): Promise<{ items: AuditSummary[]
   p.push(Math.min(f.limit ?? 50, 200)); p.push(f.offset ?? 0);
   const rows = await q(`SELECT * FROM wi_audits WHERE ${where.join(" AND ")} ORDER BY created_at DESC LIMIT $${p.length - 1} OFFSET $${p.length}`, p);
   return { items: rows.map(toSummary), total };
-}
-
-export interface AuditPatch {
-  status?: AuditStatus; stage?: StageId | null; stages?: StageState[]; progress?: AuditProgress; scores?: ScoreBreakdown | null; coverage?: CoverageReport | null;
-  environment?: EnvironmentRecord | null; error?: string | null; startedAt?: Date | null; completedAt?: Date | null; previousAuditId?: string | null; heartbeat?: boolean;
 }
 
 export async function patchAudit(id: string, p: AuditPatch): Promise<void> {
@@ -189,7 +168,6 @@ function toWorkflow(r: any): FindingWorkflow {
 export async function loadWorkflows(auditId: string): Promise<Map<string, FindingWorkflow>> { return new Map((await q(`SELECT * FROM wi_finding_workflow WHERE audit_id=$1`, [auditId])).map((r) => [r.fingerprint, toWorkflow(r)])); }
 export async function getWorkflow(auditId: string, fingerprint: string): Promise<FindingWorkflow | null> { const r = (await q(`SELECT * FROM wi_finding_workflow WHERE audit_id=$1 AND fingerprint=$2`, [auditId, fingerprint]))[0]; return r ? toWorkflow(r) : null; }
 
-export interface WorkflowPatch { status?: FindingStatus; owner?: string | null; notes?: string; rationale?: string | null; dueDate?: string | null; retestStatus?: RetestStatus; retestAuditId?: string | null; verifiedAt?: Date | null; verifiedBy?: string | null; verificationMethod?: "retest" | "manual" | null }
 export async function patchWorkflow(auditId: string, fingerprint: string, p: WorkflowPatch): Promise<FindingWorkflow | null> {
   const cols: Record<string, string> = { status: "status", owner: "owner", notes: "notes", rationale: "rationale", dueDate: "due_date", retestStatus: "retest_status", retestAuditId: "retest_audit_id", verifiedAt: "verified_at", verifiedBy: "verified_by", verificationMethod: "verification_method" };
   const sets: string[] = ["updated_at = NOW()"];

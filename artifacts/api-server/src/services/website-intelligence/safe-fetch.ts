@@ -5,6 +5,10 @@ import net from "node:net";
 import tls from "node:tls";
 import zlib from "node:zlib";
 import { classifyIp, isIpLiteral, screenHostname } from "@workspace/wi-core";
+import { BlockedTargetError, ENGINE_USER_AGENT, header, type FetchAuth, type RedirectHop, type ResolvedHost, type SafeFetchOptions, type SafeFetchResult, type TlsProbe } from "@workspace/wi-engine/net-types";
+
+export { BlockedTargetError, ENGINE_USER_AGENT, header };
+export type { FetchAuth, RedirectHop, ResolvedHost, SafeFetchOptions, SafeFetchResult, TlsProbe };
 
 /**
  * SSRF-safe HTTP client used by every network operation of the Website Intelligence engine.
@@ -18,18 +22,6 @@ import { classifyIp, isIpLiteral, screenHostname } from "@workspace/wi-core";
  */
 
 export const ALLOWED_PORTS = new Set([80, 443, 8080, 8443]);
-
-export class BlockedTargetError extends Error {
-  readonly code = "BLOCKED_TARGET";
-  constructor(message: string) {
-    super(message);
-    this.name = "BlockedTargetError";
-  }
-}
-
-export interface ResolvedHost {
-  addresses: { address: string; family: 4 | 6 }[];
-}
 
 export type Resolver = (hostname: string) => Promise<{ address: string; family: number }[]>;
 
@@ -66,60 +58,6 @@ export async function resolvePublic(hostname: string): Promise<ResolvedHost> {
     if (!v.allowed && !(testAllowLoopback && (a.address === "127.0.0.1" || a.address === "::1"))) throw new BlockedTargetError(`Blocked: ${clean} resolves to a non-public address (${v.reason})`);
   }
   return { addresses: answers.map((a) => ({ address: a.address, family: (a.family === 6 ? 6 : 4) as 4 | 6 })) };
-}
-
-export interface RedirectHop {
-  url: string;
-  status: number;
-  location: string;
-}
-
-export interface FetchAuth {
-  headerName: string;
-  value: string;
-  pathPrefixes: string[];
-  origin: string;
-}
-
-export interface SafeFetchOptions {
-  method?: "GET" | "HEAD";
-  headers?: Record<string, string>;
-  timeoutMs?: number;
-  maxBytes?: number;
-  maxRedirects?: number;
-  /** Return false to refuse a redirect target (host scope). */
-  scope?: (url: URL) => boolean;
-  auth?: FetchAuth | null;
-  userAgent?: string;
-  signal?: AbortSignal;
-  followRedirects?: boolean;
-}
-
-export interface SafeFetchResult {
-  ok: boolean;
-  requestedUrl: string;
-  finalUrl: string;
-  status: number | null;
-  headers: Record<string, string | string[] | undefined>;
-  body: Buffer;
-  /** Bytes received on the wire (compressed). */
-  transferBytes: number;
-  truncated: boolean;
-  redirects: RedirectHop[];
-  ttfbMs: number | null;
-  totalMs: number | null;
-  contentEncoding: string | null;
-  remoteIp: string | null;
-  tlsProtocol: string | null;
-  error?: { code: string; message: string; blocked: boolean };
-}
-
-export const ENGINE_USER_AGENT = "CINTEXA-NEXUS-WebsiteIntelligence/1.0 (+https://cintexa.com/website-intelligence; passive audit)";
-
-export function header(r: Pick<SafeFetchResult, "headers">, name: string): string | null {
-  const v = r.headers[name.toLowerCase()];
-  if (Array.isArray(v)) return v.join(", ");
-  return v ?? null;
 }
 
 interface SingleResponse {
@@ -308,23 +246,6 @@ export async function safeFetch(rawUrl: string, options: SafeFetchOptions = {}):
     }
   }
   return { ...emptyResult(rawUrl, { code: "TOO_MANY_REDIRECTS", message: "Too many redirects", blocked: false }), redirects };
-}
-
-export interface TlsProbe {
-  reachable: boolean;
-  authorized: boolean;
-  authorizationError: string | null;
-  protocol: string | null;
-  cipher: string | null;
-  validFrom: string | null;
-  validTo: string | null;
-  daysRemaining: number | null;
-  subject: string | null;
-  issuer: string | null;
-  altNames: string[];
-  hostnameMatches: boolean | null;
-  selfSigned: boolean;
-  error?: string;
 }
 
 /** Inspects the TLS handshake without sending an HTTP request. The address is validated before connecting. */

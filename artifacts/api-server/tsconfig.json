@@ -22,6 +22,9 @@
     },
     {
       "path": "../../lib/wi-core"
+    },
+    {
+      "path": "../../lib/wi-engine"
     }
   ]
 }
