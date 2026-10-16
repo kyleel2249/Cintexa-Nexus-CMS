@@ -4,7 +4,8 @@
  *
  *   GET /api/wi-relay?url=<https://target/>   Authorization: Bearer <Firebase ID token>
  *
- * - Requires a valid Firebase ID token (RS256 verified against Google's securetoken keys).
+ * - Works without signing in. A valid Firebase ID token (RS256 verified against Google's securetoken keys) raises the limits.
+ * - Anonymous callers must be this site's own pages (same-origin browser request), get a smaller size cap and a lower rate limit.
  * - GET/HEAD only; http/https; ports 80/443/8080/8443; literal private/loopback/link-local IPs and internal hostnames refused.
  * - Redirects are NOT followed: the client revalidates every hop through this same relay.
  * - Body is streamed through a size cap. Metadata is returned in x-wi-* response headers.
@@ -19,6 +20,21 @@ const DEFAULT_MAX = 2_500_000;
 const HARD_MAX = 5_000_000;
 const TIMEOUT_MS = 20_000;
 const ALLOWED_PORTS = new Set(["", "80", "443", "8080", "8443"]);
+
+const RATE_WINDOW_MS = 60_000;
+const RATE_ANON = 120;
+const RATE_SIGNED_IN = 600;
+const ANON_MAX = 2_000_000;
+const hitsByIp = new Map<string, { start: number; n: number }>();
+
+/** Best-effort per-isolate limiter. It slows abuse; it is not a quota system. */
+export function rateLimited(ip: string, limit: number, now = Date.now()): boolean {
+  if (hitsByIp.size > 5000) for (const [k, v] of hitsByIp) if (now - v.start > RATE_WINDOW_MS) hitsByIp.delete(k);
+  const h = hitsByIp.get(ip);
+  if (!h || now - h.start > RATE_WINDOW_MS) { hitsByIp.set(ip, { start: now, n: 1 }); return false; }
+  h.n++;
+  return h.n > limit;
+}
 
 let jwksCache: { at: number; keys: Array<JsonWebKey & { kid: string }> } | null = null;
 
@@ -103,9 +119,18 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
 
   const auth = request.headers.get("authorization") ?? "";
   const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  if (!token) return fail(401, "Sign in to run audits.", base);
-  const user = await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID || "cintexa-nexus");
-  if (!user) return fail(401, "Your session is not valid. Sign in again.", base);
+  const user = token ? await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID || "cintexa-nexus") : null;
+  const self = new URL(request.url).origin;
+  if (!user) {
+    // Anonymous use is allowed, but only from this site's own pages (not curl, scripts or other sites).
+    const origin = request.headers.get("origin");
+    const sameSite = request.headers.get("sec-fetch-site");
+    const allowed = (env.WI_RELAY_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
+    const ok = sameSite === "same-origin" || origin === self || (origin !== null && allowed.includes(origin));
+    if (!ok) return fail(403, "The relay can only be used from the CINTEXA Nexus site.", base);
+  }
+  const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
+  if (rateLimited(`${user ? "u" : "a"}:${ip}`, user ? RATE_SIGNED_IN : RATE_ANON)) return fail(429, "Too many requests. Wait a minute and try again.", base);
 
   const reqUrl = new URL(request.url);
   let target: URL;
@@ -117,7 +142,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   if (why) return fail(403, `Target refused (${why}).`, base);
   if (target.hostname === reqUrl.hostname) return fail(403, "Target refused (relay loop).", base);
 
-  const cap = Math.min(Math.max(Number(reqUrl.searchParams.get("max")) || DEFAULT_MAX, 1_000), HARD_MAX);
+  const cap = Math.min(Math.max(Number(reqUrl.searchParams.get("max")) || DEFAULT_MAX, 1_000), user ? HARD_MAX : ANON_MAX);
   const accept = reqUrl.searchParams.get("accept");
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);

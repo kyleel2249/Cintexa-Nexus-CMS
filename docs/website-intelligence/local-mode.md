@@ -24,9 +24,10 @@ No setting is required. Setting `API_ORIGIN` later switches users to server mode
 | Explanations | Deterministic, built from recorded evidence |
 
 ## The relay
-`GET /api/wi-relay?url=<target>&max=<bytes>` with `Authorization: Bearer <Firebase ID token>`.
+`GET /api/wi-relay?url=<target>&max=<bytes>` with an optional `Authorization: Bearer <Firebase ID token>`.
 
-- Verifies the Firebase ID token (RS256, Google securetoken keys, audience/issuer = `FIREBASE_PROJECT_ID`, default `cintexa-nexus`).
+- **No sign-in required.** Visitors who are not signed in use a separate on-device workspace (`cintexa-wi-anonymous`); their history is not merged into an account.
+- Anonymous requests are accepted only from this site's own pages (same-origin browser requests), are capped at 2 MB per page and 120 requests/minute per address (best effort, per edge instance). A valid Firebase ID token (RS256, audience/issuer = `FIREBASE_PROJECT_ID`, default `cintexa-nexus`) raises this to 5 MB and 600/minute. An invalid token is treated as anonymous.
 - GET/HEAD only; http/https; ports 80, 443, 8080, 8443; no URL credentials.
 - Refuses literal private/loopback/link-local/CGNAT IPs, `localhost`, `.local`, `.internal`, numeric hosts and itself.
 - Never follows redirects: the browser revalidates every hop (scope, robots, SSRF) and calls the relay again.
@@ -45,4 +46,4 @@ Deploy: nothing extra. The file is in `functions/api/` and is deployed with the 
 - Relay traffic is subject to Cloudflare Pages Functions plan limits (free plan: 100,000 requests/day).
 
 ## Verification performed
-`lib/wi-engine/test/local-mode.test.ts`: a real crawl of a fixture site through the relay wire protocol with the in-memory repository, covering all 15 stages, robots.txt, no form submission, scoring, workflow, tasks, CSV export, gate, retest carry-over, export/import persistence, honest server-only answers, and private-target refusal. `tests/wi-relay.test.ts`: token verification, SSRF, caps, manual redirects.
+`lib/wi-engine/test/local-mode.test.ts`: a real crawl of a fixture site through the relay wire protocol with the in-memory repository, covering all 15 stages, robots.txt, no form submission, scoring, workflow, tasks, CSV export, gate, retest carry-over, export/import persistence, honest server-only answers, and private-target refusal. `tests/wi-relay.test.ts`: anonymous same-origin rule, token verification, rate limit, SSRF, caps, manual redirects.
