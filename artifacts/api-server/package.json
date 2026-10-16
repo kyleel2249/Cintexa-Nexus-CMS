@@ -15,6 +15,7 @@
     "@workspace/api-zod": "*",
     "@workspace/db": "*",
     "@workspace/wi-core": "*",
+    "@workspace/wi-engine": "*",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.6",

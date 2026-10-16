@@ -3,6 +3,7 @@ import { Link, useLocation } from "wouter";
 import { Activity, FilePlus2, History, LayoutGrid, Settings as SettingsIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Loading, WI } from "./components";
+import { LocalModeBanner } from "./local-banner";
 
 const Overview = lazy(() => import("./overview"));
 const NewAudit = lazy(() => import("./new-audit"));
@@ -58,6 +59,7 @@ export default function WebsiteIntelligence() {
           })}
         </nav>
       </header>
+      <LocalModeBanner />
       <Suspense fallback={<Loading />}>{view}</Suspense>
     </div>
   );

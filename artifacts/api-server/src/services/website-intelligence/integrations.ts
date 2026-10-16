@@ -1,4 +1,5 @@
-import type { Device, PerformanceSample } from "@workspace/wi-core";
+import type { Device } from "@workspace/wi-core";
+import { parsePsi, psiRequestUrl, unavailablePsi, type PsiRun } from "@workspace/wi-engine/psi";
 import { safeFetch } from "./safe-fetch";
 import { resolveOpenRouterApiKey } from "../../lib/openrouter";
 import { browserWorkerHealth } from "./browser-client";
@@ -25,52 +26,11 @@ export async function integrationStatuses(): Promise<IntegrationStatus[]> {
   ];
 }
 
-interface PsiResponse {
-  lighthouseResult?: {
-    audits?: Record<string, { score?: number | null; numericValue?: number; details?: { items?: unknown[] }; title?: string }>;
-    categories?: { performance?: { score?: number | null } };
-    environment?: { hostUserAgent?: string; benchmarkIndex?: number };
-    runWarnings?: string[];
-  };
-  loadingExperience?: { metrics?: Record<string, { percentile?: number; category?: string }>; overall_category?: string; origin_fallback?: boolean };
-  originLoadingExperience?: { metrics?: Record<string, { percentile?: number; category?: string }>; overall_category?: string };
-  error?: { message?: string };
-}
-
-export interface PsiRun {
-  sample: PerformanceSample;
-  contrastFailures: number | null;
-  axeFailures: { id: string; title: string; count: number }[];
-}
+export type { PsiRun } from "@workspace/wi-engine/psi";
 
 export async function runPageSpeed(url: string, device: Device, signal: AbortSignal): Promise<PsiRun> {
-  const fetchedAt = new Date().toISOString();
   const key = process.env.PAGESPEED_API_KEY;
-  const base: PerformanceSample = { device, url, source: "pagespeed", available: false, fetchedAt };
-  if (!key) return { sample: { ...base, reason: "PAGESPEED_API_KEY is not configured." }, contrastFailures: null, axeFailures: [] };
-  const qs = `url=${encodeURIComponent(url)}&strategy=${device}&category=performance&category=accessibility&key=${encodeURIComponent(key)}`;
-  const r = await safeFetch(`https://www.googleapis.com/pagespeedonline/v5/runPagespeed?${qs}`, { timeoutMs: 90_000, maxBytes: 8 * 1024 * 1024, signal, headers: { accept: "application/json" }, followRedirects: false });
-  if (!r.ok || r.status === null) return { sample: { ...base, reason: `PageSpeed Insights was unreachable (${r.error?.message ?? "no response"}).` }, contrastFailures: null, axeFailures: [] };
-  let j: PsiResponse;
-  try { j = JSON.parse(r.body.toString("utf8")) as PsiResponse; } catch { return { sample: { ...base, reason: `PageSpeed Insights returned an unreadable response (HTTP ${r.status}).` }, contrastFailures: null, axeFailures: [] }; }
-  if (r.status !== 200 || j.error) return { sample: { ...base, reason: `PageSpeed Insights error: ${j.error?.message ?? `HTTP ${r.status}`}` }, contrastFailures: null, axeFailures: [] };
-  const a = j.lighthouseResult?.audits ?? {};
-  const num = (id: string) => (typeof a[id]?.numericValue === "number" ? (a[id].numericValue as number) : undefined);
-  const lab = {
-    lcpMs: num("largest-contentful-paint"), fcpMs: num("first-contentful-paint"), cls: num("cumulative-layout-shift"), tbtMs: num("total-blocking-time"),
-    speedIndexMs: num("speed-index"), ttfbMs: num("server-response-time"), performanceScore: typeof j.lighthouseResult?.categories?.performance?.score === "number" ? Math.round((j.lighthouseResult.categories.performance.score as number) * 100) : undefined,
-  };
-  const fm = (j.loadingExperience?.metrics && Object.keys(j.loadingExperience.metrics).length ? j.loadingExperience : j.originLoadingExperience) as PsiResponse["loadingExperience"] | undefined;
-  const originOnly = !(j.loadingExperience?.metrics && Object.keys(j.loadingExperience.metrics).length) || Boolean(j.loadingExperience?.origin_fallback);
-  const m = fm?.metrics ?? {};
-  const field = Object.keys(m).length
-    ? { lcpMs: m.LARGEST_CONTENTFUL_PAINT_MS?.percentile, inpMs: m.INTERACTION_TO_NEXT_PAINT?.percentile, cls: typeof m.CUMULATIVE_LAYOUT_SHIFT_SCORE?.percentile === "number" ? (m.CUMULATIVE_LAYOUT_SHIFT_SCORE.percentile as number) / 100 : undefined, fcpMs: m.FIRST_CONTENTFUL_PAINT_MS?.percentile, ttfbMs: m.EXPERIMENTAL_TIME_TO_FIRST_BYTE?.percentile, category: fm?.overall_category, origin: originOnly }
-    : null;
-  const bad = Object.entries(a).filter(([id, v]) => v.score === 0 && ["color-contrast", "image-alt", "label", "link-name", "button-name", "html-has-lang", "document-title", "meta-viewport", "aria-allowed-attr", "aria-required-attr", "tap-targets", "target-size", "heading-order", "duplicate-id-aria", "frame-title", "list", "listitem", "tabindex", "bypass", "valid-lang", "select-name", "input-image-alt", "aria-hidden-focus"].includes(id));
-  return {
-    sample: { ...base, available: true, lab, field, environment: j.lighthouseResult?.environment?.hostUserAgent ?? "Lighthouse via PageSpeed Insights (Google-hosted, throttled mobile/desktop emulation)" },
-    contrastFailures: a["color-contrast"]?.score === undefined || a["color-contrast"]?.score === null ? null : a["color-contrast"].score === 0 ? ((a["color-contrast"].details?.items?.length as number | undefined) ?? 1) : 0,
-    axeFailures: bad.map(([id, v]) => ({ id, title: v.title ?? id, count: (v.details?.items?.length as number | undefined) ?? 1 })),
-  };
+  if (!key) return unavailablePsi(url, device, "PAGESPEED_API_KEY is not configured.");
+  const r = await safeFetch(psiRequestUrl(url, device, key), { timeoutMs: 90_000, maxBytes: 8 * 1024 * 1024, signal, headers: { accept: "application/json" }, followRedirects: false });
+  return parsePsi(url, device, { status: r.ok ? r.status : null, text: r.body.toString("utf8"), error: r.error?.message });
 }
-

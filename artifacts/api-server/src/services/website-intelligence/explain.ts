@@ -1,27 +1,10 @@
 import type { Finding } from "@workspace/wi-core";
+import { deterministicExplanation, type Explanation } from "@workspace/wi-engine/explain";
 import { getOpenRouterClient, getOpenRouterModel } from "../../lib/openrouter";
 import { logger } from "../../lib/logger";
 
-export interface Explanation {
-  source: "ai" | "deterministic";
-  label: string;
-  summary: string;
-  whyItMatters: string;
-  steps: string[];
-  caveats: string[];
-  generatedAt: string;
-}
-
-export function deterministicExplanation(f: Finding): Explanation {
-  const why = [f.impact.user, f.impact.search, f.impact.business, f.impact.security].filter(Boolean).join(" ") || "This condition differs from the documented standard the test checks.";
-  const steps = [f.fix, ...f.implementation.split(/(?<=\.)\s+/).filter(Boolean).slice(0, 4), `Verify: ${f.verify}`];
-  const caveats = [
-    f.provenance === "inferred" || f.verification !== "verified" ? "This result is a heuristic inference and should be confirmed manually before acting." : "",
-    f.measurementMethod ? `How it was measured: ${f.measurementMethod}` : "",
-    "The expected outcome is that the test passes after a retest. It is not a forecast of traffic, ranking or revenue.",
-  ].filter(Boolean);
-  return { source: "deterministic", label: "Generated from the audit evidence by fixed rules", summary: `${f.title}: ${f.description}${f.actual ? ` (observed: ${f.actual})` : ""}.`, whyItMatters: why, steps, caveats, generatedAt: new Date().toISOString() };
-}
+export type { Explanation } from "@workspace/wi-engine/explain";
+export { deterministicExplanation } from "@workspace/wi-engine/explain";
 
 /** AI-assisted explanation. The model only restates and organises the supplied evidence; it never creates results. */
 export async function explainFinding(f: Finding, enabled: boolean): Promise<Explanation> {

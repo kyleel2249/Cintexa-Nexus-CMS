@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
   AuditBundle, AuditComparison, AuditConfig, AuditStatus, AuditSummary, CategoryId, FindingStatus, FindingView, Horizon, Recommendation, RemediationTask, ReportType, Roadmap, TaskStatus,
 } from "@workspace/wi-core";
-import { apiFetch, apiJson } from "@/lib/api";
+import { wiFetch, wiJson as apiJson } from "@/lib/website-intelligence/local";
 
 const BASE = "/v1/website-audits";
 
@@ -186,7 +186,7 @@ export function useGate(id: string | undefined, p: { minScore: number; maxCritic
 export type ExportFormat = "csv" | "json" | "sarif";
 /** Downloads an export through the authenticated fetch (a plain link would not carry the bearer token). */
 export async function downloadExport(id: string, format: ExportFormat): Promise<void> {
-  const res = await apiFetch(`${BASE}/${id}/export?format=${format}`);
+  const res = await wiFetch(`${BASE}/${id}/export?format=${format}`);
   if (!res.ok) throw new Error(`Export failed (HTTP ${res.status}).`);
   const name = /filename="([^"]+)"/.exec(res.headers.get("content-disposition") ?? "")?.[1] ?? `findings.${format}`;
   const url = URL.createObjectURL(await res.blob());

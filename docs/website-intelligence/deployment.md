@@ -7,3 +7,6 @@ Step-by-step API host instructions (and the fix for "The API backend is unreacha
 4. **Browser worker (optional but needed for rendered checks)**: build `services/wi-browser-worker/Dockerfile`, run it on a host with no route to private networks (Fly.io, Cloud Run, a VM). Set `WI_BROWSER_WORKER_TOKEN`, then set `WI_BROWSER_WORKER_URL` + the same token on the API host. See [browser-worker.md](browser-worker.md).
 5. **Firebase**: no rule or hosting change is required; authentication reuses the existing Firebase ID-token verification.
 6. **Smoke check**: open `/website-intelligence`, Settings → integrations should show which of PageSpeed / worker / SMTP / AI are configured; run a New Audit against a site you own.
+
+## No API host required
+Cloudflare Pages alone is enough. `functions/api/wi-relay.ts` ships with the site; set `FIREBASE_PROJECT_ID` only if your Firebase project id is not `cintexa-nexus`. An API host (see api-host-setup.md) is optional and adds monitors, share links, TLS tests and the browser worker.

@@ -9,9 +9,8 @@ import type { CheckResult, Device } from "@workspace/wi-core";
  *   POST /v1/inspect  { url, devices, maxScreenshots }  -> { results: BrowserFinding[], screenshots: [...] }
  * The worker enforces its own network egress policy (it must refuse private/internal destinations).
  */
-export interface BrowserFinding { testId: string; status: CheckResult["status"]; url?: string; device?: Device; actual?: string; expected?: string; note?: string }
-
-export interface BrowserInspection { available: boolean; reason?: string; findings: BrowserFinding[]; version?: string }
+import type { BrowserFinding, BrowserInspection } from "@workspace/wi-engine/ports";
+export type { BrowserFinding, BrowserInspection };
 
 export function browserWorkerConfigured(): boolean {
   return Boolean(process.env.WI_BROWSER_WORKER_URL);
