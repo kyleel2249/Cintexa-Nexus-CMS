@@ -112,9 +112,10 @@ async function createLocal(uid: string, email: string | null): Promise<LocalStat
 
 export async function getLocal(): Promise<LocalState> {
   await firebaseAuth.authStateReady().catch(() => undefined);
+  // Signing in is optional. Visitors who are not signed in use a separate on-device workspace.
   const u = firebaseAuth.currentUser;
-  if (!u) throw new ApiError("Sign in to use Website Intelligence.", 401);
-  if (!local || local.uid !== u.uid) local = { uid: u.uid, promise: createLocal(u.uid, u.email) };
+  const uid = u?.uid ?? "anonymous";
+  if (!local || local.uid !== uid) local = { uid, promise: createLocal(uid, u?.email ?? null) };
   return local.promise;
 }
 

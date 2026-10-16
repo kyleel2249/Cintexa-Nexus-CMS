@@ -14,7 +14,7 @@ export const ALLOWED_PORTS = new Set([80, 443, 8080, 8443]);
 export interface RelayNetOptions {
   /** Absolute or same-origin URL of the relay, e.g. "/api/wi-relay". */
   relayUrl: string;
-  /** Returns a fresh Firebase ID token. */
+  /** Returns a fresh Firebase ID token, or null when the visitor is not signed in (the relay then applies anonymous limits). */
   getToken(): Promise<string | null>;
   fetchImpl?: typeof fetch;
   dohUrl?: string;
@@ -112,7 +112,6 @@ export function createRelayNet(opts: RelayNetOptions): NetPort {
       try {
         await resolvePublic(url.hostname);
         const token = await opts.getToken();
-        if (!token) return { ...empty(rawUrl, { code: "UNAUTHENTICATED", message: "Sign in to run audits.", blocked: false }), redirects };
         const ctl = new AbortController();
         const timer = setTimeout(() => ctl.abort(), timeoutMs);
         const onAbort = () => ctl.abort();
@@ -122,12 +121,12 @@ export function createRelayNet(opts: RelayNetOptions): NetPort {
           const accept = options.headers && Object.entries(options.headers).find(([k]) => k.toLowerCase() === "accept")?.[1];
           if (accept) qs.set("accept", accept);
           const t0 = Date.now();
-          const res = await doFetch(`${opts.relayUrl}?${qs}`, { method, headers: { authorization: `Bearer ${token}` }, signal: ctl.signal });
+          const res = await doFetch(`${opts.relayUrl}?${qs}`, { method, headers: token ? { authorization: `Bearer ${token}` } : {}, signal: ctl.signal });
           if (!res.headers.has("x-wi-status")) {
             let msg = `Relay returned HTTP ${res.status}`;
             try { msg = ((await res.json()) as { error?: string }).error ?? msg; } catch { /* keep default */ }
             const blocked = res.status === 403 || res.status === 400;
-            return { ...empty(rawUrl, { code: res.status === 401 ? "UNAUTHENTICATED" : blocked ? "BLOCKED_TARGET" : "RELAY_ERROR", message: msg, blocked }), finalUrl: current, redirects };
+            return { ...empty(rawUrl, { code: res.status === 429 ? "RATE_LIMITED" : blocked ? "BLOCKED_TARGET" : "RELAY_ERROR", message: msg, blocked }), finalUrl: current, redirects };
           }
           const status = Number(res.headers.get("x-wi-status"));
           const headerObj = JSON.parse(decodeURIComponent(res.headers.get("x-wi-headers") ?? "{}")) as Record<string, string[]>;

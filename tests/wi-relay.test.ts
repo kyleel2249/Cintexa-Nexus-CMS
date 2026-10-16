@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 // @ts-ignore PagesFunction is an ambient Cloudflare type, erased at runtime
-import { onRequest, blockedHost, verifyFirebaseToken } from "../functions/api/wi-relay";
+import { onRequest, blockedHost, verifyFirebaseToken, rateLimited } from "../functions/api/wi-relay";
 
 const PROJECT = "cintexa-nexus";
 const enc = (o: unknown) => Buffer.from(typeof o === "string" ? o : JSON.stringify(o)).toString("base64url");
@@ -25,20 +25,39 @@ function stub(jwk: unknown, site?: (url: string) => Response) {
     return realFetch(input, init);
   }) as typeof fetch;
 }
-const call = (qs: string, token?: string, method = "GET") =>
-  (onRequest as any)({ request: new Request(`https://app.pages.dev/api/wi-relay?${qs}`, { method, headers: token ? { authorization: `Bearer ${token}` } : {} }), env: {} });
+const call = (qs: string, token?: string, method = "GET", extra: Record<string, string> = {}) =>
+  (onRequest as any)({ request: new Request(`https://app.pages.dev/api/wi-relay?${qs}`, { method, headers: { ...(token ? { authorization: `Bearer ${token}` } : {}), ...extra } }), env: {} });
+const site = { "sec-fetch-site": "same-origin" };
 
 describe("wi-relay", () => {
   test("blockedHost covers private space", () => {
     for (const h of ["localhost", "10.0.0.1", "127.0.0.1", "169.254.169.254", "192.168.1.1", "172.20.0.1", "[::1]", "fd00::1", "foo.internal", "2130706433", "0x7f000001", "::ffff:7f00:1"]) expect(blockedHost(h)).not.toBeNull();
     for (const h of ["example.com", "8.8.8.8", "sub.example.org"]) expect(blockedHost(h)).toBeNull();
   });
-  test("rejects missing, forged and wrong-audience tokens", async () => {
-    const a = await mint(); stub(a.jwk);
-    expect((await call("url=https://example.com/")).status).toBe(401);
-    expect((await call("url=https://example.com/", a.token.slice(0, -4) + "AAAA")).status).toBe(401);
+  test("anonymous use works only from this site's own pages", async () => {
+    const a = await mint(); stub(a.jwk, () => new Response("<html></html>", { headers: { "content-type": "text/html" } }));
+    expect((await call("url=https://example.com/")).status).toBe(403); // curl-style caller
+    expect((await call("url=https://example.com/", undefined, "GET", { origin: "https://evil.example" })).status).toBe(403);
+    const ok = await call("url=https://example.com/", undefined, "GET", site);
+    expect(ok.status).toBe(200);
+    // forged or wrong-audience tokens fall back to anonymous rules instead of granting anything
+    expect((await call("url=https://example.com/", a.token.slice(0, -4) + "AAAA")).status).toBe(403);
+    expect((await call("url=https://example.com/", a.token.slice(0, -4) + "AAAA", "GET", site)).status).toBe(200);
+    const big = await call("url=https://example.com/&max=4000000", undefined, "GET", site);
+    expect(big.status).toBe(200);
+  });
+  test("anonymous callers are rate limited per address", () => {
+    const t = Date.now();
+    let limited = 0;
+    for (let i = 0; i < 130; i++) if (rateLimited("a:9.9.9.9", 120, t)) limited++;
+    expect(limited).toBe(10);
+    expect(rateLimited("a:9.9.9.9", 120, t + 61_000)).toBe(false);
+  });
+  test("tokens are verified", async () => {
     const wrong = await mint({ aud: "other" }); stub(wrong.jwk);
-    expect((await call("url=https://example.com/", wrong.token)).status).toBe(401);
+    expect(await verifyFirebaseToken(wrong.token, PROJECT)).toBeNull();
+    const good = await mint(); stub(good.jwk);
+    expect((await verifyFirebaseToken(good.token, PROJECT))?.uid).toBe("u1");
     const expired = await mint({ exp: Math.floor(Date.now() / 1000) - 600 }); stub(expired.jwk);
     expect(await verifyFirebaseToken(expired.token, PROJECT)).toBeNull();
   });
