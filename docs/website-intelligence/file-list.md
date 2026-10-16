@@ -20,3 +20,10 @@ Paths are relative to the repository root. Every file is a complete replacement/
 `lib/db/src/bootstrap.ts` · `lib/wi-core` referenced from `tsconfig.json` · `artifacts/api-server/{package.json,tsconfig.json,.env.example}` · `artifacts/api-server/src/{index.ts,routes/index.ts,lib/auth-middleware.ts,lib/webhooks.ts}` · `artifacts/cintexa/{package.json}` · `artifacts/cintexa/src/{App.tsx,lib/api.ts,components/layout/Sidebar.tsx}`
 
 Unzip the archive at the repository root; paths line up one-to-one. Then run `npm install` (new workspace: `lib/wi-core`; new devDependency `tsx`. The browser worker in `services/wi-browser-worker` is deliberately NOT an npm workspace: it has its own package.json and Dockerfile, so Playwright is never installed in the CMS build).
+
+## Local mode files
+- `lib/wi-engine/src/memory-repo.ts`, `index-local.ts`, `local/{net,router,runtime,index}.ts`
+- `lib/wi-engine/test/local-mode.test.ts`, `tests/wi-relay.test.ts`
+- `functions/api/wi-relay.ts` (+ identical copy in `artifacts/cintexa/functions/api/`)
+- `artifacts/cintexa/src/lib/website-intelligence/local.ts`, `pages/website-intelligence/local-banner.tsx`
+- `docs/website-intelligence/local-mode.md`

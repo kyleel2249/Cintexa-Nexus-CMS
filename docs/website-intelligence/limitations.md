@@ -9,3 +9,6 @@
 - PDFs are generated client-side with jsPDF; very large audits produce long reports.
 - robots.txt disallowed pages are not fetched, so their tests are `blocked`.
 - Single-vantage-point measurements: results reflect the API host's region/network.
+
+## Local mode limits
+TLS tests are not tested, compression is inconclusive, audits run only while the tab is open, history is per browser, and monitors, share links, authenticated crawling and the browser worker are unavailable. Details: [local-mode.md](local-mode.md).
