@@ -15,7 +15,7 @@ export const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefine
   "/api").replace(/\/$/, "");
 
 /** Endpoints that must stay anonymous (public intake form, public forms, public settings, health). */
-const PUBLIC_PATH = /\/(intake\/public|public\/forms|settings\/public|website-audits\/public|healthz?)(\/|$|\?)/;
+const PUBLIC_PATH = /\/(intake\/public|public\/forms|settings\/public|website-audits\/public|sales\/public|healthz?)(\/|$|\?)/;
 
 function isApiUrl(url: string): boolean {
   if (url.startsWith("/api/") || url === "/api") return true;

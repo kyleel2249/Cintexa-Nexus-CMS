@@ -7,6 +7,7 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import { SplashScreen } from "@/components/SplashScreen";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AuthProvider } from "@/context/AuthContext";
+import { SalesProvider } from "@/context/SalesContext";
 import NotFound from "@/pages/not-found";
 
 function lazyWithRecovery<T extends ComponentType<unknown>>(loader: () => Promise<{ default: T }>) {
@@ -49,6 +50,9 @@ const BusinessDiagnostic = lazyWithRecovery(() => import("@/pages/business-diagn
 const PublicIntake = lazyWithRecovery(() => import("@/pages/public-intake"));
 const WebsiteIntelligence = lazyWithRecovery(() => import("@/pages/website-intelligence"));
 const WebsiteIntelligenceShared = lazyWithRecovery(() => import("@/pages/website-intelligence/shared"));
+const SalesRoutes = lazyWithRecovery(() => import("@/pages/sales/routes").then((m) => ({ default: m.SalesRoutes })));
+const PublicQuotation = lazyWithRecovery(() => import("@/pages/sales/public-quotation"));
+const PublicLeadForm = lazyWithRecovery(() => import("@/pages/sales/public-lead-form"));
 
 const queryClient = new QueryClient();
 
@@ -86,6 +90,7 @@ class RouteErrorBoundary extends Component<{ children: ReactNode }, { error: Err
 
 function AppRoutes() {
   return (
+    <SalesProvider>
     <AppLayout>
       <RouteErrorBoundary>
         <Suspense fallback={<PageLoader />}>
@@ -119,11 +124,13 @@ function AppRoutes() {
             <Route path="/settings" component={Settings} />
             <Route path="/plugins" component={Plugins} />
             <Route path="/subscribers" component={Subscribers} />
+            <Route path="/sales/*?" component={SalesRoutes} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>
       </RouteErrorBoundary>
     </AppLayout>
+    </SalesProvider>
   );
 }
 
@@ -148,6 +155,24 @@ function App() {
                     <RouteErrorBoundary>
                       <Suspense fallback={<PageLoader />}>
                         <WebsiteIntelligenceShared token={params.token} />
+                      </Suspense>
+                    </RouteErrorBoundary>
+                  )}
+                </Route>
+                <Route path="/q/:token">
+                  {(params) => (
+                    <RouteErrorBoundary>
+                      <Suspense fallback={<PageLoader />}>
+                        <PublicQuotation token={params.token} />
+                      </Suspense>
+                    </RouteErrorBoundary>
+                  )}
+                </Route>
+                <Route path="/f/:token">
+                  {(params) => (
+                    <RouteErrorBoundary>
+                      <Suspense fallback={<PageLoader />}>
+                        <PublicLeadForm token={params.token} />
                       </Suspense>
                     </RouteErrorBoundary>
                   )}

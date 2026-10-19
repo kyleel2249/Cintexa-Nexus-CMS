@@ -15,3 +15,5 @@ export const db = drizzle(pool, { schema });
 
 export * from "./schema";
 export { ensureSchema, SCHEMA_STATEMENTS } from "./bootstrap";
+export { SALES_SCHEMA_STATEMENTS } from "./sales-schema";
+export { createSalesDb, type SalesDb, type SalesQueryable } from "./sales-adapter";

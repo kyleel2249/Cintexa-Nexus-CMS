@@ -1,5 +1,6 @@
 import type pg from "pg";
 import { WI_SCHEMA_STATEMENTS } from "./wi-schema";
+import { SALES_SCHEMA_STATEMENTS } from "./sales-schema";
 
 /**
  * Idempotent schema bootstrap.
@@ -470,6 +471,7 @@ END $$`,
   `CREATE INDEX IF NOT EXISTS idx_pages_scheduled ON pages(scheduled_at)`,
   `CREATE INDEX IF NOT EXISTS idx_posts_scheduled ON posts(scheduled_at)`,
   ...WI_SCHEMA_STATEMENTS,
+  ...SALES_SCHEMA_STATEMENTS,
 ];
 
 let running: Promise<void> | null = null;

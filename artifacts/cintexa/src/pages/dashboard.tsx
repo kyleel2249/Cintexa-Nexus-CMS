@@ -1,5 +1,6 @@
 import { CintexaLogo } from "@/components/SplashScreen";
 import { WebsiteIntelligenceCard } from "@/components/website-intelligence-card";
+import { SalesOverviewWidget } from "@/components/sales/SalesOverviewWidget";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
@@ -278,6 +279,10 @@ export default function Dashboard() {
 
       <motion.div variants={fadeUp}>
         <WebsiteIntelligenceCard />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <SalesOverviewWidget compact />
       </motion.div>
 
       <motion.div

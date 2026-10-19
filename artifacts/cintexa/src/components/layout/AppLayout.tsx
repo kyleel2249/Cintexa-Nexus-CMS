@@ -1,4 +1,4 @@
-import { ReactNode } from "react";
+import { ReactNode, useCallback, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
 import { motion } from "framer-motion";
@@ -10,13 +10,15 @@ interface AppLayoutProps {
 
 export function AppLayout({ children }: AppLayoutProps) {
   const [location] = useLocation();
+  const [navOpen, setNavOpen] = useState(false);
+  const close = useCallback(() => setNavOpen(false), []);
 
   return (
     <div className="min-h-screen bg-background text-foreground flex">
-      <Sidebar />
-      <div className="flex-1 flex flex-col">
-        <Topbar />
-        <main className="flex-1 p-8 ml-64 overflow-x-hidden">
+      <Sidebar mobileOpen={navOpen} onClose={close} />
+      <div className="flex-1 flex flex-col min-w-0 lg:ml-64">
+        <Topbar onMenu={() => setNavOpen(true)} />
+        <main className="flex-1 p-4 sm:p-6 lg:p-8 overflow-x-hidden">
           <motion.div
             key={location}
             initial={{ opacity: 0, y: 10 }}

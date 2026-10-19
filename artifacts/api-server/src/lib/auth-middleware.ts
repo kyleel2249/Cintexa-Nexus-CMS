@@ -178,6 +178,11 @@ const PUBLIC_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^\/subscribers\/unsubscribe$/ },
   { method: "GET", pattern: /^\/seo\/(sitemap\.xml|robots\.txt)$/ },
   { method: "GET", pattern: /^\/v1\/website-audits\/public\/[A-Za-z0-9_-]{24,64}$/ },
+  // Sales Management: web-to-lead capture and the customer quotation link (token-protected, rate limited in the Sales layer)
+  { method: "GET", pattern: /^\/sales\/public\/lead-forms\/[A-Za-z0-9_-]{16,128}$/ },
+  { method: "POST", pattern: /^\/sales\/public\/lead-forms\/[A-Za-z0-9_-]{16,128}\/submit$/ },
+  { method: "GET", pattern: /^\/sales\/public\/quotations\/[A-Za-z0-9_-]{16,128}$/ },
+  { method: "POST", pattern: /^\/sales\/public\/quotations\/[A-Za-z0-9_-]{16,128}\/(accept|decline)$/ },
 ];
 
 function isPublic(req: Request): boolean {

@@ -1,0 +1,1270 @@
+-- Sales Management schema (all tables prefixed sales_). Idempotent.
+-- The API applies the same statements automatically on boot (lib/db/src/sales-schema.ts);
+-- this file is generated from that list for manual / Supabase setups. Do not edit by hand.
+CREATE TABLE IF NOT EXISTS sales_settings (
+  key TEXT PRIMARY KEY,
+  value JSONB NOT NULL DEFAULT '{}'::jsonb,
+  version INTEGER NOT NULL DEFAULT 1,
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_settings_history (
+  id BIGSERIAL PRIMARY KEY,
+  key TEXT NOT NULL,
+  version INTEGER NOT NULL,
+  value JSONB NOT NULL,
+  changed_by TEXT,
+  changed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_counters (
+  name TEXT PRIMARY KEY,
+  value BIGINT NOT NULL DEFAULT 0
+);
+
+CREATE TABLE IF NOT EXISTS sales_audit_events (
+  id BIGSERIAL PRIMARY KEY,
+  at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  actor_id TEXT,
+  actor_label TEXT,
+  action TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id TEXT,
+  summary TEXT,
+  before JSONB,
+  after JSONB,
+  request_id TEXT
+);
+
+CREATE TABLE IF NOT EXISTS sales_idempotency_keys (
+  actor TEXT NOT NULL,
+  scope TEXT NOT NULL,
+  key TEXT NOT NULL,
+  request_hash TEXT NOT NULL,
+  status_code INTEGER,
+  response JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (actor, scope, key)
+);
+
+CREATE TABLE IF NOT EXISTS sales_outbox (
+  id BIGSERIAL PRIMARY KEY,
+  kind TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  entity_type TEXT,
+  entity_id TEXT,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','unconfigured','sent','failed','dead','manual')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  provider_ref TEXT,
+  idempotency_key TEXT NOT NULL,
+  next_attempt_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  sent_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_outbox_idem ON sales_outbox(idempotency_key);
+
+CREATE INDEX IF NOT EXISTS sales_outbox_status ON sales_outbox(status, next_attempt_at);
+
+CREATE TABLE IF NOT EXISTS sales_teams (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  parent_team_id INTEGER REFERENCES sales_teams(id) ON DELETE SET NULL,
+  manager_member_id INTEGER,
+  branch TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_teams_name ON sales_teams(lower(name)) WHERE archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_members (
+  id SERIAL PRIMARY KEY,
+  user_sub TEXT,
+  email TEXT NOT NULL,
+  display_name TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'sales_rep' CHECK (role IN ('sales_admin','sales_director','sales_manager','sales_rep','sales_analyst','finance','support_agent','readonly_exec')),
+  team_id INTEGER REFERENCES sales_teams(id) ON DELETE SET NULL,
+  branch TEXT,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  hire_date DATE,
+  coaching_notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_members_email ON sales_members(lower(email));
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_members_sub ON sales_members(user_sub) WHERE user_sub IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS sales_members_team ON sales_members(team_id);
+
+DO $$ BEGIN
+  ALTER TABLE sales_teams ADD CONSTRAINT sales_teams_manager_fk FOREIGN KEY (manager_member_id) REFERENCES sales_members(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS sales_territories (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  countries TEXT[] NOT NULL DEFAULT '{}',
+  regions TEXT[] NOT NULL DEFAULT '{}',
+  industries TEXT[] NOT NULL DEFAULT '{}',
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_territories_name ON sales_territories(lower(name)) WHERE archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_territory_members (
+  territory_id INTEGER NOT NULL REFERENCES sales_territories(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL REFERENCES sales_members(id) ON DELETE CASCADE,
+  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+  PRIMARY KEY (territory_id, member_id)
+);
+
+CREATE TABLE IF NOT EXISTS sales_ownership_history (
+  id BIGSERIAL PRIMARY KEY,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  from_owner_id INTEGER,
+  to_owner_id INTEGER,
+  changed_by TEXT,
+  reason TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_ownership_entity ON sales_ownership_history(entity_type, entity_id);
+
+CREATE TABLE IF NOT EXISTS sales_campaigns (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  objective TEXT,
+  channel TEXT NOT NULL DEFAULT 'other',
+  status TEXT NOT NULL DEFAULT 'planned' CHECK (status IN ('planned','active','paused','completed','cancelled')),
+  budget NUMERIC(18,2),
+  spend NUMERIC(18,2),
+  currency TEXT NOT NULL DEFAULT 'USD',
+  starts_on DATE,
+  ends_on DATE,
+  target_segment TEXT,
+  utm_campaign TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (spend IS NULL OR spend >= 0), CHECK (budget IS NULL OR budget >= 0)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_campaigns_utm ON sales_campaigns(lower(utm_campaign)) WHERE utm_campaign IS NOT NULL AND archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_competitors (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  website TEXT,
+  positioning TEXT,
+  value_proposition TEXT,
+  strengths TEXT,
+  weaknesses TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_competitors_name ON sales_competitors(lower(name)) WHERE archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_competitor_intel (
+  id SERIAL PRIMARY KEY,
+  competitor_id INTEGER NOT NULL REFERENCES sales_competitors(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('pricing','product','positioning','objection','observation','win_loss')),
+  title TEXT NOT NULL,
+  content TEXT NOT NULL,
+  source TEXT NOT NULL,
+  source_url TEXT,
+  observed_on DATE NOT NULL,
+  confidence TEXT NOT NULL DEFAULT 'low' CHECK (confidence IN ('low','medium','high')),
+  verified BOOLEAN NOT NULL DEFAULT FALSE,
+  verified_by TEXT,
+  verified_at TIMESTAMPTZ,
+  evidence_document_id INTEGER,
+  created_by TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_intel_competitor ON sales_competitor_intel(competitor_id);
+
+CREATE TABLE IF NOT EXISTS sales_products (
+  id SERIAL PRIMARY KEY,
+  sku TEXT NOT NULL,
+  name TEXT NOT NULL,
+  description TEXT,
+  category TEXT,
+  kind TEXT NOT NULL DEFAULT 'product' CHECK (kind IN ('product','service','bundle')),
+  unit TEXT NOT NULL DEFAULT 'each',
+  base_price NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (base_price >= 0),
+  cost_price NUMERIC(18,2) CHECK (cost_price IS NULL OR cost_price >= 0),
+  currency TEXT NOT NULL DEFAULT 'USD',
+  tax_rate NUMERIC(7,4) NOT NULL DEFAULT 0 CHECK (tax_rate >= 0 AND tax_rate <= 100),
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('active','discontinued')),
+  track_stock BOOLEAN NOT NULL DEFAULT FALSE,
+  external_ref TEXT,
+  variant_of INTEGER REFERENCES sales_products(id) ON DELETE SET NULL,
+  variant_label TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_products_sku ON sales_products(lower(sku)) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_products_cat ON sales_products(category);
+
+CREATE TABLE IF NOT EXISTS sales_bundle_items (
+  bundle_id INTEGER NOT NULL REFERENCES sales_products(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES sales_products(id) ON DELETE RESTRICT,
+  quantity NUMERIC(14,4) NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  PRIMARY KEY (bundle_id, product_id), CHECK (bundle_id <> product_id)
+);
+
+CREATE TABLE IF NOT EXISTS sales_accounts (
+  id SERIAL PRIMARY KEY,
+  number TEXT NOT NULL,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'company' CHECK (kind IN ('company','individual')),
+  status TEXT NOT NULL DEFAULT 'prospect' CHECK (status IN ('prospect','active','inactive','churned')),
+  classification TEXT,
+  industry TEXT,
+  segment TEXT,
+  company_size TEXT,
+  website TEXT,
+  phone TEXT,
+  email TEXT,
+  address_line TEXT,
+  city TEXT,
+  region TEXT,
+  country TEXT,
+  postal_code TEXT,
+  territory_id INTEGER REFERENCES sales_territories(id) ON DELETE SET NULL,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  tags TEXT[] NOT NULL DEFAULT '{}',
+  currency TEXT NOT NULL DEFAULT 'USD',
+  payment_terms_days INTEGER NOT NULL DEFAULT 30 CHECK (payment_terms_days >= 0),
+  credit_limit NUMERIC(18,2) CHECK (credit_limit IS NULL OR credit_limit >= 0),
+  reorder_interval_days INTEGER CHECK (reorder_interval_days IS NULL OR reorder_interval_days > 0),
+  expected_reorder_on DATE,
+  next_engagement_on DATE,
+  last_purchase_at TIMESTAMPTZ,
+  consent_email BOOLEAN NOT NULL DEFAULT FALSE,
+  consent_whatsapp BOOLEAN NOT NULL DEFAULT FALSE,
+  consent_recorded_at TIMESTAMPTZ,
+  notes TEXT,
+  merged_into_id INTEGER REFERENCES sales_accounts(id) ON DELETE SET NULL,
+  created_by TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_accounts_number ON sales_accounts(number);
+
+CREATE INDEX IF NOT EXISTS sales_accounts_owner ON sales_accounts(owner_id) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_accounts_status ON sales_accounts(status) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_accounts_name ON sales_accounts(lower(name));
+
+CREATE INDEX IF NOT EXISTS sales_accounts_territory ON sales_accounts(territory_id);
+
+CREATE TABLE IF NOT EXISTS sales_price_books (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  currency TEXT NOT NULL DEFAULT 'USD',
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  account_id INTEGER REFERENCES sales_accounts(id) ON DELETE CASCADE,
+  valid_from DATE,
+  valid_to DATE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (valid_to IS NULL OR valid_from IS NULL OR valid_to >= valid_from)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_price_books_default ON sales_price_books(currency) WHERE is_default AND archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_price_book_entries (
+  id SERIAL PRIMARY KEY,
+  price_book_id INTEGER NOT NULL REFERENCES sales_price_books(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES sales_products(id) ON DELETE CASCADE,
+  min_quantity NUMERIC(14,4) NOT NULL DEFAULT 1 CHECK (min_quantity > 0),
+  unit_price NUMERIC(18,2) NOT NULL CHECK (unit_price >= 0),
+  UNIQUE (price_book_id, product_id, min_quantity)
+);
+
+CREATE TABLE IF NOT EXISTS sales_promotions (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  product_id INTEGER REFERENCES sales_products(id) ON DELETE CASCADE,
+  category TEXT,
+  discount_percent NUMERIC(7,4) NOT NULL CHECK (discount_percent > 0 AND discount_percent <= 100),
+  starts_on DATE NOT NULL,
+  ends_on DATE NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (ends_on >= starts_on), CHECK (product_id IS NOT NULL OR category IS NOT NULL)
+);
+
+CREATE TABLE IF NOT EXISTS sales_contacts (
+  id SERIAL PRIMARY KEY,
+  account_id INTEGER REFERENCES sales_accounts(id) ON DELETE SET NULL,
+  first_name TEXT NOT NULL,
+  last_name TEXT,
+  email TEXT,
+  phone TEXT,
+  job_title TEXT,
+  role TEXT NOT NULL DEFAULT 'contact' CHECK (role IN ('contact','decision_maker','influencer','billing','technical','champion')),
+  is_primary BOOLEAN NOT NULL DEFAULT FALSE,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  consent_email BOOLEAN NOT NULL DEFAULT FALSE,
+  consent_whatsapp BOOLEAN NOT NULL DEFAULT FALSE,
+  consent_recorded_at TIMESTAMPTZ,
+  unsubscribed_at TIMESTAMPTZ,
+  notes TEXT,
+  created_by TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_contacts_account ON sales_contacts(account_id) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_contacts_email ON sales_contacts(lower(email));
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_contacts_one_primary ON sales_contacts(account_id) WHERE is_primary AND archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_leads (
+  id SERIAL PRIMARY KEY,
+  number TEXT NOT NULL,
+  first_name TEXT NOT NULL,
+  last_name TEXT,
+  email TEXT,
+  phone TEXT,
+  company TEXT,
+  job_title TEXT,
+  industry TEXT,
+  segment TEXT,
+  country TEXT,
+  region TEXT,
+  territory_id INTEGER REFERENCES sales_territories(id) ON DELETE SET NULL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  campaign_id INTEGER REFERENCES sales_campaigns(id) ON DELETE SET NULL,
+  product_interest TEXT,
+  budget NUMERIC(18,2) CHECK (budget IS NULL OR budget >= 0),
+  estimated_value NUMERIC(18,2) CHECK (estimated_value IS NULL OR estimated_value >= 0),
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  team_id INTEGER REFERENCES sales_teams(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'new' CHECK (status IN ('new','contacted','qualified','nurturing','converted','disqualified')),
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','urgent')),
+  score INTEGER NOT NULL DEFAULT 0 CHECK (score BETWEEN 0 AND 100),
+  score_breakdown JSONB NOT NULL DEFAULT '[]'::jsonb,
+  consent_email BOOLEAN NOT NULL DEFAULT FALSE,
+  consent_whatsapp BOOLEAN NOT NULL DEFAULT FALSE,
+  consent_recorded_at TIMESTAMPTZ,
+  last_contact_at TIMESTAMPTZ,
+  first_response_at TIMESTAMPTZ,
+  next_action TEXT,
+  next_follow_up_at TIMESTAMPTZ,
+  disqualification_reason TEXT,
+  notes TEXT,
+  utm JSONB NOT NULL DEFAULT '{}'::jsonb,
+  referrer_account_id INTEGER REFERENCES sales_accounts(id) ON DELETE SET NULL,
+  converted_account_id INTEGER REFERENCES sales_accounts(id) ON DELETE SET NULL,
+  converted_contact_id INTEGER REFERENCES sales_contacts(id) ON DELETE SET NULL,
+  converted_opportunity_id INTEGER,
+  converted_at TIMESTAMPTZ,
+  merged_into_id INTEGER REFERENCES sales_leads(id) ON DELETE SET NULL,
+  created_by TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_leads_number ON sales_leads(number);
+
+CREATE INDEX IF NOT EXISTS sales_leads_owner ON sales_leads(owner_id) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_leads_status ON sales_leads(status) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_leads_email ON sales_leads(lower(email));
+
+CREATE INDEX IF NOT EXISTS sales_leads_created ON sales_leads(created_at);
+
+CREATE INDEX IF NOT EXISTS sales_leads_followup ON sales_leads(next_follow_up_at) WHERE archived_at IS NULL AND status NOT IN ('converted','disqualified');
+
+CREATE INDEX IF NOT EXISTS sales_leads_campaign ON sales_leads(campaign_id);
+
+CREATE TABLE IF NOT EXISTS sales_lead_forms (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  token TEXT NOT NULL,
+  campaign_id INTEGER REFERENCES sales_campaigns(id) ON DELETE SET NULL,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  source TEXT NOT NULL DEFAULT 'web_form',
+  require_consent BOOLEAN NOT NULL DEFAULT TRUE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  submissions INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_lead_forms_token ON sales_lead_forms(token);
+
+CREATE TABLE IF NOT EXISTS sales_campaign_members (
+  id SERIAL PRIMARY KEY,
+  campaign_id INTEGER NOT NULL REFERENCES sales_campaigns(id) ON DELETE CASCADE,
+  lead_id INTEGER REFERENCES sales_leads(id) ON DELETE CASCADE,
+  contact_id INTEGER REFERENCES sales_contacts(id) ON DELETE CASCADE,
+  account_id INTEGER REFERENCES sales_accounts(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'targeted' CHECK (status IN ('targeted','sent','responded','converted','unsubscribed')),
+  added_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (lead_id IS NOT NULL OR contact_id IS NOT NULL OR account_id IS NOT NULL)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_campaign_members_lead ON sales_campaign_members(campaign_id, lead_id) WHERE lead_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_campaign_members_contact ON sales_campaign_members(campaign_id, contact_id) WHERE contact_id IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS sales_touches (
+  id BIGSERIAL PRIMARY KEY,
+  campaign_id INTEGER NOT NULL REFERENCES sales_campaigns(id) ON DELETE CASCADE,
+  lead_id INTEGER REFERENCES sales_leads(id) ON DELETE CASCADE,
+  account_id INTEGER REFERENCES sales_accounts(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'touch',
+  utm JSONB NOT NULL DEFAULT '{}'::jsonb,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_touches_lead ON sales_touches(lead_id, at);
+
+CREATE INDEX IF NOT EXISTS sales_touches_account ON sales_touches(account_id, at);
+
+CREATE TABLE IF NOT EXISTS sales_pipelines (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  is_default BOOLEAN NOT NULL DEFAULT FALSE,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_pipelines_default ON sales_pipelines((TRUE)) WHERE is_default AND archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_pipeline_stages (
+  id SERIAL PRIMARY KEY,
+  pipeline_id INTEGER NOT NULL REFERENCES sales_pipelines(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  position INTEGER NOT NULL,
+  probability NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (probability BETWEEN 0 AND 100),
+  kind TEXT NOT NULL DEFAULT 'open' CHECK (kind IN ('open','won','lost')),
+  forecast_category TEXT NOT NULL DEFAULT 'pipeline' CHECK (forecast_category IN ('omitted','pipeline','best_case','commit','closed')),
+  required_fields TEXT[] NOT NULL DEFAULT '{}',
+  stalled_after_days INTEGER NOT NULL DEFAULT 14 CHECK (stalled_after_days > 0),
+  archived_at TIMESTAMPTZ,
+  UNIQUE (pipeline_id, position) DEFERRABLE INITIALLY DEFERRED
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_stage_name ON sales_pipeline_stages(pipeline_id, lower(name)) WHERE archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_opportunities (
+  id SERIAL PRIMARY KEY,
+  number TEXT NOT NULL,
+  name TEXT NOT NULL,
+  account_id INTEGER NOT NULL REFERENCES sales_accounts(id) ON DELETE RESTRICT,
+  contact_id INTEGER REFERENCES sales_contacts(id) ON DELETE SET NULL,
+  lead_id INTEGER REFERENCES sales_leads(id) ON DELETE SET NULL,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  team_id INTEGER REFERENCES sales_teams(id) ON DELETE SET NULL,
+  territory_id INTEGER REFERENCES sales_territories(id) ON DELETE SET NULL,
+  pipeline_id INTEGER NOT NULL REFERENCES sales_pipelines(id) ON DELETE RESTRICT,
+  stage_id INTEGER NOT NULL REFERENCES sales_pipeline_stages(id) ON DELETE RESTRICT,
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','won','lost')),
+  source TEXT,
+  campaign_id INTEGER REFERENCES sales_campaigns(id) ON DELETE SET NULL,
+  amount NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (amount >= 0),
+  currency TEXT NOT NULL DEFAULT 'USD',
+  probability NUMERIC(5,2) NOT NULL DEFAULT 0 CHECK (probability BETWEEN 0 AND 100),
+  probability_overridden BOOLEAN NOT NULL DEFAULT FALSE,
+  forecast_category TEXT NOT NULL DEFAULT 'pipeline' CHECK (forecast_category IN ('omitted','pipeline','best_case','commit','closed')),
+  expected_close_date DATE,
+  close_date_changes INTEGER NOT NULL DEFAULT 0,
+  closed_at TIMESTAMPTZ,
+  lost_reason TEXT,
+  lost_competitor_id INTEGER REFERENCES sales_competitors(id) ON DELETE SET NULL,
+  next_action TEXT,
+  next_action_date DATE,
+  buying_criteria TEXT,
+  objections TEXT,
+  stakeholders TEXT,
+  risks TEXT,
+  notes TEXT,
+  last_activity_at TIMESTAMPTZ,
+  stage_entered_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_by TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK ((status = 'lost') = (lost_reason IS NOT NULL) OR status <> 'lost')
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_opps_number ON sales_opportunities(number);
+
+CREATE INDEX IF NOT EXISTS sales_opps_owner ON sales_opportunities(owner_id) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_opps_account ON sales_opportunities(account_id);
+
+CREATE INDEX IF NOT EXISTS sales_opps_stage ON sales_opportunities(stage_id) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_opps_status_close ON sales_opportunities(status, expected_close_date) WHERE archived_at IS NULL;
+
+CREATE INDEX IF NOT EXISTS sales_opps_closed ON sales_opportunities(closed_at) WHERE status <> 'open';
+
+DO $$ BEGIN
+  ALTER TABLE sales_leads ADD CONSTRAINT sales_leads_opp_fk FOREIGN KEY (converted_opportunity_id) REFERENCES sales_opportunities(id) ON DELETE SET NULL;
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE TABLE IF NOT EXISTS sales_opportunity_products (
+  id SERIAL PRIMARY KEY,
+  opportunity_id INTEGER NOT NULL REFERENCES sales_opportunities(id) ON DELETE CASCADE,
+  product_id INTEGER NOT NULL REFERENCES sales_products(id) ON DELETE RESTRICT,
+  quantity NUMERIC(14,4) NOT NULL DEFAULT 1 CHECK (quantity > 0),
+  unit_price NUMERIC(18,2) NOT NULL CHECK (unit_price >= 0),
+  UNIQUE (opportunity_id, product_id)
+);
+
+CREATE TABLE IF NOT EXISTS sales_opportunity_stage_history (
+  id BIGSERIAL PRIMARY KEY,
+  opportunity_id INTEGER NOT NULL REFERENCES sales_opportunities(id) ON DELETE CASCADE,
+  from_stage_id INTEGER REFERENCES sales_pipeline_stages(id) ON DELETE SET NULL,
+  to_stage_id INTEGER NOT NULL REFERENCES sales_pipeline_stages(id) ON DELETE RESTRICT,
+  amount NUMERIC(18,2) NOT NULL,
+  expected_close_date DATE,
+  changed_by TEXT,
+  note TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_opp_hist ON sales_opportunity_stage_history(opportunity_id, at);
+
+CREATE TABLE IF NOT EXISTS sales_opportunity_changes (
+  id BIGSERIAL PRIMARY KEY,
+  opportunity_id INTEGER NOT NULL REFERENCES sales_opportunities(id) ON DELETE CASCADE,
+  field TEXT NOT NULL CHECK (field IN ('amount','expected_close_date','owner')),
+  old_value TEXT,
+  new_value TEXT,
+  changed_by TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_opportunity_competitors (
+  opportunity_id INTEGER NOT NULL REFERENCES sales_opportunities(id) ON DELETE CASCADE,
+  competitor_id INTEGER NOT NULL REFERENCES sales_competitors(id) ON DELETE CASCADE,
+  outcome TEXT NOT NULL DEFAULT 'present' CHECK (outcome IN ('present','won_against','lost_to')),
+  notes TEXT,
+  PRIMARY KEY (opportunity_id, competitor_id)
+);
+
+CREATE TABLE IF NOT EXISTS sales_activity_templates (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  type TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  description TEXT,
+  default_due_days INTEGER NOT NULL DEFAULT 1 CHECK (default_due_days >= 0),
+  priority TEXT NOT NULL DEFAULT 'medium',
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_activities (
+  id SERIAL PRIMARY KEY,
+  type TEXT NOT NULL CHECK (type IN ('call','email','meeting','visit','demo','task','follow_up','note','comment','event')),
+  subject TEXT NOT NULL,
+  description TEXT,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  lead_id INTEGER REFERENCES sales_leads(id) ON DELETE CASCADE,
+  account_id INTEGER REFERENCES sales_accounts(id) ON DELETE CASCADE,
+  contact_id INTEGER REFERENCES sales_contacts(id) ON DELETE SET NULL,
+  opportunity_id INTEGER REFERENCES sales_opportunities(id) ON DELETE CASCADE,
+  quotation_id INTEGER,
+  order_id INTEGER,
+  start_at TIMESTAMPTZ,
+  due_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  duration_minutes INTEGER CHECK (duration_minutes IS NULL OR duration_minutes >= 0),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','done','missed','cancelled')),
+  priority TEXT NOT NULL DEFAULT 'medium' CHECK (priority IN ('low','medium','high','urgent')),
+  outcome TEXT,
+  meeting_notes TEXT,
+  recurrence JSONB,
+  series_id UUID,
+  dedupe_key TEXT,
+  automation_run_id BIGINT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_activities_dedupe ON sales_activities(dedupe_key) WHERE dedupe_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS sales_activities_owner_due ON sales_activities(owner_id, due_at) WHERE status = 'open';
+
+CREATE INDEX IF NOT EXISTS sales_activities_lead ON sales_activities(lead_id);
+
+CREATE INDEX IF NOT EXISTS sales_activities_account ON sales_activities(account_id);
+
+CREATE INDEX IF NOT EXISTS sales_activities_opp ON sales_activities(opportunity_id);
+
+CREATE INDEX IF NOT EXISTS sales_activities_completed ON sales_activities(completed_at) WHERE completed_at IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS sales_notifications (
+  id BIGSERIAL PRIMARY KEY,
+  member_id INTEGER NOT NULL REFERENCES sales_members(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT,
+  link TEXT,
+  severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info','warning','critical')),
+  dedupe_key TEXT NOT NULL,
+  read_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (member_id, dedupe_key)
+);
+
+CREATE INDEX IF NOT EXISTS sales_notifications_unread ON sales_notifications(member_id, created_at DESC) WHERE read_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_target_periods (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('month','quarter','year','custom')),
+  starts_on DATE NOT NULL,
+  ends_on DATE NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','pending_approval','approved','closed')),
+  approved_by TEXT,
+  approved_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (ends_on >= starts_on)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_target_periods_name ON sales_target_periods(lower(name));
+
+CREATE TABLE IF NOT EXISTS sales_targets (
+  id SERIAL PRIMARY KEY,
+  period_id INTEGER NOT NULL REFERENCES sales_target_periods(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL CHECK (scope IN ('company','department','team','member','product','category','territory','branch','channel')),
+  scope_id INTEGER,
+  scope_key TEXT NOT NULL DEFAULT '',
+  metric TEXT NOT NULL CHECK (metric IN ('revenue','units','gross_profit','new_customers','deals_won')),
+  basis TEXT NOT NULL DEFAULT 'booked' CHECK (basis IN ('booked','invoiced','collected')),
+  amount NUMERIC(18,2) NOT NULL CHECK (amount >= 0),
+  parent_id INTEGER REFERENCES sales_targets(id) ON DELETE SET NULL,
+  alert_threshold_percent NUMERIC(5,2) NOT NULL DEFAULT 70 CHECK (alert_threshold_percent BETWEEN 0 AND 100),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_targets_unique ON sales_targets(period_id, scope, COALESCE(scope_id, 0), scope_key, metric);
+
+CREATE INDEX IF NOT EXISTS sales_targets_scope ON sales_targets(scope, scope_id);
+
+CREATE TABLE IF NOT EXISTS sales_target_adjustments (
+  id BIGSERIAL PRIMARY KEY,
+  target_id INTEGER NOT NULL REFERENCES sales_targets(id) ON DELETE CASCADE,
+  old_amount NUMERIC(18,2) NOT NULL,
+  new_amount NUMERIC(18,2) NOT NULL,
+  reason TEXT NOT NULL,
+  changed_by TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_quotations (
+  id SERIAL PRIMARY KEY,
+  number TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  root_id INTEGER,
+  supersedes_id INTEGER REFERENCES sales_quotations(id) ON DELETE SET NULL,
+  account_id INTEGER NOT NULL REFERENCES sales_accounts(id) ON DELETE RESTRICT,
+  contact_id INTEGER REFERENCES sales_contacts(id) ON DELETE SET NULL,
+  opportunity_id INTEGER REFERENCES sales_opportunities(id) ON DELETE SET NULL,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','internal_review','pending_approval','approved','sent','viewed','accepted','rejected','expired','superseded','cancelled')),
+  currency TEXT NOT NULL DEFAULT 'USD',
+  subtotal NUMERIC(18,2) NOT NULL DEFAULT 0,
+  discount_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  net_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  tax_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  cost_total NUMERIC(18,2),
+  margin_percent NUMERIC(7,2),
+  effective_discount_percent NUMERIC(7,2) NOT NULL DEFAULT 0,
+  payment_terms_days INTEGER NOT NULL DEFAULT 30,
+  terms TEXT,
+  delivery_terms TEXT,
+  notes TEXT,
+  validity_date DATE NOT NULL,
+  requires_approval BOOLEAN NOT NULL DEFAULT FALSE,
+  approval_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+  approved_by TEXT,
+  approved_at TIMESTAMPTZ,
+  sent_at TIMESTAMPTZ,
+  sent_via TEXT,
+  viewed_at TIMESTAMPTZ,
+  accepted_at TIMESTAMPTZ,
+  accepted_by_name TEXT,
+  acceptance_evidence JSONB,
+  rejected_at TIMESTAMPTZ,
+  rejected_reason TEXT,
+  public_token_hash TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (total >= 0)
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_quotations_number_ver ON sales_quotations(number, version);
+
+CREATE INDEX IF NOT EXISTS sales_quotations_account ON sales_quotations(account_id);
+
+CREATE INDEX IF NOT EXISTS sales_quotations_owner ON sales_quotations(owner_id);
+
+CREATE INDEX IF NOT EXISTS sales_quotations_status ON sales_quotations(status, validity_date);
+
+CREATE INDEX IF NOT EXISTS sales_quotations_opp ON sales_quotations(opportunity_id);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_quotations_token ON sales_quotations(public_token_hash) WHERE public_token_hash IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS sales_quotation_lines (
+  id SERIAL PRIMARY KEY,
+  quotation_id INTEGER NOT NULL REFERENCES sales_quotations(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  product_id INTEGER REFERENCES sales_products(id) ON DELETE SET NULL,
+  description TEXT NOT NULL,
+  quantity NUMERIC(14,4) NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(18,2) NOT NULL CHECK (unit_price >= 0),
+  list_price NUMERIC(18,2),
+  discount_percent NUMERIC(7,4) NOT NULL DEFAULT 0 CHECK (discount_percent BETWEEN 0 AND 100),
+  discount_amount NUMERIC(18,2) NOT NULL DEFAULT 0 CHECK (discount_amount >= 0),
+  tax_rate NUMERIC(7,4) NOT NULL DEFAULT 0 CHECK (tax_rate BETWEEN 0 AND 100),
+  unit_cost NUMERIC(18,2),
+  gross NUMERIC(18,2) NOT NULL,
+  discount NUMERIC(18,2) NOT NULL,
+  net NUMERIC(18,2) NOT NULL,
+  tax NUMERIC(18,2) NOT NULL,
+  total NUMERIC(18,2) NOT NULL,
+  UNIQUE (quotation_id, position)
+);
+
+CREATE TABLE IF NOT EXISTS sales_quotation_approvals (
+  id BIGSERIAL PRIMARY KEY,
+  quotation_id INTEGER NOT NULL REFERENCES sales_quotations(id) ON DELETE CASCADE,
+  requested_by TEXT,
+  decided_by TEXT,
+  decision TEXT NOT NULL DEFAULT 'pending' CHECK (decision IN ('pending','approved','rejected')),
+  reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+  comment TEXT,
+  requested_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  decided_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_quotation_one_pending ON sales_quotation_approvals(quotation_id) WHERE decision = 'pending';
+
+CREATE TABLE IF NOT EXISTS sales_orders (
+  id SERIAL PRIMARY KEY,
+  number TEXT NOT NULL,
+  account_id INTEGER NOT NULL REFERENCES sales_accounts(id) ON DELETE RESTRICT,
+  contact_id INTEGER REFERENCES sales_contacts(id) ON DELETE SET NULL,
+  quotation_id INTEGER REFERENCES sales_quotations(id) ON DELETE SET NULL,
+  opportunity_id INTEGER REFERENCES sales_opportunities(id) ON DELETE SET NULL,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  team_id INTEGER REFERENCES sales_teams(id) ON DELETE SET NULL,
+  territory_id INTEGER REFERENCES sales_territories(id) ON DELETE SET NULL,
+  campaign_id INTEGER REFERENCES sales_campaigns(id) ON DELETE SET NULL,
+  channel TEXT NOT NULL DEFAULT 'direct',
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','pending_approval','confirmed','processing','partially_fulfilled','fulfilled','completed','cancelled')),
+  currency TEXT NOT NULL DEFAULT 'USD',
+  subtotal NUMERIC(18,2) NOT NULL DEFAULT 0,
+  discount_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  net_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  tax_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  cost_total NUMERIC(18,2),
+  gross_profit NUMERIC(18,2),
+  returned_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  paid_total NUMERIC(18,2) NOT NULL DEFAULT 0,
+  payment_terms_days INTEGER NOT NULL DEFAULT 30,
+  requested_delivery_on DATE,
+  billing_address TEXT,
+  shipping_address TEXT,
+  notes TEXT,
+  requires_approval BOOLEAN NOT NULL DEFAULT FALSE,
+  approval_reasons JSONB NOT NULL DEFAULT '[]'::jsonb,
+  approved_by TEXT,
+  approved_at TIMESTAMPTZ,
+  inventory_status TEXT NOT NULL DEFAULT 'not_requested' CHECK (inventory_status IN ('not_requested','pending','reserved','unavailable','released')),
+  invoice_status TEXT NOT NULL DEFAULT 'none' CHECK (invoice_status IN ('none','pending','issued','unavailable')),
+  invoice_ref TEXT,
+  invoice_due_on DATE,
+  payment_status TEXT NOT NULL DEFAULT 'unpaid' CHECK (payment_status IN ('unpaid','partial','paid','refunded','unavailable')),
+  booked_at TIMESTAMPTZ,
+  confirmed_at TIMESTAMPTZ,
+  fulfilled_at TIMESTAMPTZ,
+  completed_at TIMESTAMPTZ,
+  cancelled_at TIMESTAMPTZ,
+  cancel_reason TEXT,
+  client_request_id TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_orders_number ON sales_orders(number);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_orders_one_per_quotation ON sales_orders(quotation_id) WHERE quotation_id IS NOT NULL AND status <> 'cancelled';
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_orders_client_req ON sales_orders(client_request_id) WHERE client_request_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS sales_orders_account ON sales_orders(account_id);
+
+CREATE INDEX IF NOT EXISTS sales_orders_owner ON sales_orders(owner_id);
+
+CREATE INDEX IF NOT EXISTS sales_orders_status ON sales_orders(status);
+
+CREATE INDEX IF NOT EXISTS sales_orders_booked ON sales_orders(booked_at) WHERE booked_at IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS sales_orders_invoice_due ON sales_orders(invoice_due_on) WHERE payment_status IN ('unpaid','partial');
+
+CREATE TABLE IF NOT EXISTS sales_order_lines (
+  id SERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+  position INTEGER NOT NULL,
+  product_id INTEGER REFERENCES sales_products(id) ON DELETE SET NULL,
+  description TEXT NOT NULL,
+  quantity NUMERIC(14,4) NOT NULL CHECK (quantity > 0),
+  unit_price NUMERIC(18,2) NOT NULL CHECK (unit_price >= 0),
+  discount_percent NUMERIC(7,4) NOT NULL DEFAULT 0,
+  discount_amount NUMERIC(18,2) NOT NULL DEFAULT 0,
+  tax_rate NUMERIC(7,4) NOT NULL DEFAULT 0,
+  unit_cost NUMERIC(18,2),
+  gross NUMERIC(18,2) NOT NULL,
+  discount NUMERIC(18,2) NOT NULL,
+  net NUMERIC(18,2) NOT NULL,
+  tax NUMERIC(18,2) NOT NULL,
+  total NUMERIC(18,2) NOT NULL,
+  fulfilled_quantity NUMERIC(14,4) NOT NULL DEFAULT 0 CHECK (fulfilled_quantity >= 0),
+  returned_quantity NUMERIC(14,4) NOT NULL DEFAULT 0 CHECK (returned_quantity >= 0),
+  UNIQUE (order_id, position),
+  CHECK (fulfilled_quantity <= quantity), CHECK (returned_quantity <= fulfilled_quantity)
+);
+
+CREATE TABLE IF NOT EXISTS sales_order_fulfilments (
+  id BIGSERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+  line_id INTEGER NOT NULL REFERENCES sales_order_lines(id) ON DELETE CASCADE,
+  quantity NUMERIC(14,4) NOT NULL CHECK (quantity > 0),
+  reference TEXT,
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','inventory')),
+  recorded_by TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_order_payments (
+  id BIGSERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+  amount NUMERIC(18,2) NOT NULL CHECK (amount > 0),
+  method TEXT NOT NULL DEFAULT 'bank_transfer',
+  reference TEXT,
+  received_on DATE NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual' CHECK (source IN ('manual','finance')),
+  status TEXT NOT NULL DEFAULT 'recorded' CHECK (status IN ('recorded','reversed')),
+  recorded_by TEXT,
+  idempotency_key TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_order_payments_idem ON sales_order_payments(order_id, idempotency_key) WHERE idempotency_key IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS sales_order_returns (
+  id BIGSERIAL PRIMARY KEY,
+  order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE CASCADE,
+  line_id INTEGER NOT NULL REFERENCES sales_order_lines(id) ON DELETE CASCADE,
+  quantity NUMERIC(14,4) NOT NULL CHECK (quantity > 0),
+  reason TEXT NOT NULL,
+  credit_amount NUMERIC(18,2) NOT NULL CHECK (credit_amount >= 0),
+  recorded_by TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_forecast_snapshots (
+  id SERIAL PRIMARY KEY,
+  label TEXT NOT NULL,
+  range_from TIMESTAMPTZ NOT NULL,
+  range_to TIMESTAMPTZ NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'company',
+  scope_id INTEGER,
+  committed NUMERIC(18,2) NOT NULL,
+  weighted NUMERIC(18,2) NOT NULL,
+  best_case NUMERIC(18,2) NOT NULL,
+  worst_case NUMERIC(18,2) NOT NULL,
+  closed NUMERIC(18,2) NOT NULL,
+  assumptions JSONB NOT NULL DEFAULT '{}'::jsonb,
+  taken_by TEXT,
+  taken_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_forecast_snap_scope ON sales_forecast_snapshots(scope, scope_id, range_from);
+
+CREATE TABLE IF NOT EXISTS sales_forecast_overrides (
+  id SERIAL PRIMARY KEY,
+  range_from TIMESTAMPTZ NOT NULL,
+  range_to TIMESTAMPTZ NOT NULL,
+  scope TEXT NOT NULL DEFAULT 'company',
+  scope_id INTEGER,
+  amount NUMERIC(18,2) NOT NULL CHECK (amount >= 0),
+  calculated_amount NUMERIC(18,2) NOT NULL,
+  reason TEXT NOT NULL,
+  set_by TEXT,
+  set_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  superseded_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_forecast_override_live ON sales_forecast_overrides(scope, COALESCE(scope_id,0), range_from, range_to) WHERE superseded_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_commission_plans (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  version INTEGER NOT NULL DEFAULT 1,
+  kind TEXT NOT NULL CHECK (kind IN ('percent','fixed','tiered')),
+  basis TEXT NOT NULL DEFAULT 'collected' CHECK (basis IN ('booked','invoiced','collected')),
+  measure TEXT NOT NULL DEFAULT 'revenue' CHECK (measure IN ('revenue','gross_profit')),
+  rate NUMERIC(7,4) CHECK (rate IS NULL OR rate BETWEEN 0 AND 100),
+  fixed_amount NUMERIC(18,2) CHECK (fixed_amount IS NULL OR fixed_amount >= 0),
+  tiers JSONB NOT NULL DEFAULT '[]'::jsonb,
+  product_id INTEGER REFERENCES sales_products(id) ON DELETE SET NULL,
+  category TEXT,
+  member_id INTEGER REFERENCES sales_members(id) ON DELETE CASCADE,
+  quota_bonus JSONB,
+  effective_from DATE NOT NULL,
+  effective_to DATE,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  supersedes_id INTEGER REFERENCES sales_commission_plans(id) ON DELETE SET NULL,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (effective_to IS NULL OR effective_to >= effective_from)
+);
+
+CREATE TABLE IF NOT EXISTS sales_commission_entries (
+  id SERIAL PRIMARY KEY,
+  member_id INTEGER NOT NULL REFERENCES sales_members(id) ON DELETE RESTRICT,
+  order_id INTEGER NOT NULL REFERENCES sales_orders(id) ON DELETE RESTRICT,
+  plan_id INTEGER NOT NULL REFERENCES sales_commission_plans(id) ON DELETE RESTRICT,
+  plan_version INTEGER NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'commission' CHECK (kind IN ('commission','adjustment')),
+  basis TEXT NOT NULL,
+  basis_amount NUMERIC(18,2) NOT NULL,
+  split_percent NUMERIC(5,2) NOT NULL DEFAULT 100 CHECK (split_percent > 0 AND split_percent <= 100),
+  amount NUMERIC(18,2) NOT NULL,
+  status TEXT NOT NULL DEFAULT 'calculated' CHECK (status IN ('calculated','approved','paid','void')),
+  breakdown JSONB NOT NULL DEFAULT '{}'::jsonb,
+  parent_entry_id INTEGER REFERENCES sales_commission_entries(id) ON DELETE RESTRICT,
+  adjustment_reason TEXT,
+  period_label TEXT,
+  approved_by TEXT,
+  approved_at TIMESTAMPTZ,
+  paid_at TIMESTAMPTZ,
+  payout_reference TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (kind = 'commission' OR (parent_entry_id IS NOT NULL AND adjustment_reason IS NOT NULL))
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_commission_unique ON sales_commission_entries(order_id, member_id, plan_id) WHERE kind = 'commission' AND status <> 'void';
+
+CREATE INDEX IF NOT EXISTS sales_commission_member ON sales_commission_entries(member_id, status);
+
+CREATE TABLE IF NOT EXISTS sales_feedback (
+  id SERIAL PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES sales_accounts(id) ON DELETE CASCADE,
+  contact_id INTEGER REFERENCES sales_contacts(id) ON DELETE SET NULL,
+  kind TEXT NOT NULL CHECK (kind IN ('survey','complaint','feedback','service_request')),
+  rating INTEGER CHECK (rating IS NULL OR rating BETWEEN 1 AND 10),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','in_progress','resolved','closed')),
+  subject TEXT NOT NULL,
+  body TEXT,
+  resolution TEXT,
+  resolved_at TIMESTAMPTZ,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_feedback_account ON sales_feedback(account_id, status);
+
+CREATE TABLE IF NOT EXISTS sales_referrals (
+  id SERIAL PRIMARY KEY,
+  referrer_account_id INTEGER NOT NULL REFERENCES sales_accounts(id) ON DELETE CASCADE,
+  lead_id INTEGER REFERENCES sales_leads(id) ON DELETE SET NULL,
+  referred_account_id INTEGER REFERENCES sales_accounts(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'received' CHECK (status IN ('received','qualified','won','lost')),
+  notes TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_account_plans (
+  id SERIAL PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES sales_accounts(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  objectives TEXT,
+  stakeholders TEXT,
+  growth_opportunities TEXT,
+  risks TEXT,
+  actions TEXT,
+  review_on DATE,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  status TEXT NOT NULL DEFAULT 'active' CHECK (status IN ('draft','active','completed','archived')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_renewals (
+  id SERIAL PRIMARY KEY,
+  account_id INTEGER NOT NULL REFERENCES sales_accounts(id) ON DELETE CASCADE,
+  product_id INTEGER REFERENCES sales_products(id) ON DELETE SET NULL,
+  description TEXT NOT NULL,
+  renewal_on DATE NOT NULL,
+  expected_amount NUMERIC(18,2) CHECK (expected_amount IS NULL OR expected_amount >= 0),
+  status TEXT NOT NULL DEFAULT 'upcoming' CHECK (status IN ('upcoming','renewed','lost','cancelled')),
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_renewals_due ON sales_renewals(renewal_on) WHERE status = 'upcoming';
+
+CREATE TABLE IF NOT EXISTS sales_automation_rules (
+  id SERIAL PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT,
+  trigger TEXT NOT NULL,
+  conditions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  actions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','active','paused','disabled')),
+  version INTEGER NOT NULL DEFAULT 1,
+  max_attempts INTEGER NOT NULL DEFAULT 3 CHECK (max_attempts BETWEEN 1 AND 10),
+  requires_approval BOOLEAN NOT NULL DEFAULT FALSE,
+  approved_by TEXT,
+  created_by TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_rules_trigger ON sales_automation_rules(trigger) WHERE status = 'active';
+
+CREATE TABLE IF NOT EXISTS sales_automation_runs (
+  id BIGSERIAL PRIMARY KEY,
+  rule_id INTEGER NOT NULL REFERENCES sales_automation_rules(id) ON DELETE CASCADE,
+  rule_version INTEGER NOT NULL,
+  idempotency_key TEXT NOT NULL,
+  trigger TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  depth INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'running' CHECK (status IN ('running','success','failed','skipped','retrying','dead')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  result JSONB,
+  is_test BOOLEAN NOT NULL DEFAULT FALSE,
+  locked_until TIMESTAMPTZ,
+  next_attempt_at TIMESTAMPTZ,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_runs_idem ON sales_automation_runs(idempotency_key);
+
+CREATE INDEX IF NOT EXISTS sales_runs_rule ON sales_automation_runs(rule_id, started_at DESC);
+
+CREATE INDEX IF NOT EXISTS sales_runs_retry ON sales_automation_runs(next_attempt_at) WHERE status = 'retrying';
+
+CREATE TABLE IF NOT EXISTS sales_playbook_articles (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'article' CHECK (kind IN ('article','script','discovery','objection','framework','template','negotiation','closing','onboarding','training','coaching','pricing','faq')),
+  audience_role TEXT,
+  product_id INTEGER REFERENCES sales_products(id) ON DELETE SET NULL,
+  industry TEXT,
+  segment TEXT,
+  stage_name TEXT,
+  body TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','review','published','archived')),
+  version INTEGER NOT NULL DEFAULT 1,
+  owner_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  is_training BOOLEAN NOT NULL DEFAULT FALSE,
+  document_id INTEGER,
+  published_at TIMESTAMPTZ,
+  search_text TSVECTOR,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_playbook_search ON sales_playbook_articles USING GIN (search_text);
+
+CREATE TABLE IF NOT EXISTS sales_playbook_versions (
+  id BIGSERIAL PRIMARY KEY,
+  article_id INTEGER NOT NULL REFERENCES sales_playbook_articles(id) ON DELETE CASCADE,
+  version INTEGER NOT NULL,
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  saved_by TEXT,
+  saved_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  UNIQUE (article_id, version)
+);
+
+CREATE TABLE IF NOT EXISTS sales_training_completions (
+  article_id INTEGER NOT NULL REFERENCES sales_playbook_articles(id) ON DELETE CASCADE,
+  member_id INTEGER NOT NULL REFERENCES sales_members(id) ON DELETE CASCADE,
+  article_version INTEGER NOT NULL,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  PRIMARY KEY (article_id, member_id)
+);
+
+CREATE TABLE IF NOT EXISTS sales_document_templates (
+  id SERIAL PRIMARY KEY,
+  kind TEXT NOT NULL CHECK (kind IN ('quotation','proposal','order','contract','account_plan','meeting_summary','report','commission_statement')),
+  name TEXT NOT NULL,
+  body TEXT NOT NULL,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_documents (
+  id SERIAL PRIMARY KEY,
+  kind TEXT NOT NULL,
+  title TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  media_id INTEGER,
+  url TEXT,
+  mime_type TEXT,
+  size_bytes INTEGER CHECK (size_bytes IS NULL OR size_bytes >= 0),
+  version INTEGER NOT NULL DEFAULT 1,
+  content_hash TEXT,
+  signature_status TEXT NOT NULL DEFAULT 'none' CHECK (signature_status IN ('none','requested','signed','declined')),
+  signature_ref TEXT,
+  signed_at TIMESTAMPTZ,
+  restricted BOOLEAN NOT NULL DEFAULT FALSE,
+  created_by TEXT,
+  archived_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS sales_documents_entity ON sales_documents(entity_type, entity_id) WHERE archived_at IS NULL;
+
+CREATE TABLE IF NOT EXISTS sales_saved_views (
+  id SERIAL PRIMARY KEY,
+  member_id INTEGER NOT NULL REFERENCES sales_members(id) ON DELETE CASCADE,
+  scope TEXT NOT NULL,
+  name TEXT NOT NULL,
+  filters JSONB NOT NULL DEFAULT '{}'::jsonb,
+  shared BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS sales_saved_views_unique ON sales_saved_views(member_id, scope, lower(name));
+
+CREATE TABLE IF NOT EXISTS sales_report_schedules (
+  id SERIAL PRIMARY KEY,
+  report TEXT NOT NULL,
+  params JSONB NOT NULL DEFAULT '{}'::jsonb,
+  cadence TEXT NOT NULL CHECK (cadence IN ('daily','weekly','monthly')),
+  recipients TEXT[] NOT NULL DEFAULT '{}',
+  format TEXT NOT NULL DEFAULT 'csv' CHECK (format IN ('csv','html')),
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  next_run_at TIMESTAMPTZ NOT NULL,
+  last_run_at TIMESTAMPTZ,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_ai_usage (
+  id BIGSERIAL PRIMARY KEY,
+  member_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  feature TEXT NOT NULL,
+  provider TEXT NOT NULL,
+  model TEXT,
+  status TEXT NOT NULL CHECK (status IN ('ok','error','unavailable','refused')),
+  latency_ms INTEGER,
+  prompt_tokens INTEGER,
+  completion_tokens INTEGER,
+  error TEXT,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS sales_import_jobs (
+  id SERIAL PRIMARY KEY,
+  entity TEXT NOT NULL,
+  member_id INTEGER REFERENCES sales_members(id) ON DELETE SET NULL,
+  total_rows INTEGER NOT NULL DEFAULT 0,
+  created_rows INTEGER NOT NULL DEFAULT 0,
+  skipped_rows INTEGER NOT NULL DEFAULT 0,
+  failed_rows INTEGER NOT NULL DEFAULT 0,
+  errors JSONB NOT NULL DEFAULT '[]'::jsonb,
+  at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE OR REPLACE FUNCTION sales_audit_immutable() RETURNS trigger AS $$
+BEGIN RAISE EXCEPTION 'sales_audit_events is append-only'; END; $$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER sales_audit_no_update BEFORE UPDATE OR DELETE ON sales_audit_events FOR EACH ROW EXECUTE FUNCTION sales_audit_immutable();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE OR REPLACE FUNCTION sales_commission_guard() RETURNS trigger AS $$
+BEGIN
+  IF OLD.status IN ('approved','paid') AND (NEW.amount <> OLD.amount OR NEW.basis_amount <> OLD.basis_amount OR NEW.member_id <> OLD.member_id OR NEW.plan_id <> OLD.plan_id OR NEW.breakdown <> OLD.breakdown) THEN
+    RAISE EXCEPTION 'Approved commission entries cannot be modified; create an adjustment instead';
+  END IF;
+  IF OLD.status = 'paid' AND NEW.status NOT IN ('paid') THEN
+    RAISE EXCEPTION 'A paid commission entry cannot change status';
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER sales_commission_guard_t BEFORE UPDATE ON sales_commission_entries FOR EACH ROW EXECUTE FUNCTION sales_commission_guard();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
+
+CREATE OR REPLACE FUNCTION sales_playbook_tsv() RETURNS trigger AS $$
+BEGIN NEW.search_text := to_tsvector('simple', coalesce(NEW.title,'') || ' ' || coalesce(NEW.body,'') || ' ' || coalesce(NEW.industry,'') || ' ' || coalesce(NEW.segment,'')); RETURN NEW; END; $$ LANGUAGE plpgsql;
+
+DO $$ BEGIN
+  CREATE TRIGGER sales_playbook_tsv_t BEFORE INSERT OR UPDATE ON sales_playbook_articles FOR EACH ROW EXECUTE FUNCTION sales_playbook_tsv();
+EXCEPTION WHEN duplicate_object THEN NULL; END $$;
