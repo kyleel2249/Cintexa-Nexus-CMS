@@ -10,6 +10,7 @@ import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
 import { CintexaLogo } from "@/components/SplashScreen";
 import { useSalesOptional } from "@/context/SalesContext";
+import { SALES_NAV } from "@/lib/sales/nav";
 import { activeNavKey } from "@/lib/sales/nav";
 import { NAV_ICONS } from "@/lib/sales/nav-icons";
 
@@ -53,13 +54,15 @@ function NavLink({ href, label, Icon, active, onNavigate, extra }: { href: strin
   );
 }
 
-/** Sales Management group: only shown to people who are sales members, and only with the sections their role may open. */
+/** Sales Management group: always shown; narrows to the sections the signed-in member's role may open. */
 function SalesGroup({ location, onNavigate }: { location: string; onNavigate?: () => void }) {
   const s = useSalesOptional();
   const onSales = location === "/sales" || location.startsWith("/sales/");
   const [stored, setStored] = useState<boolean | null>(() => readOpen());
   const open = onSales ? true : stored ?? false;
-  if (!s || s.access !== "ready" || s.nav.length === 0) return null;
+  // Always visible so the module is discoverable. Once the member profile loads the list narrows to the sections their role may open;
+  // before that (or when sign-in / the API is unavailable) every section is listed and each page explains what is missing.
+  const items = s && s.access === "ready" && s.nav.length > 0 ? s.nav : SALES_NAV;
   const activeKey = activeNavKey(location.split("?")[0]!);
   const toggle = () => {
     const next = !open;
@@ -73,7 +76,7 @@ function SalesGroup({ location, onNavigate }: { location: string; onNavigate?: (
       </button>
       {open && (
         <nav id="sales-nav" aria-label="Sales Management" className="space-y-1">
-          {s.nav.map((i) => <NavLink key={i.key} href={i.href} label={i.label} Icon={NAV_ICONS[i.icon]} active={activeKey === i.key} onNavigate={onNavigate} />)}
+          {items.map((i) => <NavLink key={i.key} href={i.href} label={i.label} Icon={NAV_ICONS[i.icon]} active={activeKey === i.key} onNavigate={onNavigate} />)}
         </nav>
       )}
     </div>

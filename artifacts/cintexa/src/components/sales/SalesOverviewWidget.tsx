@@ -31,9 +31,27 @@ export const KPI_ORDER = ["revenue_mtd", "sales_today", "open_pipeline", "weight
 
 /** Dashboard widget: headline KPIs with drill-down links into the owning list, honest "not available" for unknowns. */
 export function SalesOverviewWidget({ compact = false }: { compact?: boolean }) {
-  const { can } = useSales();
+  const { can, access, error, reload } = useSales();
   const q = useSalesQuery<DashboardData>(can("dashboard:read") ? "/dashboard" : null);
-  if (!can("dashboard:read")) return null;
+  if (access !== "ready" || !can("dashboard:read")) {
+    const msg =
+      access === "loading" ? null
+      : access === "unauthenticated" ? "Sign in to see live sales figures."
+      : access === "not_member" ? "You are not part of the sales team yet. Ask a Sales Administrator to add you."
+      : access === "error" ? (error?.message ?? "Sales data could not be loaded. Check that the API is deployed and API_ORIGIN is set.")
+      : "Your role does not include the sales dashboard.";
+    return (
+      <Panel title="Sales overview" actions={<Link href="/sales"><span className="cursor-pointer text-xs text-primary hover:underline">Open Sales →</span></Link>}>
+        {msg === null ? <div className="flex justify-center py-8"><Spinner /></div> : (
+          <div className="flex flex-wrap items-center gap-3 py-4 text-sm text-muted-foreground">
+            <p role="status">{msg}</p>
+            {access === "unauthenticated" && <Link href="/login"><span className="cursor-pointer text-primary hover:underline">Sign in</span></Link>}
+            {access === "error" && <button type="button" onClick={reload} className="text-primary hover:underline">Retry</button>}
+          </div>
+        )}
+      </Panel>
+    );
+  }
   const d = q.data;
   const defs = new Map((d?.definitions ?? []).map((x) => [x.key, x]));
   const by = new Map((d?.kpis ?? []).map((x) => [x.key, x]));

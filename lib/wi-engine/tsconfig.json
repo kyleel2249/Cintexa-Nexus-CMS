@@ -6,7 +6,7 @@
     "emitDeclarationOnly": true,
     "outDir": "dist",
     "rootDir": "src",
-    "lib": ["es2022", "dom"],
+    "lib": ["es2022", "dom", "dom.iterable"],
     "types": []
   },
   "references": [{ "path": "../wi-core" }],

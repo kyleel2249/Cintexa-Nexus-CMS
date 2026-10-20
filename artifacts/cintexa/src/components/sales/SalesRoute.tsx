@@ -1,4 +1,5 @@
 import type { ComponentType } from "react";
+import { Link } from "wouter";
 import { useSales } from "@/context/SalesContext";
 import { Spinner, PermissionDenied, ErrorState, EmptyState } from "./ui";
 
@@ -14,7 +15,14 @@ export function SalesRoute({ perm, anyPerm, component: Page, params }: { perm?: 
       />
     );
   }
-  if (s.access === "unauthenticated") return <EmptyState title="Please sign in" description="Your session has expired. Sign in again to open Sales Management." />;
+  if (s.access === "unauthenticated") {
+    return (
+      <div className="space-y-3">
+        <EmptyState title="Please sign in" description="Sales Management uses your CINTEXA sign-in. Sign in to open it." />
+        <p className="text-center text-sm"><Link href="/login"><span className="cursor-pointer text-primary hover:underline">Go to sign in</span></Link></p>
+      </div>
+    );
+  }
   if (s.access === "error" && s.error) return <ErrorState error={s.error} onRetry={s.reload} />;
   const needed = anyPerm ?? (perm ? [perm] : []);
   if (needed.length > 0 && !needed.some((p) => s.can(p))) return <PermissionDenied />;
