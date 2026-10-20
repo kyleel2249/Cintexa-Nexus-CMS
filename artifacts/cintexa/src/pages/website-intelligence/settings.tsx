@@ -3,13 +3,11 @@ import { Trash2, Play } from "lucide-react";
 import { CATEGORY_IDS, CATEGORY_LABELS, type CategoryId } from "@workspace/wi-core";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useAuth } from "@/context/AuthContext";
 import { useCatalog, useIntegrations, useMeta, useMonitorMutations, useMonitors, useSaveSettings, useWiSettings } from "@/lib/website-intelligence/api";
 import { ErrorNote, Loading, Panel, fmtDate, label } from "./components";
 
 export default function SettingsPage() {
-  const { user } = useAuth();
-  const admin = user?.role === "admin";
+  const admin = true; // no sign-in: this device's workspace owner is the administrator
   return (
     <div className="space-y-5">
       <MonitorsPanel />

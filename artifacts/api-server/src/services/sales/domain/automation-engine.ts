@@ -3,7 +3,7 @@
  * idempotency keys. Execution against the database lives in modules/automation.ts and only ever runs rules that
  * passed validateRule().
  */
-import { createHash } from "node:crypto";
+import { createHash } from "../core/portable";
 
 export const TRIGGERS = {
   "lead.created": "lead",
@@ -115,7 +115,7 @@ export function validateRule(rule: RuleDef, others: RuleDef[] = []): RuleIssue[]
   if (rule.actions.length > 5) bad("actions", "At most 5 actions per rule");
   rule.actions.forEach((a, i) => {
     const p = `actions[${i}]`;
-    if (!(ACTION_TYPES as readonly string[]).includes(a.type)) return bad(`${p}.type`, `Unknown action "${a.type}"`);
+    if (!(ACTION_TYPES as readonly string[]).includes(a.type)) { bad(`${p}.type`, `Unknown action "${a.type}"`); return; }
     const params = a.params ?? {};
     switch (a.type) {
       case "create_task":

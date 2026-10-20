@@ -31,11 +31,16 @@ export default defineConfig({
   ],
   optimizeDeps: {
     include: ["jspdf", "jspdf-autotable"],
+    // PGlite loads its WebAssembly files relative to its own module URL, so it must not be pre-bundled.
+    exclude: ["@electric-sql/pglite"],
   },
   resolve: {
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+      // The Sales engine and schema are shared with the API server and also run on-device (see src/lib/sales/local).
+      "@sales-engine": path.resolve(import.meta.dirname, "..", "api-server", "src", "services", "sales"),
+      "@sales-schema": path.resolve(import.meta.dirname, "..", "..", "lib", "db", "src", "sales-schema.ts"),
     },
     dedupe: ["react", "react-dom"],
   },

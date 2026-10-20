@@ -1,5 +1,20 @@
 # Deployment
 
+## Default: on-device mode (no API, no sign-in)
+The CMS ships with Sales Management running **inside the browser**: the same Sales engine as the API server, on PGlite
+(PostgreSQL compiled to WebAssembly) persisted in IndexedDB. Cloudflare Pages alone is enough; no `API_ORIGIN`, no
+database server and no sign-in are needed. The device owner is the Sales Administrator.
+
+Consequences (also shown in Sales Settings -> Data & backup):
+- Data exists only in that browser profile. Use **Download backup** regularly; **Restore** replaces local data.
+- Customer quotation links (`/q/:token`) and public lead forms (`/f/:token`) work only in the same browser profile.
+- E-mail/WhatsApp/payment/accounting stay "not connected"; queued items are never reported as sent.
+- Background jobs (reminders, expiry, automation retries) run every minute while the app is open and visible.
+
+## Optional: server mode
+Build the frontend with `VITE_SALES_API_MODE=remote` and deploy the Express API (Render blueprint / Dockerfile), set
+`API_ORIGIN` in Cloudflare Pages. The API still enforces its own authentication; the UI has no sign-in screen.
+
 ## Environment variables (API)
 | Var | Purpose |
 |---|---|

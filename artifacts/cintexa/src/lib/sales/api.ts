@@ -1,4 +1,11 @@
 import { apiFetch, readJson, ApiError, explainStatus } from "@/lib/api";
+import { localFetch } from "./local/runtime";
+
+/**
+ * Sales runs on this device by default (no API server needed). Set VITE_SALES_API_MODE=remote to talk to the REST API instead.
+ */
+export const SALES_LOCAL_MODE = (import.meta.env.VITE_SALES_API_MODE as string | undefined) !== "remote";
+const transport = (path: string, init?: RequestInit): Promise<Response> => (SALES_LOCAL_MODE ? localFetch(path, init) : apiFetch(path, init));
 
 export type QueryValue = string | number | boolean | null | undefined;
 export type Query = Record<string, QueryValue>;
@@ -69,7 +76,7 @@ export async function salesCall<T = any>(method: string, path: string, opts: Cal
   if (opts.idempotencyKey) headers["Idempotency-Key"] = opts.idempotencyKey;
   let res: Response;
   try {
-    res = await apiFetch(`/sales${path}${qs(opts.query)}`, {
+    res = await transport(`/sales${path}${qs(opts.query)}`, {
       method,
       headers,
       body: opts.body === undefined ? undefined : JSON.stringify(opts.body),
@@ -95,7 +102,7 @@ export const sales = {
   async text(path: string, query?: Query): Promise<{ text: string; filename: string; contentType: string }> {
     let res: Response;
     try {
-      res = await apiFetch(`/sales${path}${qs(query)}`, { method: "GET", headers: { accept: "*/*" } });
+      res = await transport(`/sales${path}${qs(query)}`, { method: "GET", headers: { accept: "*/*" } });
     } catch {
       throw new SalesApiError("Cannot reach the API. Check your connection and the API deployment.", 0, "network_error");
     }
@@ -128,7 +135,7 @@ export function openHtmlInNewTab(html: string): void {
 export async function publicCall<T = any>(method: string, path: string, body?: unknown): Promise<T> {
   let res: Response;
   try {
-    res = await apiFetch(`/sales/public${path}`, { method, body: body === undefined ? undefined : JSON.stringify(body), credentials: "omit" });
+    res = await transport(`/sales/public${path}`, { method, body: body === undefined ? undefined : JSON.stringify(body), credentials: "omit" });
   } catch {
     throw new SalesApiError("Cannot reach the server. Please check your connection and try again.", 0, "network_error");
   }

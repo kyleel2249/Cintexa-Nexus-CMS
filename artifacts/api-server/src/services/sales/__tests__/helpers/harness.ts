@@ -19,7 +19,7 @@ export async function openDb(): Promise<Db & { close(): Promise<void> }> {
   }
   const pg = await import("pg");
   const { createSalesDb } = await import("../../../../../../../lib/db/src/sales-adapter");
-  const pool = new pg.default.Pool({ connectionString: TEST_DB_URL, max: 8 });
+  const pool = new pg.default.Pool({ connectionString: TEST_DB_URL, max: Number(process.env.SALES_TEST_POOL ?? 8) });
   return Object.assign(createSalesDb(pool), { close: () => pool.end() });
 }
 

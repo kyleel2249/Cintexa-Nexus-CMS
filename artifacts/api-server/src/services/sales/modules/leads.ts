@@ -1,4 +1,4 @@
-import { randomBytes } from "node:crypto";
+import { randomBytes } from "../core/portable";
 import { v, parse } from "../core/validate";
 import { created, noContent, csv, PUBLIC_ACTOR, type Route, type DomainEvent } from "../core/router";
 import { notFound, conflict, badRequest, validationFailed, unprocessable, forbidden } from "../core/errors";

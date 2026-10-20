@@ -8,7 +8,6 @@ import { Switch } from "@/components/ui/switch";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useTheme, type Accent, type Radius } from "@/components/ThemeProvider";
-import { useAuth } from "@/context/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import { apiJson, API_BASE } from "@/lib/api";
 import {
@@ -57,73 +56,6 @@ const copy = async (text: string) => {
 type ApiKeyRow = { id: string; name: string; prefix: string; scopes?: string[]; createdAt: string; expiresAt?: string | null; lastUsedAt?: string | null };
 type HookRow = { id: string; url: string; events: string[]; active: boolean; secret?: string; createdAt: string; lastStatus?: number | null; lastDeliveryAt?: string | null; failureCount?: number };
 type Delivery = { id: string; webhookId: string; event: string; status: number | null; ok: boolean; durationMs: number; error?: string; at: string };
-
-function PasswordCard({ minLength }: { minLength: number }) {
-  const { toast } = useToast();
-  const { changePassword } = useAuth();
-  const [current, setCurrent] = useState("");
-  const [next, setNext] = useState("");
-  const [confirm, setConfirm] = useState("");
-  const [show, setShow] = useState(false);
-  const [busy, setBusy] = useState(false);
-
-  async function save(e: React.FormEvent) {
-    e.preventDefault();
-    if (next.length < minLength) {
-      toast({ title: `Password must be at least ${minLength} characters`, variant: "destructive" });
-      return;
-    }
-    if (next !== confirm) {
-      toast({ title: "Passwords do not match", variant: "destructive" });
-      return;
-    }
-    setBusy(true);
-    try {
-      await changePassword(current, next);
-      toast({ title: "Password updated" });
-      setCurrent("");
-      setNext("");
-      setConfirm("");
-    } catch (err: any) {
-      toast({ title: err?.message || "Could not change password", variant: "destructive" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <Card className="bg-card border-border/50">
-      <CardHeader>
-        <CardTitle>Password</CardTitle>
-        <CardDescription>Change the password for your account. You will be asked to confirm your current password.</CardDescription>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={save} className="space-y-4 max-w-md">
-          <div className="space-y-2">
-            <Label>Current password</Label>
-            <Input type={show ? "text" : "password"} autoComplete="current-password" value={current} onChange={(e) => setCurrent(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <Label>New password</Label>
-            <Input type={show ? "text" : "password"} autoComplete="new-password" value={next} onChange={(e) => setNext(e.target.value)} required />
-          </div>
-          <div className="space-y-2">
-            <Label>Confirm new password</Label>
-            <Input type={show ? "text" : "password"} autoComplete="new-password" value={confirm} onChange={(e) => setConfirm(e.target.value)} required />
-          </div>
-          <div className="flex items-center gap-2">
-            <Button type="submit" disabled={busy}>
-              {busy && <Loader2 className="h-4 w-4 animate-spin mr-2" />}Update password
-            </Button>
-            <Button type="button" variant="ghost" size="icon" onClick={() => setShow((v) => !v)} title="Show / hide">
-              {show ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </Button>
-          </div>
-        </form>
-      </CardContent>
-    </Card>
-  );
-}
 
 function AppearanceCard() {
   const { theme, setTheme, accent, setAccent, customColor, setCustomColor, radius, setRadius, reduceMotion, setReduceMotion, resetAppearance } = useTheme();
@@ -496,7 +428,6 @@ export function verify(rawBody, headers, secret) {
         <div className="lg:col-span-3 space-y-6">
           {tab === "general" && (
             <>
-              <PasswordCard minLength={security.passwordMinLength} />
               <Card className="bg-card border-border/50">
                 <CardHeader>
                   <CardTitle>Platform configuration</CardTitle>

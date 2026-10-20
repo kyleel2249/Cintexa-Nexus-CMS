@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomUUID } from "../core/portable";
 import { v, parse } from "../core/validate";
 import { created, noContent, type Route, type DomainEvent } from "../core/router";
 import { notFound, conflict, badRequest, validationFailed, forbidden } from "../core/errors";

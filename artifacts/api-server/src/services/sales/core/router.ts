@@ -5,7 +5,7 @@
  * substance - authentication mapping, authorisation, validation, transactions, idempotency, error mapping, audit - is
  * testable without a web server.
  */
-import { createHash, randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "./portable";
 import type { Actor, Db, Queryable, SalesRequest, SalesResponse } from "./types";
 import { HttpError, isHttpError, forbidden, notFound, conflict, unprocessable, badRequest, tooManyRequests } from "./errors";
 import { require as requirePermission, type Permission } from "./rbac";

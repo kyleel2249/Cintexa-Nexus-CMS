@@ -35,7 +35,7 @@ function wrap(runner: { unsafe: (sql: string, params?: unknown[]) => Promise<any
 export function createBunDb(url: string): Db & { close(): Promise<void> } {
   const BunSQL = (globalThis as any).Bun?.SQL;
   if (!BunSQL) throw new Error("createBunDb requires the Bun runtime");
-  const sql = new BunSQL(url, { max: 8 });
+  const sql = new BunSQL(url, { max: Number(process.env.SALES_TEST_POOL ?? 8) });
   const base = wrap(sql);
   return {
     query: base.query,

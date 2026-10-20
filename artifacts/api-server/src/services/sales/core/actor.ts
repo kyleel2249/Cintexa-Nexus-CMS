@@ -8,6 +8,7 @@
  */
 import type { Actor, AuthIdentity, Queryable, SalesRole } from "./types";
 import { forbidden, unauthorized } from "./errors";
+import { env } from "./portable";
 
 interface MemberRow {
   id: number;
@@ -49,7 +50,7 @@ export async function resolveActor(q: Queryable, auth: AuthIdentity | undefined)
     // Platform admins are only auto-provisioned as Sales Administrators during first-run bootstrap (no active Sales
     // Administrator exists yet) or when listed in SALES_ADMIN_EMAILS. Otherwise an admin added later - or every
     // signed-in user when the platform runs in ADMIN_EMAILS bootstrap mode - would silently gain full sales access.
-    const allow = (process.env.SALES_ADMIN_EMAILS ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
+    const allow = (env("SALES_ADMIN_EMAILS") ?? "").split(",").map((e) => e.trim().toLowerCase()).filter(Boolean);
     const firstRun = !(await q.query("SELECT 1 FROM sales_members WHERE role = 'sales_admin' AND active LIMIT 1")).rows[0];
     if (auth.platformRole !== "admin" || !email || !(firstRun || allow.includes(email))) {
       throw forbidden("You have not been added to Sales Management. Ask a Sales Administrator to add your e-mail address.", "not_a_sales_member");

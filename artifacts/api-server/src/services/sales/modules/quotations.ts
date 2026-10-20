@@ -1,4 +1,4 @@
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, env } from "../core/portable";
 import { v, parse } from "../core/validate";
 import { created, html, PUBLIC_ACTOR, type Route, type DomainEvent } from "../core/router";
 import { notFound, conflict, badRequest, validationFailed, forbidden, unprocessable } from "../core/errors";
@@ -280,7 +280,7 @@ export const quotationRoutes: Route[] = [
       }
       const to = b.to ?? (x.contact_id ? (await q.query<{ email: string | null; consent_email: boolean; unsubscribed_at: string | null }>("SELECT email, consent_email, unsubscribed_at FROM sales_contacts WHERE id = $1", [x.contact_id])).rows[0]?.email : null);
       if (!to) throw unprocessable("Choose a recipient email address", "no_recipient");
-      const base = process.env.SALES_PUBLIC_BASE_URL || process.env.PUBLIC_APP_URL;
+      const base = env("SALES_PUBLIC_BASE_URL") || env("PUBLIC_APP_URL");
       if (!base) throw conflict("Set SALES_PUBLIC_BASE_URL so the emailed link can be absolute", "no_public_base_url");
       if (!settings.integrations.email.enabled || !deps.integrations.email) throw conflict("Email is not connected. Use the link option and share it yourself, or connect an email provider in Sales Settings.", "email_not_connected");
       const url = `${base.replace(/\/$/, "")}${link}`;

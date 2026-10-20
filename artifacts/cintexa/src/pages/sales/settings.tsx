@@ -1,14 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { useSales } from "@/context/SalesContext";
-import { sales } from "@/lib/sales/api";
+import { sales, SALES_LOCAL_MODE } from "@/lib/sales/api";
+import { backupLocalData, restoreLocalData, eraseLocalData, localStatus } from "@/lib/sales/local/runtime";
 import { useSalesMutation, useSalesQuery, useUrlFilter } from "@/lib/sales/hooks";
 import { useList, useListState } from "@/lib/sales/list";
 import { dateTime, titleCase } from "@/lib/sales/format";
 import { PageHeader, Panel, TabBar, FilterBar, Select, Input, Field, Textarea, Checkbox, DataTable, Pagination, StatusBadge, EmptyState, ErrorState, Skeleton, Modal, KpiCard, Tag } from "@/components/sales/ui";
 import { ExportButton } from "@/components/sales/actions";
 
-type Tab = "settings" | "integrations" | "audit" | "ai";
+type Tab = "settings" | "integrations" | "audit" | "ai" | "data";
 type Kind = "int" | "number" | "text" | "bool" | "select" | "money" | "tags" | "textarea" | "record";
 interface Spec { path: string; label: string; kind: Kind; options?: { value: string; label: string }[]; hint?: string; min?: number; max?: number; step?: number }
 interface Section { key: string; title: string; description: string; fields: Spec[] }
@@ -62,13 +63,13 @@ function setPath(o: any, path: string, v: unknown): void {
 export default function SettingsPage() {
   const { can } = useSales();
   const [tabRaw, setTab] = useUrlFilter("tab", "settings");
-  const tabs: { key: Tab; label: string }[] = [{ key: "settings", label: "Settings" }, { key: "integrations", label: "Integrations & queue" }, ...(can("audit:read") ? [{ key: "audit" as Tab, label: "Audit log" }] : []), ...(can("ai:use") ? [{ key: "ai" as Tab, label: "AI assist" }] : [])];
+  const tabs: { key: Tab; label: string }[] = [{ key: "settings", label: "Settings" }, { key: "integrations", label: "Integrations & queue" }, ...(can("audit:read") ? [{ key: "audit" as Tab, label: "Audit log" }] : []), ...(can("ai:use") ? [{ key: "ai" as Tab, label: "AI assist" }] : []), ...(SALES_LOCAL_MODE ? [{ key: "data" as Tab, label: "Data & backup" }] : [])];
   const tab = (tabs.some((t) => t.key === tabRaw) ? tabRaw : "settings") as Tab;
   return (
     <>
       <PageHeader title="Sales settings" description="Every change is validated, versioned and written to the audit log." />
       <TabBar<Tab> tabs={tabs} value={tab} onChange={setTab} />
-      {tab === "integrations" ? <Integrations /> : tab === "audit" ? <Audit /> : tab === "ai" ? <AiStatus /> : <SettingsTab />}
+      {tab === "integrations" ? <Integrations /> : tab === "audit" ? <Audit /> : tab === "ai" ? <AiStatus /> : tab === "data" ? <DataTab /> : <SettingsTab />}
     </>
   );
 }
@@ -261,6 +262,90 @@ function AiStatus() {
         {d.blockedByPolicy && <p className="mt-2 text-sm text-amber-500">The configured provider is external and external providers are not allowed in Settings → Integrations, so AI is blocked.</p>}
         {d.features.length > 0 && <ul className="mt-3 flex flex-wrap gap-2">{d.features.map((f) => <Tag key={f}>{titleCase(f)}</Tag>)}</ul>}
         <p className="mt-3 text-xs text-muted-foreground">AI output is always a suggestion for a person to review. It never changes records, sends messages or sets amounts on its own.</p>
+      </Panel>
+    </div>
+  );
+}
+
+/** Sales data lives in this browser (on-device PostgreSQL). Backup, restore and erase it here. */
+function DataTab() {
+  const [persistent, setPersistent] = useState<boolean | null>(null);
+  const [busy, setBusy] = useState<"backup" | "restore" | "erase" | null>(null);
+  const [message, setMessage] = useState<{ ok: boolean; text: string } | null>(null);
+  const [confirmErase, setConfirmErase] = useState("");
+  useEffect(() => {
+    void localStatus().then((s) => setPersistent(s.persistent));
+  }, []);
+
+  async function backup() {
+    setBusy("backup");
+    setMessage(null);
+    try {
+      const { blob, filename } = await backupLocalData();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+      setMessage({ ok: true, text: `Backup downloaded as ${filename}.` });
+    } catch (e) {
+      setMessage({ ok: false, text: e instanceof Error ? e.message : "The backup could not be created." });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function restore(file: File | undefined) {
+    if (!file) return;
+    if (!window.confirm("Restoring replaces ALL Sales data on this device with the backup. Continue?")) return;
+    setBusy("restore");
+    setMessage(null);
+    try {
+      await restoreLocalData(file);
+    } catch (e) {
+      setBusy(null);
+      setMessage({ ok: false, text: e instanceof Error ? e.message : "The backup could not be restored." });
+    }
+  }
+
+  async function erase() {
+    setBusy("erase");
+    try {
+      await eraseLocalData();
+    } catch (e) {
+      setBusy(null);
+      setMessage({ ok: false, text: e instanceof Error ? e.message : "The data could not be erased." });
+    }
+  }
+
+  return (
+    <div className="space-y-4">
+      <Panel title="Where your Sales data lives" description="Sales runs entirely in this browser on an on-device PostgreSQL database. Nothing is sent to a server.">
+        <ul className="list-disc space-y-1 pl-5 text-sm text-muted-foreground">
+          <li>{persistent === null ? "Checking storage…" : persistent ? "Stored in this browser profile (IndexedDB) and kept between visits." : "Your browser blocked persistent storage, so data is kept in memory for this tab only. Back up before closing it."}</li>
+          <li>Clearing site data, or using another browser or device, starts an empty workspace. Download a backup regularly.</li>
+          <li>Customer quotation links and public lead forms open only in this same browser profile, because the data is not on a server. To collect leads from the public, connect the API (set VITE_SALES_API_MODE=remote).</li>
+          <li>E-mail, WhatsApp, payment and accounting are not connected; those actions stay queued as pending and are never reported as sent.</li>
+        </ul>
+      </Panel>
+      <Panel title="Backup and restore">
+        <div className="flex flex-wrap items-center gap-3">
+          <Button onClick={() => void backup()} disabled={busy !== null}>{busy === "backup" ? "Preparing…" : "Download backup"}</Button>
+          <label className="inline-flex cursor-pointer items-center gap-2 text-sm">
+            <span className="rounded-md border px-3 py-2 hover:bg-secondary">{busy === "restore" ? "Restoring…" : "Restore from backup…"}</span>
+            <input type="file" accept=".tar,application/x-tar" className="sr-only" disabled={busy !== null} onChange={(e) => { void restore(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+        </div>
+        {message && <p role={message.ok ? "status" : "alert"} className={`mt-3 text-sm ${message.ok ? "text-emerald-500" : "text-rose-500"}`}>{message.text}</p>}
+      </Panel>
+      <Panel title="Erase everything" description="Permanently deletes every Sales record on this device. This cannot be undone.">
+        <div className="flex flex-wrap items-end gap-3">
+          <Field label='Type "ERASE" to confirm'><Input value={confirmErase} onChange={(e) => setConfirmErase(e.target.value)} placeholder="ERASE" /></Field>
+          <Button variant="outline" className="text-rose-500" disabled={confirmErase !== "ERASE" || busy !== null} onClick={() => void erase()}>{busy === "erase" ? "Erasing…" : "Erase all Sales data"}</Button>
+        </div>
       </Panel>
     </div>
   );

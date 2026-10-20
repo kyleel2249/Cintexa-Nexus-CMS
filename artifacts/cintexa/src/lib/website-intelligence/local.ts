@@ -10,7 +10,6 @@
 import { useSyncExternalStore } from "react";
 import { MemoryRepo, createLocalRuntime, type LocalRuntime, type StoredAudit } from "@workspace/wi-engine/local";
 import { API_BASE, ApiError, explainStatus, readJson } from "@/lib/api";
-import { firebaseAuth } from "@/lib/firebase";
 
 export type WiMode = "detecting" | "server" | "local";
 
@@ -30,8 +29,7 @@ export function useWiMode(): WiMode {
 }
 
 async function authHeader(): Promise<Record<string, string>> {
-  const token = await firebaseAuth.currentUser?.getIdToken().catch(() => null);
-  return token ? { authorization: `Bearer ${token}` } : {};
+  return {};
 }
 
 async function probeServer(): Promise<boolean> {
@@ -47,7 +45,6 @@ async function probeServer(): Promise<boolean> {
 export function ensureMode(): Promise<WiMode> {
   if (mode !== "detecting") return Promise.resolve(mode);
   detecting ??= (async () => {
-    try { await firebaseAuth.authStateReady(); } catch { /* continue without a session */ }
     const m: WiMode = (await probeServer()) ? "server" : "local";
     setMode(m);
     return m;
@@ -100,7 +97,7 @@ async function createLocal(uid: string, email: string | null): Promise<LocalStat
   const store = (k: string) => ({ read: () => { try { return localStorage.getItem(k); } catch { return null; } }, write: (v: string) => localStorage.setItem(k, v) });
   const runtime = createLocalRuntime({
     user: { id: uid, email },
-    net: { relayUrl: RELAY, getToken: () => firebaseAuth.currentUser?.getIdToken().catch(() => null) ?? Promise.resolve(null) },
+    net: { relayUrl: RELAY, getToken: () => Promise.resolve(null) },
     repo,
     settingsStore: store(SETTINGS_KEY),
     pageSpeedKey: getPageSpeedKey,
@@ -111,11 +108,9 @@ async function createLocal(uid: string, email: string | null): Promise<LocalStat
 }
 
 export async function getLocal(): Promise<LocalState> {
-  await firebaseAuth.authStateReady().catch(() => undefined);
-  // Signing in is optional. Visitors who are not signed in use a separate on-device workspace.
-  const u = firebaseAuth.currentUser;
-  const uid = u?.uid ?? "anonymous";
-  if (!local || local.uid !== uid) local = { uid, promise: createLocal(uid, u?.email ?? null) };
+  // No sign-in: one on-device workspace.
+  const uid = "anonymous";
+  if (!local || local.uid !== uid) local = { uid, promise: createLocal(uid, null) };
   return local.promise;
 }
 

@@ -13,6 +13,7 @@ import { notify } from "./modules/activities";
 import { forecastFor, runReportRows } from "./modules/analytics";
 import { retryRuns, runScheduledTriggers } from "./modules/automation";
 import { toCsv } from "./core/http";
+import { base64Utf8 } from "./core/portable";
 import type { Actor } from "./core/types";
 
 const SYSTEM: Actor = { memberId: 0, userSub: "scheduler", email: "", name: "Scheduler", role: "sales_admin", teamId: null, teamMemberIds: [], label: "Scheduler", isApiKey: false };
@@ -68,7 +69,7 @@ export async function deliverReportSchedules(db: Db, deps: Deps): Promise<{ sent
     if (!rep) continue;
     const text = toCsv(rep.columns, rep.rows);
     for (const to of s.recipients as string[]) {
-      await db.tx((q) => enqueue(q, { kind: "email.send", entityType: "report_schedule", entityId: s.id, idempotencyKey: `report:${s.id}:${now.toISOString().slice(0, 10)}:${to}`, payload: { message: { to, subject: `${rep.title} - ${range.label}`, html: `<p>${rep.title} for ${range.label} is attached (${rep.rows.length} rows).</p>`, text: `${rep.title} for ${range.label}: ${rep.rows.length} rows attached.`, attachments: [{ filename: `${s.report}.csv`, content: Buffer.from(text, "utf8").toString("base64"), contentType: "text/csv" }] } } }));
+      await db.tx((q) => enqueue(q, { kind: "email.send", entityType: "report_schedule", entityId: s.id, idempotencyKey: `report:${s.id}:${now.toISOString().slice(0, 10)}:${to}`, payload: { message: { to, subject: `${rep.title} - ${range.label}`, html: `<p>${rep.title} for ${range.label} is attached (${rep.rows.length} rows).</p>`, text: `${rep.title} for ${range.label}: ${rep.rows.length} rows attached.`, attachments: [{ filename: `${s.report}.csv`, content: base64Utf8(text), contentType: "text/csv" }] } } }));
     }
     sent++;
   }

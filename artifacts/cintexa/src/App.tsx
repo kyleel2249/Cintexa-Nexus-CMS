@@ -6,7 +6,6 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/components/ThemeProvider";
 import { SplashScreen } from "@/components/SplashScreen";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { AuthProvider } from "@/context/AuthContext";
 import { SalesProvider } from "@/context/SalesContext";
 import NotFound from "@/pages/not-found";
 
@@ -52,8 +51,6 @@ const WebsiteIntelligence = lazyWithRecovery(() => import("@/pages/website-intel
 const WebsiteIntelligenceShared = lazyWithRecovery(() => import("@/pages/website-intelligence/shared"));
 const SalesRoutes = lazyWithRecovery(() => import("@/pages/sales/routes").then((m) => ({ default: m.SalesRoutes })));
 const PublicQuotation = lazyWithRecovery(() => import("@/pages/sales/public-quotation"));
-const Login = lazyWithRecovery(() => import("@/pages/login"));
-const Register = lazyWithRecovery(() => import("@/pages/register"));
 const PublicLeadForm = lazyWithRecovery(() => import("@/pages/sales/public-lead-form"));
 
 const queryClient = new QueryClient();
@@ -142,7 +139,6 @@ function App() {
       <ThemeProvider defaultTheme="dark" defaultAccent="gold" storageKey="cintexa-theme" accentStorageKey="cintexa-accent">
         <SplashScreen />
         <TooltipProvider>
-          <AuthProvider>
             <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, "")}>
               <Switch>
                 <Route path="/intake/:token">
@@ -160,12 +156,6 @@ function App() {
                       </Suspense>
                     </RouteErrorBoundary>
                   )}
-                </Route>
-                <Route path="/login">
-                  <RouteErrorBoundary><Suspense fallback={<PageLoader />}><Login /></Suspense></RouteErrorBoundary>
-                </Route>
-                <Route path="/register">
-                  <RouteErrorBoundary><Suspense fallback={<PageLoader />}><Register /></Suspense></RouteErrorBoundary>
                 </Route>
                 <Route path="/q/:token">
                   {(params) => (
@@ -191,7 +181,6 @@ function App() {
               </Switch>
             </WouterRouter>
             <Toaster />
-          </AuthProvider>
         </TooltipProvider>
       </ThemeProvider>
     </QueryClientProvider>

@@ -3,7 +3,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLocation, Link } from "wouter";
 import { Button } from "@/components/ui/button";
 import { useSales } from "@/context/SalesContext";
-import { sales, openHtmlInNewTab } from "@/lib/sales/api";
+import { sales, openHtmlInNewTab, SALES_LOCAL_MODE } from "@/lib/sales/api";
 import { useSalesMutation, useSalesQuery } from "@/lib/sales/hooks";
 import { dateOnly, dateTime, money, percent } from "@/lib/sales/format";
 import { PageHeader, Panel, StatusBadge, QueryBoundary, DefinitionList, ConfirmModal, Modal, Field, Input, Select, Textarea, DataTable, Tag } from "@/components/sales/ui";
@@ -97,6 +97,7 @@ export default function QuotationDetailPage({ id }: { id: string }) {
             {dlg === "convert" && <ConvertModal id={id} onClose={() => setDlg(null)} />}
             <Modal open={!!shared} onClose={() => setShared(null)} title="Customer link" size="md" footer={<Button onClick={() => setShared(null)}>Done</Button>}>
               <p className="mb-2 text-sm text-muted-foreground">This link is shown once. Copy it and share it with the customer yourself — nothing has been emailed.</p>
+              {SALES_LOCAL_MODE && <p className="mb-2 rounded-md border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs">Sales data is stored on this device, so the customer can open this link only in this same browser. To let customers respond from their own devices, connect the Sales API (VITE_SALES_API_MODE=remote).</p>}
               <Input readOnly value={shared ?? ""} onFocus={(e) => e.currentTarget.select()} />
               <Button className="mt-3" size="sm" variant="outline" onClick={() => shared && void navigator.clipboard?.writeText(shared)}>Copy link</Button>
             </Modal>

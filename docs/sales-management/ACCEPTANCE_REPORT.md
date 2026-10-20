@@ -23,6 +23,13 @@ Status legend: **VERIFIED** = executed and observed here; **STATIC** = reviewed/
 | Real `pg` adapter at runtime, Express boot, Firebase sign-in | NOT VERIFIED |
 | Sidebar / Topbar / AppLayout in a browser, real wouter/lucide/shadcn | NOT VERIFIED (syntax + stub type-check only) |
 
+## On-device mode (current default)
+Verified: engine bundles for the browser with no Node built-ins; SHA-256/random helpers match `node:crypto`; the full
+116-test suite passes with a single database connection (PGlite is single-connection); the browser glue (`localFetch`)
+served /me, lead, dashboard, CSV and public routes against Postgres through a stand-in for PGlite.
+NOT verified here: the real PGlite WebAssembly loading in a browser/Cloudflare, IndexedDB persistence, and backup/restore
+(`dumpDataDir`/`loadDataDir`). Check these on first load of the deployed site.
+
 ## Integrations (honest status)
 No email/SMS/WhatsApp/payment/e-signature/accounting provider is installed. Such actions are recorded in the outbox
 as `pending` / `manual` and are never reported as sent. Register a provider via `integrations` in
