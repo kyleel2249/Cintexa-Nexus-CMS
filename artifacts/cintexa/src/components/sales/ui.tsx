@@ -353,7 +353,7 @@ export interface Column<R> {
   className?: string;
 }
 
-export function DataTable<R>({ columns, rows, rowKey, onRowClick, sort, onSort, empty, caption }: { columns: Column<R>[]; rows: R[]; rowKey: (r: R) => string | number; onRowClick?: (r: R) => void; sort?: string; onSort?: (s: string) => void; empty?: ReactNode; caption?: string }) {
+export function DataTable<R>({ columns, rows, rowKey, onRowClick, sort, onSort, empty, caption }: { columns: Column<NoInfer<R>>[]; rows: R[]; rowKey: (r: R) => string | number; onRowClick?: (r: R) => void; sort?: string; onSort?: (s: string) => void; empty?: ReactNode; caption?: string }) {
   if (rows.length === 0) return <>{empty ?? <EmptyState title="Nothing here yet" />}</>;
   const activeKey = sort?.replace(/^-/, "");
   const desc = sort?.startsWith("-");

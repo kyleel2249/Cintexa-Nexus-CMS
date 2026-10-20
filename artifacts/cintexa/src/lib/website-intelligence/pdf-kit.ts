@@ -68,7 +68,7 @@ export class Pdf {
 
   constructor(title: string) {
     this.doc = new jsPDF({ unit: "mm", format: "a4", orientation: "portrait", compress: true, putOnlyUsedFonts: true });
-    this.doc.setProperties({ title: clean(title), creator: "CINTEXA NEXUS Website Intelligence", producer: "CINTEXA NEXUS", subject: "Website audit report" });
+    this.doc.setProperties({ title: clean(title), creator: "CINTEXA NEXUS Website Intelligence", producer: "CINTEXA NEXUS", subject: "Website audit report" } as never);
   }
 
   get page(): number { return this.doc.getCurrentPageInfo().pageNumber; }
