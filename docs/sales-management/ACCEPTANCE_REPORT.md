@@ -19,7 +19,7 @@ Status legend: **VERIFIED** = executed and observed here; **STATIC** = reviewed/
 | Flows: create lead, duplicate warning, global search, bell, public lead form, quotation share + customer accept, settings save, rep denied on settings | VERIFIED (same harness) |
 | No horizontal scroll at 375px on 6 pages | VERIFIED |
 | Type-check of Sales/layout code | STATIC (stubbed libs, loose mode) |
-| `npm run typecheck`, `vite build` | NOT VERIFIED – run on your machine |
+| `npm run typecheck`, frontend build, API build (GitHub Actions run 110, commit 97feb09) | VERIFIED – all green |
 | Real `pg` adapter at runtime, Express boot, Firebase sign-in | NOT VERIFIED |
 | Sidebar / Topbar / AppLayout in a browser, real wouter/lucide/shadcn | NOT VERIFIED (syntax + stub type-check only) |
 
