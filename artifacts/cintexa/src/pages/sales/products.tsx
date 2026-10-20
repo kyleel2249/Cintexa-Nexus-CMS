@@ -137,7 +137,7 @@ function BooksTab({ canWrite }: { canWrite: boolean }) {
       <FilterBar><span className="flex-1" />{canWrite && <Button size="sm" onClick={() => setCreating(true)}><Plus className="mr-1.5 h-3.5 w-3.5" />New price book</Button>}</FilterBar>
       <Panel flush>
         {q.error && !q.data ? <ErrorState error={q.error} onRetry={() => void q.refetch()} /> : !q.data ? <Skeleton /> : (
-          <DataTable caption="Price books" rows={q.data.items} rowKey={(b) => b.id} onRowClick={setOpen} empty={<EmptyState title="No price books" description="Without a price book, quotations use each product's list price." />} columns={[
+          <DataTable<Book> caption="Price books" rows={q.data.items} rowKey={(b) => b.id} onRowClick={setOpen} empty={<EmptyState title="No price books" description="Without a price book, quotations use each product's list price." />} columns={[
             { key: "n", header: "Name", render: (b: Book) => <span>{b.name} {b.is_default && <Tag>Default</Tag>}</span> }, { key: "a", header: "Customer", hideOnMobile: true, render: (b: Book) => b.account_name ?? "All customers" },
             { key: "c", header: "Currency", hideOnMobile: true, render: (b: Book) => b.currency }, { key: "v", header: "Valid", hideOnMobile: true, render: (b: Book) => `${b.valid_from ? dateOnly(b.valid_from) : "any time"} → ${b.valid_to ? dateOnly(b.valid_to) : "open"}` },
             { key: "e", header: "Entries", align: "right", render: (b: Book) => b.entries }, { key: "s", header: "Status", render: (b: Book) => <StatusBadge status={b.active ? "active" : "paused"} /> },

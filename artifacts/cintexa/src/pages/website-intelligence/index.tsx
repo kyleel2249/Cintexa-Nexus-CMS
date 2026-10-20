@@ -1,3 +1,4 @@
+import type { JSX } from "react";
 import { lazy, Suspense } from "react";
 import { Link, useLocation } from "wouter";
 import { Activity, FilePlus2, History, LayoutGrid, Settings as SettingsIcon } from "lucide-react";
