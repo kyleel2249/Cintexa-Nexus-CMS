@@ -144,7 +144,7 @@ export function CategoryRadar({ data, onSelect }: { data: CategoryDatum[]; onSel
             <PolarGrid strokeOpacity={0.25} />
             <PolarAngleAxis dataKey="label" tick={{ fontSize: 11, fill: "currentColor" }} />
             <PolarRadiusAxis domain={[0, 100]} tick={{ fontSize: 9 }} axisLine={false} />
-            <Radar dataKey="value" stroke="#b08612" fill="#b08612" fillOpacity={0.25} onClick={(d: { id?: string }) => d?.id && onSelect?.(d.id)} />
+            <Radar dataKey="value" stroke="#b08612" fill="#b08612" fillOpacity={0.25} onClick={(d: unknown) => { const id = (d as { id?: string } | null)?.id; if (id) onSelect?.(id); }} />
             <Tooltip formatter={(v: number, _n, item) => [(item?.payload as CategoryDatum).score == null ? "not scored" : Math.round(v), "Score"]} />
           </RadarChart>
         </ResponsiveContainer>
