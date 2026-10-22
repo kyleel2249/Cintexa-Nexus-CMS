@@ -1,7 +1,7 @@
 /** Typed client + React Query hooks for /api/v1/website-audits. */
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import type {
-  AuditBundle, AuditComparison, AuditConfig, AuditStatus, AuditSummary, CategoryId, FindingStatus, FindingView, Horizon, Recommendation, RemediationTask, ReportType, Roadmap, TaskStatus,
+  AuditBundle, AuditComparison, AuditConfig, AuditStatus, AuditSummary, CategoryId, FindingStatus, FindingView, Horizon, ExecutionGate, Recommendation, RecApproval, RecEvent, RecStatus, RecWorkflow, RemediationTask, ReportType, Roadmap, TaskStatus,
 } from "@workspace/wi-core";
 import { wiFetch, wiJson as apiJson } from "@/lib/website-intelligence/local";
 
@@ -37,7 +37,7 @@ export interface WiEvents { status: AuditStatus; stage: string | null; stages: A
 export interface WiIntegration { id: string; name: string; status: "available" | "not_configured" | "unreachable" | "error"; detail: string; enables?: string[] }
 export interface WiMonitor { id: string; ownerId: string; hostname: string; name: string | null; frequency: "daily" | "weekly" | "monthly"; enabled: boolean; nextRunAt: string | null; lastRunAt: string | null; lastAuditId: string | null; notify: { email: string[]; webhook: boolean; scoreDropThreshold: number }; config: AuditConfig; workspace: string | null }
 export interface WiReportRecord { id: string; type: ReportType; filename: string; bytes: number; pages: number; sha256: string | null; createdBy: string | null; createdAt: string }
-export interface WiSettings { weights: Record<CategoryId, number>; limits: Record<string, number>; allowedHosts: string[]; blockedHosts: string[]; aiExplanations: boolean; autoDiscoverCompetitors: boolean; allowAuthenticatedScope: boolean; allowPublicShare: boolean }
+export interface WiSettings { weights: Record<CategoryId, number>; limits: Record<string, number>; allowedHosts: string[]; blockedHosts: string[]; aiExplanations: boolean; autoDiscoverCompetitors: boolean; requireSeparateApprover: boolean; allowAuthenticatedScope: boolean; allowPublicShare: boolean }
 export interface WiCatalogTest { id: string; category: CategoryId; subcategory: string; title: string; measures: string; severity: string; scope: string; method: string; requires: string | null; wcag: string[]; gate: boolean; appliesToTypes: string[] | null; refs: { title: string; url: string }[]; module: string }
 export interface WiBenchmarks { own: BenchRow | null; competitors: BenchRow[]; note: string; sample?: { level: "none" | "insufficient" | "provisional" | "indicative"; note: string }; peerMedian?: number | null; report?: import("@workspace/wi-core").BenchmarkReport }
 export type CompetitorClassId = "direct" | "indirect" | "search" | "aspirational" | "reference";
@@ -95,8 +95,32 @@ export function usePublicBundle(token: string) {
   return useQuery({ queryKey: ["wi", "public", token], queryFn: () => apiJson<AuditBundle>(`${BASE}/public/${token}`), retry: false });
 }
 
+export interface WiAllowedTransition { to: RecStatus; label: string; noteRequired: boolean; needsEvidence: boolean; confirm: boolean }
+export type WiExecutionGate = ExecutionGate;
+export type WiRecommendation = Recommendation & { workflow: RecWorkflow; allowed: WiAllowedTransition[]; execution: WiExecutionGate };
+export interface WiRecommendations {
+  recommendations: WiRecommendation[]; roadmap: Roadmap; formula: string; counts: Record<RecStatus, number>;
+  statuses: { id: RecStatus; label: string; description: string }[]; requireSeparateApprover: boolean;
+}
 export function useRecommendations(id: string | undefined) {
-  return useQuery({ queryKey: ["wi", "recs", id], enabled: Boolean(id), queryFn: () => apiJson<{ recommendations: Recommendation[]; roadmap: Roadmap; formula: string }>(`${BASE}/${id}/recommendations`) });
+  return useQuery({ queryKey: ["wi", "recs", id], enabled: Boolean(id), queryFn: () => apiJson<WiRecommendations>(`${BASE}/${id}/recommendations`) });
+}
+export function useRecHistory(id: string, fp: string | null) {
+  return useQuery({ queryKey: ["wi", "recs", id, "history", fp], enabled: Boolean(fp), queryFn: () => apiJson<{ workflow: RecWorkflow; events: RecEvent[]; approvals: RecApproval[] }>(`${BASE}/${id}/recommendations/${fp}/history`) });
+}
+/** Approval workflow: every call is validated again on the server, which decides what each person may do. */
+export function useRecWorkflow(id: string) {
+  const inv = useInvalidate();
+  const done = () => inv("recs", "bundle", "list", "stats", "audit");
+  return {
+    transition: useMutation({
+      mutationFn: (v: { fingerprint: string; to: RecStatus; note?: string; expectedVersion?: number; evidence?: { method: "manual" | "retest" | "rescan"; auditId?: string } }) =>
+        apiJson<{ workflow: RecWorkflow; allowed: WiAllowedTransition[]; execution: WiExecutionGate }>(`${BASE}/${id}/recommendations/${v.fingerprint}/transition`, { method: "POST", ...json({ to: v.to, note: v.note, expectedVersion: v.expectedVersion, evidence: v.evidence }) }),
+      onSuccess: done, onError: done,
+    }),
+    assign: useMutation({ mutationFn: (v: { fingerprint: string; assignee: string | null }) => apiJson<{ workflow: RecWorkflow }>(`${BASE}/${id}/recommendations/${v.fingerprint}`, { method: "PATCH", ...json({ assignee: v.assignee }) }), onSuccess: done }),
+    verify: useMutation({ mutationFn: (fingerprint: string) => apiJson<AuditSummary>(`${BASE}/${id}/recommendations/${fingerprint}/verify`, { method: "POST", ...json({}) }), onSuccess: done }),
+  };
 }
 export function useTasks(id: string | undefined) { return useQuery({ queryKey: ["wi", "tasks", id], enabled: Boolean(id), queryFn: () => apiJson<{ tasks: RemediationTask[] }>(`${BASE}/${id}/tasks`).then((r) => r.tasks) }); }
 export function useReports(id: string | undefined) { return useQuery({ queryKey: ["wi", "reports", id], enabled: Boolean(id), queryFn: () => apiJson<{ reports: WiReportRecord[]; suggestedFileName: string }>(`${BASE}/${id}/report`) }); }

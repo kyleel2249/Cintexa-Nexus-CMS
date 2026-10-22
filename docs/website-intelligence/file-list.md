@@ -35,3 +35,12 @@ Unzip the archive at the repository root; paths line up one-to-one. Then run `np
 - `lib/db/src/wi-schema.ts` (two tables appended)
 - `artifacts/api-server/src/services/website-intelligence/search-provider.ts`; edited: `store.ts`, `wiring.ts`, `integrations.ts`; test `__tests__/competitors.store.test.ts` (needs `DATABASE_URL`)
 - `artifacts/cintexa/src/pages/website-intelligence/competitors.tsx`, `benchmark-report.tsx`; edited: `audit-detail.tsx`, `settings.tsx`, `lib/website-intelligence/api.ts`
+
+## Recommendation approval workflow files
+- `lib/wi-core/src/rec-workflow.ts` (+ `__tests__/rec-workflow.test.ts`); edited: `index.ts`
+- `lib/wi-engine/src/recommendation-lifecycle.ts`; edited: `repo.ts`, `memory-repo.ts`, `routes.ts`, `engine.ts`, `retest.ts`, `settings.ts`, `index.ts`
+- `lib/wi-engine/test/recommendation-workflow.test.ts`
+- `lib/db/src/wi-schema.ts` (three tables appended)
+- `artifacts/api-server/src/services/website-intelligence/store.ts`; test `__tests__/recommendation-workflow.store.test.ts` (needs `DATABASE_URL`)
+- `artifacts/cintexa/src/pages/website-intelligence/recommendations.tsx`, `settings.tsx`; `lib/website-intelligence/api.ts`
+- `docs/website-intelligence/recommendation-workflow.md`

@@ -1,5 +1,6 @@
 import { aggregateOutcomes, applyRetestOutcome, type AuditConfig, type AuditSummary, type Finding, type RetestStatus } from "@workspace/wi-core";
 import { store } from "./ports";
+import { applyVerificationOutcome } from "./recommendation-lifecycle";
 
 /** Builds the configuration of a targeted retest: only the affected URLs and tests of the selected findings. */
 export function buildRetestConfig(parent: AuditSummary, findings: Finding[], email: string): AuditConfig {
@@ -37,6 +38,7 @@ export async function finalizeRetest(retestAuditId: string): Promise<void> {
     const wf = await store.getWorkflow(rt.parentAuditId, fp);
     if (!wf) continue;
     const next = applyRetestOutcome(wf, outcome);
+    await applyVerificationOutcome(rt.parentAuditId, fp, outcome === "passed" ? "passed" : outcome === "failed" ? "failed" : "inconclusive", { method: "retest", auditId: retestAuditId, testId: parentFinding.testId }).catch(() => null);
     await store.patchWorkflow(rt.parentAuditId, fp, {
       status: next.status, retestStatus: next.retestStatus, retestAuditId,
       ...(outcome === "passed" ? { verifiedAt: new Date(), verifiedBy: `retest ${retestAuditId}`, verificationMethod: "retest" as const } : {}),

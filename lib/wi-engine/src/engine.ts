@@ -18,6 +18,7 @@ import { runBusinessSite, runFunctionalitySite, runPerformanceSite } from "./sit
 import { runRobotsAndSitemap, runSeoCrosspage } from "./site-seo";
 import { runSecurity } from "./site-security";
 import { maybeAutoDiscover } from "./competitor-discovery";
+import { reconcileAfterAudit } from "./recommendation-lifecycle";
 import { finalizeRetest } from "./retest";
 
 export const ENGINE_VERSION = "1.0.0";
@@ -350,7 +351,16 @@ export async function runAudit(auditId: string): Promise<RunResult> {
       const lineage = new Map(findings.filter((f) => f.kind === "defect").map((f) => [f.fingerprint, prev ? (prevSet.has(f.fingerprint) ? ("recurring" as const) : ("new" as const)) : null]));
       await store.replaceFindings(auditId, findings, lineage);
       await store.saveRecommendations(auditId, buildRecommendations(findings));
-      if (prev) { await store.carryWorkflow(prev.id, auditId); await store.patchAudit(auditId, { previousAuditId: prev.id }); }
+      if (prev) {
+        await store.carryWorkflow(prev.id, auditId);
+        await store.patchAudit(auditId, { previousAuditId: prev.id });
+        if (row.kind === "audit") {
+          try {
+            const r = await reconcileAfterAudit(auditId, prev.id, allResults);
+            if (r.carried || r.verified || r.failed) log("info", "recommendations", `Recommendation lifecycle: ${r.carried} carried, ${r.verified} verified by rescan, ${r.failed} failed, ${r.regressed} regressed.`);
+          } catch (e) { log("warn", "recommendations", `Recommendation lifecycle reconciliation failed: ${(e as Error).message}`); }
+        }
+      }
       findingsCount = findings.filter((f) => f.kind === "defect").length;
       progress.findings = findingsCount;
       return `${findingsCount} finding(s), ${buildRecommendations(findings).length} recommendation(s).`;

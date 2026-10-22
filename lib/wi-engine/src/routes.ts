@@ -7,11 +7,13 @@
 import {
   ALL_TESTS, CATEGORY_IDS, CATEGORY_LABELS, DEFAULT_WEIGHTS, FINDING_STATUSES, PROFILE_PRESETS, REPORT_TYPES, SCORING_VERSION, STAGE_IDS, STAGE_LABELS, TASK_STATUSES, WEBSITE_TYPES, WEBSITE_TYPE_LABELS,
   buildRoadmap, compareAudits, parseAuditUrl, reportFileName, validateTransition, PRIORITY_FORMULA, SCORE_FORMULA, aggregateOutcomes,
-  COMPETITOR_CLASSES, COMPETITOR_CLASS_LABELS, buildBenchmarkReport, COMPETITOR_STATUSES, DEFAULT_SELECTION, benchmarkSampleNote, canonicalDomain, median, selectForComparison,
+  COMPETITOR_CLASSES, COMPETITOR_CLASS_LABELS, REC_STATUSES, REC_STATUS_DESCRIPTIONS, REC_STATUS_LABELS, buildBenchmarkReport, emptyRecWorkflow, COMPETITOR_STATUSES, DEFAULT_SELECTION, benchmarkSampleNote, canonicalDomain, median, selectForComparison,
+  type RecActor, type RecStatus, type VerificationEvidence,
   type AuditBundle, type CheckResult, type Finding, type FindingStatus, type FindingView, type Horizon, type TestStatus,
 } from "@workspace/wi-core";
 import { normalizeConfig } from "./config";
 import { addManualCompetitor, isDiscoveryRunning, startDiscoveryInBackground } from "./competitor-discovery";
+import { assignRecommendation, getWorkflowOrNew, startVerification, transitionRecommendation, viewFor } from "./recommendation-lifecycle";
 import { persistComparison } from "./engine";
 import type { Explanation } from "./explain";
 import { evaluateGate, findingsToCsv, findingsToSarif } from "./export";
@@ -308,32 +310,103 @@ router.post("/:id/findings/:fp/explain", async (req, res) => {
   res.json(await deps.explain(f, (await deps.settings.load()).aiExplanations));
 });
 
-router.post("/:id/retest", async (req, res) => {
-  const row = await owned(req, res, String(req.params.id)); if (!row) return;
-  if (!["completed", "partial"].includes(row.status)) return bad(res, "Only finished audits can be retested.", 409);
+/** Creates a targeted retest audit for the selected defects and moves any implemented recommendations to VERIFYING. */
+async function startRetest(req: ReqLike, row: Record<string, any>, selected: Finding[]): Promise<{ ok: true; audit: Awaited<ReturnType<EngineRepo["createAudit"]>> } | { ok: false; status: number; error: string }> {
   const parent = (await repo.getAudit(row.id)) as NonNullable<Awaited<ReturnType<typeof repo.getAudit>>>;
-  const wanted: string[] = Array.isArray(req.body?.fingerprints) ? req.body.fingerprints.map(String) : req.body?.fingerprint ? [String(req.body.fingerprint)] : [];
-  const all = (await repo.loadFindings(row.id)).filter((f) => f.kind === "defect");
-  const selected = wanted.length ? all.filter((f) => wanted.includes(f.fingerprint)) : all.filter((f) => f.horizon === "immediate");
-  if (!selected.length) return bad(res, "No matching findings to retest.", 404, "fingerprints");
   const settings = await deps.settings.load();
-  if (!isAdmin(req) && (await countActive(uid(req))) >= settings.limits.maxActiveAuditsPerUser) return bad(res, "Too many audits are running. Try again shortly.", 429);
+  if (!isAdmin(req) && (await countActive(uid(req))) >= settings.limits.maxActiveAuditsPerUser) return { ok: false, status: 429, error: "Too many audits are running. Try again shortly." };
   const cfg = buildRetestConfig(parent, selected, email(req));
   const audit = await repo.createAudit({ ownerId: row.owner_id, ownerEmail: req.auth?.email ?? null, hostname: row.hostname, cfg, kind: "retest", parentAuditId: row.id, workspace: row.workspace });
   for (const f of selected) await repo.patchWorkflow(row.id, f.fingerprint, { status: "retest_required", retestStatus: "none", retestAuditId: audit.id });
   await repo.addEvent(audit.id, "info", null, `Retest of ${selected.length} finding(s) from audit ${row.id}.`);
+  await startVerification(row.id, selected.map((f) => f.fingerprint), audit.id);
   deps.enqueue(audit.id);
-  res.status(202).json(audit);
+  return { ok: true, audit };
+}
+router.post("/:id/retest", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  if (!["completed", "partial"].includes(row.status)) return bad(res, "Only finished audits can be retested.", 409);
+  const wanted: string[] = Array.isArray(req.body?.fingerprints) ? req.body.fingerprints.map(String) : req.body?.fingerprint ? [String(req.body.fingerprint)] : [];
+  const all = (await repo.loadFindings(row.id)).filter((f) => f.kind === "defect");
+  const selected = wanted.length ? all.filter((f) => wanted.includes(f.fingerprint)) : all.filter((f) => f.horizon === "immediate");
+  if (!selected.length) return bad(res, "No matching findings to retest.", 404, "fingerprints");
+  const r = await startRetest(req, row, selected);
+  if (!r.ok) return bad(res, r.error, r.status);
+  res.status(202).json(r.audit);
 });
-
-// ---- recommendations and tasks
+const recActor = (req: ReqLike, row: Record<string, any>): RecActor => ({ kind: "user", id: email(req), isOwner: row.owner_id === uid(req), isAdmin: isAdmin(req) });
 router.get("/:id/recommendations", async (req, res) => {
   const row = await owned(req, res, String(req.params.id)); if (!row) return;
   const recs = await repo.loadRecommendations(row.id);
   const h = typeof req.query.horizon === "string" ? (req.query.horizon as Horizon) : null;
-  res.json({ recommendations: h ? recs.filter((r) => r.horizon === h) : recs, roadmap: buildRoadmap(recs), formula: PRIORITY_FORMULA });
+  const [wfs, settings] = await Promise.all([repo.loadRecWorkflows(row.id), deps.settings.load()]);
+  const actor = recActor(req, row);
+  const view = (fp: string) => viewFor(wfs.get(fp) ?? emptyRecWorkflow(row.id, fp), actor, { requireSeparateApprover: settings.requireSeparateApprover });
+  const counts = Object.fromEntries(REC_STATUSES.map((s) => [s, 0])) as Record<RecStatus, number>;
+  for (const r of recs) counts[view(r.fingerprint).workflow.status]++;
+  const items = (h ? recs.filter((r) => r.horizon === h) : recs).map((r) => { const v = view(r.fingerprint); return { ...r, workflow: v.workflow, allowed: v.allowed, execution: v.execution }; });
+  res.json({ recommendations: items, roadmap: buildRoadmap(recs), formula: PRIORITY_FORMULA, counts, statuses: REC_STATUSES.map((s) => ({ id: s, label: REC_STATUS_LABELS[s], description: REC_STATUS_DESCRIPTIONS[s] })), requireSeparateApprover: settings.requireSeparateApprover });
 });
-
+const TRANSITION_STATUS: Record<string, number> = { not_found: 404 };
+router.post("/:id/recommendations/:fp/transition", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const body = req.body ?? {};
+  const to = String(body.to ?? "");
+  if (!(REC_STATUSES as readonly string[]).includes(to)) return bad(res, "Unknown status.", 400, "to");
+  const note = body.note === undefined || body.note === null ? null : String(body.note).slice(0, 2000);
+  const expectedVersion = body.expectedVersion === undefined || body.expectedVersion === null ? null : Number(body.expectedVersion);
+  if (expectedVersion !== null && !Number.isInteger(expectedVersion)) return bad(res, "expectedVersion must be a whole number.", 400, "expectedVersion");
+  let evidence: VerificationEvidence | null = null;
+  if (to === "VERIFIED") {
+    const e = body.evidence ?? {};
+    const method = String(e.method ?? "");
+    if (!["manual", "retest", "rescan"].includes(method)) return bad(res, "Verification needs evidence: a retest or rescan audit, or a documented manual check.", 400, "evidence");
+    evidence = { method: method as VerificationEvidence["method"], outcome: "passed", ...(typeof e.auditId === "string" ? { auditId: e.auditId } : {}), ...(typeof e.testId === "string" ? { testId: e.testId } : {}) };
+    if (method !== "manual") {
+      // A user-supplied citation is checked against the cited audit's real results; it cannot simply be asserted.
+      const cited = evidence.auditId ? await repo.getAuditRow(evidence.auditId) : null;
+      if (!cited || cited.owner_id !== row.owner_id || cited.hostname !== row.hostname || !["completed", "partial"].includes(cited.status)) return bad(res, "The cited audit was not found for this site, or has not finished.", 400, "evidence");
+      const finding = (await repo.loadFindings(row.id)).find((f) => f.fingerprint === String(req.params.fp));
+      const o = finding ? aggregateOutcomes(await repo.loadChecks(cited.id)).get(finding.testId) : undefined;
+      if (!o || (o.status !== "passed" && o.status !== "not_applicable")) return bad(res, "The cited audit does not show this test passing, so it cannot verify the recommendation.", 400, "evidence");
+      evidence.testId = finding?.testId;
+    }
+  }
+  const r = await transitionRecommendation({ auditId: row.id, fingerprint: String(req.params.fp), to: to as RecStatus, actor: recActor(req, row), note, evidence, expectedVersion });
+  if (!r.ok) return res.status(TRANSITION_STATUS[r.code] ?? r.status).json({ error: r.error, code: r.code, ...(r.current ? { workflow: r.current } : {}) });
+  await repo.addEvent(row.id, "info", null, `Recommendation ${String(req.params.fp).slice(0, 12)} moved to ${REC_STATUS_LABELS[to as RecStatus]} by ${email(req)}.`);
+  const settings = await deps.settings.load();
+  const v = viewFor(r.workflow, recActor(req, row), { requireSeparateApprover: settings.requireSeparateApprover });
+  res.json({ workflow: v.workflow, allowed: v.allowed, execution: v.execution, approval: r.approval });
+});
+router.patch("/:id/recommendations/:fp", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const a = req.body?.assignee;
+  if (a !== null && typeof a !== "string") return bad(res, "assignee must be text, or null to clear it.", 400, "assignee");
+  const r = await assignRecommendation({ auditId: row.id, fingerprint: String(req.params.fp), actor: recActor(req, row), assignee: a });
+  if (!r.ok) return bad(res, r.error, r.status);
+  res.json({ workflow: r.workflow });
+});
+router.get("/:id/recommendations/:fp/history", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const fp = String(req.params.fp);
+  if (!(await repo.loadRecommendations(row.id)).some((r) => r.fingerprint === fp)) return bad(res, "Recommendation not found.", 404);
+  const [events, approvals, workflow] = await Promise.all([repo.listRecEvents(row.id, fp), repo.listRecApprovals(row.id, fp), getWorkflowOrNew(row.id, fp)]);
+  res.json({ workflow, events, approvals });
+});
+/** Starts independent verification: a targeted retest of this recommendation's finding. The result, not the requester, decides the status. */
+router.post("/:id/recommendations/:fp/verify", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  if (!["completed", "partial"].includes(row.status)) return bad(res, "Only finished audits can be retested.", 409);
+  const fp = String(req.params.fp);
+  const finding = (await repo.loadFindings(row.id)).find((f) => f.fingerprint === fp && f.kind === "defect");
+  if (!finding) return bad(res, "Recommendation not found.", 404);
+  const wf = await getWorkflowOrNew(row.id, fp);
+  if (wf.status !== "IMPLEMENTED" && wf.status !== "VERIFYING") return bad(res, "Only implemented recommendations can be verified. Mark it implemented first.", 409);
+  const r = await startRetest(req, row, [finding]);
+  if (!r.ok) return bad(res, r.error, r.status);
+  res.status(202).json(r.audit);
+});
 router.get("/:id/tasks", async (req, res) => { const row = await owned(req, res, String(req.params.id)); if (!row) return; res.json({ tasks: await repo.listTasks(row.id) }); });
 router.post("/:id/tasks", async (req, res) => {
   const row = await owned(req, res, String(req.params.id)); if (!row) return;

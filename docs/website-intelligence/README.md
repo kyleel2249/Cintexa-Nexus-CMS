@@ -4,6 +4,7 @@ Enter a URL → the engine crawls and inspects it, records evidence per test, co
 
 Documents: [architecture](architecture.md) · [file list & placement](file-list.md) · [database](database.md) · [environment](environment.md) · [API](api.md) · [deployment](deployment.md) · [browser worker](browser-worker.md) · [limitations](limitations.md) · [rollback](rollback.md) · [final report](final-report.md)
 - [competitor-intelligence.md](competitor-intelligence.md): automatic competitor discovery, confidence, benchmarks
+- [recommendation-workflow.md](recommendation-workflow.md): approval workflow, verification and the Action Agent gate
 
 ## Running without an API
 The module works with no API server. See [local-mode.md](local-mode.md). When an API is available the app uses it automatically.

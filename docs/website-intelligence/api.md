@@ -11,7 +11,11 @@
 | GET | `/:id/findings`, `/:id/findings/:fp` · PATCH `/:id/findings/:fp` | Workflow transitions are validated |
 | POST | `/:id/findings/:fp/explain` | AI explanation (labelled) |
 | POST | `/:id/retest` | Retest of selected/all findings; lineage kept |
-| GET | `/:id/recommendations` | Priority-ranked |
+| GET | `/:id/recommendations` | Priority-ranked, with approval workflow state, allowed actions, execution gate and status counts |
+| POST | `/:id/recommendations/:fp/transition` | Move a recommendation through the approval workflow; see [recommendation-workflow.md](recommendation-workflow.md) |
+| PATCH | `/:id/recommendations/:fp` | Set the assignee |
+| GET | `/:id/recommendations/:fp/history` | Event log and approvals |
+| POST | `/:id/recommendations/:fp/verify` | Start a targeted retest to verify an implemented recommendation |
 | GET/POST | `/:id/tasks` · PATCH/DELETE `/:id/tasks/:taskId` | Remediation tasks |
 | GET/POST | `/:id/report` | Report metadata / record generation (PDF is rendered client-side) |
 | GET | `/:id/export?format=csv\|json\|sarif` | Findings CSV (formula-injection-safe), full bundle JSON, SARIF 2.1.0 for code-scanning dashboards |

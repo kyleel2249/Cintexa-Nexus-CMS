@@ -1,5 +1,5 @@
 import { ensureSchema, pool } from "@workspace/db";
-import type { CompetitorPatch, CompetitorRunRow } from "@workspace/wi-engine/repo";
+import type { CompetitorPatch, CompetitorRunRow, RecTransitionWrite } from "@workspace/wi-engine/repo";
 import { emptyProgress, initialStages, newId, stripSecrets, type AuditPatch, type ListFilter, type NewAudit, type WorkflowPatch } from "@workspace/wi-engine/repo";
 
 export { emptyProgress, initialStages, newId, stripSecrets };
@@ -8,7 +8,7 @@ import {
   AUDIT_SCHEMA_VERSION, SCORING_VERSION, STAGE_IDS,
   type AuditConfig, type AuditProgress, type AuditStatus, type AuditSummary, type CheckResult, type CoverageReport, type EnvironmentRecord,
   type Finding, type FindingStatus, type FindingWorkflow, type PageFacts, type PerformanceSample, type Recommendation, type RemediationTask, type RetestStatus,
-  type CompetitorCandidate, type ScoreBreakdown, type StageId, type StageState, type WebsiteType, type AuditProfile, type Horizon, type TaskStatus,
+  type CompetitorCandidate, type RecActor, type RecApproval, type RecEvent, type RecWorkflow, type VerificationEvidence, type ScoreBreakdown, type StageId, type StageState, type WebsiteType, type AuditProfile, type Horizon, type TaskStatus,
 } from "@workspace/wi-core";
 
 async function q<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -279,4 +279,83 @@ export async function finishCompetitorRun(id: string, p: { status: CompetitorRun
 }
 export async function listCompetitorRuns(ownerId: string, hostname: string, limit = 20): Promise<CompetitorRunRow[]> {
   return (await q(`SELECT * FROM wi_competitor_runs WHERE owner_id=$1 AND site_hostname=$2 ORDER BY started_at DESC LIMIT $3`, [ownerId, hostname.toLowerCase(), Math.min(limit, 100)])).map(toRun);
+}
+
+
+// ---- recommendation lifecycle (approval workflow). A recommendation without a row is implicitly NEW.
+const toRecWorkflow = (r: any): RecWorkflow => ({
+  auditId: r.audit_id, fingerprint: r.fingerprint, status: r.status, assignee: r.assignee, version: Number(r.version), requestedBy: r.requested_by, requestedAt: iso(r.requested_at),
+  decidedBy: r.decided_by, decidedAt: iso(r.decided_at), decisionNote: r.decision_note, implementedBy: r.implemented_by, implementedAt: iso(r.implemented_at),
+  verifiedBy: r.verified_by, verifiedAt: iso(r.verified_at), verification: r.verification ?? null, createdAt: iso(r.created_at) as string, updatedAt: iso(r.updated_at) as string,
+});
+const toRecEvent = (r: any): RecEvent => ({ id: Number(r.id), at: iso(r.at) as string, auditId: r.audit_id, fingerprint: r.fingerprint, actorKind: r.actor_kind, actorId: r.actor_id, action: r.action, from: r.from_status, to: r.to_status, note: r.note, evidence: r.evidence ?? null });
+const toRecApproval = (r: any): RecApproval => ({ id: r.id, auditId: r.audit_id, fingerprint: r.fingerprint, requestedBy: r.requested_by, requestedAt: iso(r.requested_at) as string, decision: r.decision, decidedBy: r.decided_by, decidedAt: iso(r.decided_at), note: r.note });
+const REC_COLS: Record<string, [string, boolean]> = {
+  status: ["status", false], assignee: ["assignee", false], requestedBy: ["requested_by", false], requestedAt: ["requested_at", false], decidedBy: ["decided_by", false], decidedAt: ["decided_at", false],
+  decisionNote: ["decision_note", false], implementedBy: ["implemented_by", false], implementedAt: ["implemented_at", false], verifiedBy: ["verified_by", false], verifiedAt: ["verified_at", false], verification: ["verification", true],
+};
+const recEventSelect = "$1::text, $2::text, $6::text, $7::text, $8::text, $4::text, $3::text, $9::text, $10::jsonb";
+const recEventColumns = "(audit_id, fingerprint, actor_kind, actor_id, action, from_status, to_status, note, evidence)";
+
+export async function loadRecWorkflows(auditId: string): Promise<Map<string, RecWorkflow>> {
+  return new Map((await q(`SELECT * FROM wi_rec_workflow WHERE audit_id=$1`, [auditId])).map((r) => [r.fingerprint as string, toRecWorkflow(r)]));
+}
+export async function getRecWorkflow(auditId: string, fingerprint: string): Promise<RecWorkflow | null> {
+  const r = (await q(`SELECT * FROM wi_rec_workflow WHERE audit_id=$1 AND fingerprint=$2`, [auditId, fingerprint]))[0];
+  return r ? toRecWorkflow(r) : null;
+}
+/** Compare-and-set in ONE statement: the row change and its audit-trail entry commit together or not at all. */
+export async function transitionRec(w: RecTransitionWrite): Promise<RecWorkflow | null> {
+  if (w.expectFrom === "NEW" && (w.expectVersion === null || w.expectVersion === 0)) await q(`INSERT INTO wi_rec_workflow (audit_id, fingerprint) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [w.auditId, w.fingerprint]);
+  const sets: string[] = ["version = version + 1", "updated_at = NOW()"];
+  const v: unknown[] = [w.auditId, w.fingerprint, w.patch.status, w.expectFrom, w.expectVersion, w.actor.kind, w.actor.id, w.action, w.note, w.evidence ? JSON.stringify(w.evidence) : null];
+  for (const [k, val] of Object.entries(w.patch)) {
+    const col = REC_COLS[k];
+    if (!col || val === undefined) continue;
+    if (k === "status") { sets.push("status = $3"); continue; }
+    v.push(col[1] && val !== null ? JSON.stringify(val) : val);
+    sets.push(`${col[0]} = $${v.length}`);
+  }
+  const rows = await q(
+    `WITH upd AS (UPDATE wi_rec_workflow SET ${sets.join(", ")} WHERE audit_id=$1 AND fingerprint=$2 AND status=$4 AND ($5::int IS NULL OR version=$5::int) RETURNING *),
+          ev AS (INSERT INTO wi_rec_events ${recEventColumns} SELECT ${recEventSelect} FROM upd)
+     SELECT * FROM upd`, v);
+  return rows[0] ? toRecWorkflow(rows[0]) : null;
+}
+export async function insertRecWorkflow(w: RecWorkflow, event: { actor: RecActor; action: string; note: string | null }): Promise<boolean> {
+  const rows = await q(
+    `WITH ins AS (INSERT INTO wi_rec_workflow (audit_id, fingerprint, status, assignee, requested_by, requested_at, decided_by, decided_at, decision_note, implemented_by, implemented_at, verified_by, verified_at, verification)
+                  VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) ON CONFLICT DO NOTHING RETURNING audit_id)
+     INSERT INTO wi_rec_events ${recEventColumns} SELECT $1::text, $2::text, $15::text, $16::text, $17::text, NULL::text, $3::text, $18::text, NULL::jsonb FROM ins RETURNING id`,
+    [w.auditId, w.fingerprint, w.status, w.assignee, w.requestedBy, w.requestedAt, w.decidedBy, w.decidedAt, w.decisionNote, w.implementedBy, w.implementedAt, w.verifiedBy, w.verifiedAt,
+      w.verification ? JSON.stringify(w.verification) : null, event.actor.kind, event.actor.id, event.action, event.note],
+  );
+  return rows.length > 0;
+}
+export async function recordRecEvent(auditId: string, fingerprint: string, e: { actor: RecActor; action: string; note: string | null; evidence?: VerificationEvidence | null }, patch: { assignee?: string | null } = {}): Promise<RecWorkflow> {
+  await q(`INSERT INTO wi_rec_workflow (audit_id, fingerprint) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [auditId, fingerprint]);
+  const hasAssignee = "assignee" in patch;
+  const rows = await q(
+    `WITH upd AS (UPDATE wi_rec_workflow SET ${hasAssignee ? "assignee = $8::text," : ""} version = version + 1, updated_at = NOW() WHERE audit_id=$1 AND fingerprint=$2 RETURNING *),
+          ev AS (INSERT INTO wi_rec_events ${recEventColumns} SELECT $1::text, $2::text, $3::text, $4::text, $5::text, status, status, $6::text, $7::jsonb FROM upd)
+     SELECT * FROM upd`,
+    [auditId, fingerprint, e.actor.kind, e.actor.id, e.action, e.note, e.evidence ? JSON.stringify(e.evidence) : null, ...(hasAssignee ? [patch.assignee ?? null] : [])],
+  );
+  return toRecWorkflow(rows[0]);
+}
+export async function listRecEvents(auditId: string, fingerprint: string, limit = 200): Promise<RecEvent[]> {
+  return (await q(`SELECT * FROM (SELECT * FROM wi_rec_events WHERE audit_id=$1 AND fingerprint=$2 ORDER BY id DESC LIMIT $3) t ORDER BY id`, [auditId, fingerprint, Math.min(limit, 500)])).map(toRecEvent);
+}
+export async function createRecApproval(a: { auditId: string; fingerprint: string; requestedBy: string }): Promise<RecApproval> {
+  return toRecApproval((await q(`INSERT INTO wi_rec_approvals (id, audit_id, fingerprint, requested_by) VALUES ($1,$2,$3,$4) RETURNING *`, [newId("rapp"), a.auditId, a.fingerprint, a.requestedBy]))[0]);
+}
+export async function decideRecApproval(auditId: string, fingerprint: string, d: { decision: "approved" | "rejected" | "deferred"; decidedBy: string; note: string | null }): Promise<RecApproval | null> {
+  const r = (await q(
+    `UPDATE wi_rec_approvals SET decision=$3, decided_by=$4, decided_at=NOW(), note=$5
+     WHERE id = (SELECT id FROM wi_rec_approvals WHERE audit_id=$1 AND fingerprint=$2 AND decision IS NULL ORDER BY requested_at DESC LIMIT 1) RETURNING *`,
+    [auditId, fingerprint, d.decision, d.decidedBy, d.note]))[0];
+  return r ? toRecApproval(r) : null;
+}
+export async function listRecApprovals(auditId: string, fingerprint: string): Promise<RecApproval[]> {
+  return (await q(`SELECT * FROM wi_rec_approvals WHERE audit_id=$1 AND fingerprint=$2 ORDER BY requested_at DESC`, [auditId, fingerprint])).map(toRecApproval);
 }

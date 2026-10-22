@@ -21,3 +21,10 @@ TLS tests are not tested, compression is inconclusive, audits run only while the
 - Competitor pages are sampled passively (home page for discovery; up to 15 pages for a benchmark). Peer medians describe the selected peer set and are never presented as industry averages.
 - Registrable-domain detection uses a built-in list of common multi-part suffixes, not the full public suffix list.
 - Not implemented: AI-generated competitor suggestions, directory or publication mining, scheduled re-discovery and competitor-change alerts, and page-level competitor comparison. Local mode keeps competitors in memory only and has no search provider.
+
+## Approval workflow (stated plainly)
+- The Action Agent itself is not built. The workflow supplies its gate (`executionGate`) and reporting path; nothing applies changes to a site.
+- Verification evidence is only as strong as the retest: a passing test shows the checked condition holds on the sampled pages, not that the whole site is fixed. Manual verification is the owner's or an administrator's recorded statement.
+- Approvals do not notify anyone yet; reviewers see pending items in the Recommendations page.
+- Workflow state is per audit and carried to the next audit of the same site; it is not shared across different sites. Local mode keeps it in memory for the open tab.
+- The approval, concurrency and persistence logic is tested (engine tests and against PostgreSQL 16). The React page parses but has not been rendered or type-checked in this environment.

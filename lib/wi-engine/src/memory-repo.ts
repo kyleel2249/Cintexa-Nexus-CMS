@@ -3,13 +3,13 @@
  * Mirrors the SQL semantics of the Postgres store: soft delete, workflow carry-over, upserts keyed by URL/fingerprint.
  */
 import { AUDIT_SCHEMA_VERSION, SCORING_VERSION } from "@workspace/wi-core";
-import type { CompetitorCandidate } from "@workspace/wi-core";
+import { emptyRecWorkflow, type CompetitorCandidate, type RecActor, type RecApproval, type RecEvent, type RecWorkflow, type VerificationEvidence } from "@workspace/wi-core";
 import type {
   AuditSummary, CheckResult, Finding, FindingWorkflow, PageFacts, PerformanceSample, Recommendation, RemediationTask,
 } from "@workspace/wi-core";
 import {
   emptyProgress, initialStages, newId, stripSecrets,
-  type AuditPatch, type AuditRow, type CompetitorPatch, type CompetitorRunRow, type EngineRepo, type EventRow, type ListFilter, type NewAudit, type PageRow, type ReportInput, type ReportRow, type TaskInput, type TaskPatch, type WorkflowPatch,
+  type AuditPatch, type AuditRow, type CompetitorPatch, type RecTransitionWrite, type CompetitorRunRow, type EngineRepo, type EventRow, type ListFilter, type NewAudit, type PageRow, type ReportInput, type ReportRow, type TaskInput, type TaskPatch, type WorkflowPatch,
 } from "./repo";
 
 interface AuditRecord {
@@ -44,6 +44,11 @@ export class MemoryRepo implements EngineRepo {
   /** Competitors and discovery runs are held in memory only in local mode (not persisted to IndexedDB). */
   private readonly competitors = new Map<string, Map<string, CompetitorCandidate>>();
   private readonly competitorRuns: CompetitorRunRow[] = [];
+  /** Recommendation lifecycle, in memory only in local mode. Keyed by audit id then fingerprint. */
+  private readonly recWorkflows = new Map<string, Map<string, RecWorkflow>>();
+  private readonly recEvents: RecEvent[] = [];
+  private readonly recApprovals: RecApproval[] = [];
+  private nextRecEventId = 1;
 
   constructor(private readonly onChange: (auditId: string, kind: "write" | "delete") => void = () => undefined) {}
 
@@ -113,7 +118,11 @@ export class MemoryRepo implements EngineRepo {
     this.touch(id);
   }
   async softDelete(id: string): Promise<void> { const r = this.rec(id); if (r) { r.deleted = true; this.touch(id); } }
-  async hardDelete(id: string): Promise<void> { if (this.audits.delete(id)) this.touch(id, "delete"); }
+  async hardDelete(id: string): Promise<void> {
+    this.recWorkflows.delete(id);
+    for (const list of [this.recEvents, this.recApprovals] as { auditId: string }[][]) for (let i = list.length - 1; i >= 0; i--) if (list[i]!.auditId === id) list.splice(i, 1);
+    if (this.audits.delete(id)) this.touch(id, "delete");
+  }
   async previousCompleted(ownerId: string, hostname: string, beforeId: string | null): Promise<AuditSummary | null> {
     const c = [...this.audits.values()].filter((r) => !r.deleted).map((r) => r.summary)
       .filter((a) => a.ownerId === ownerId && a.hostname === hostname && a.kind !== "benchmark" && (a.status === "completed" || a.status === "partial") && (beforeId === null || a.id !== beforeId))
@@ -261,4 +270,51 @@ export class MemoryRepo implements EngineRepo {
   async listCompetitorRuns(ownerId: string, hostname: string, limit = 20): Promise<CompetitorRunRow[]> {
     return structuredClone(this.competitorRuns.filter((r) => r.ownerId === ownerId && r.hostname === hostname.toLowerCase()).slice(-limit).reverse());
   }
+
+  // ---- recommendation lifecycle
+  private recRows(auditId: string): Map<string, RecWorkflow> { let m = this.recWorkflows.get(auditId); if (!m) { m = new Map(); this.recWorkflows.set(auditId, m); } return m; }
+  private pushRecEvent(auditId: string, fingerprint: string, actor: RecActor, action: string, from: RecWorkflow["status"] | null, to: RecWorkflow["status"] | null, note: string | null, evidence: VerificationEvidence | null): void {
+    this.recEvents.push({ id: this.nextRecEventId++, at: nowIso(), auditId, fingerprint, actorKind: actor.kind, actorId: actor.id, action, from, to, note, evidence: evidence ? structuredClone(evidence) : null });
+  }
+  async loadRecWorkflows(auditId: string): Promise<Map<string, RecWorkflow>> { return new Map([...(this.recWorkflows.get(auditId)?.entries() ?? [])].map(([k, v]) => [k, structuredClone(v)])); }
+  async getRecWorkflow(auditId: string, fingerprint: string): Promise<RecWorkflow | null> { const r = this.recWorkflows.get(auditId)?.get(fingerprint); return r ? structuredClone(r) : null; }
+  async transitionRec(w: RecTransitionWrite): Promise<RecWorkflow | null> {
+    const rows = this.recRows(w.auditId);
+    let cur = rows.get(w.fingerprint);
+    if (!cur) { if (w.expectFrom !== "NEW" || (w.expectVersion !== null && w.expectVersion !== 0)) return null; cur = { ...emptyRecWorkflow(w.auditId, w.fingerprint), version: 1 }; rows.set(w.fingerprint, cur); }
+    else if (cur.status !== w.expectFrom || (w.expectVersion !== null && cur.version !== w.expectVersion)) return null;
+    const from = cur.status;
+    const next: RecWorkflow = { ...cur, ...w.patch, version: cur.version + 1, updatedAt: nowIso() };
+    rows.set(w.fingerprint, next);
+    this.pushRecEvent(w.auditId, w.fingerprint, w.actor, w.action, from, next.status, w.note, w.evidence);
+    return structuredClone(next);
+  }
+  async insertRecWorkflow(w: RecWorkflow, event: { actor: RecActor; action: string; note: string | null }): Promise<boolean> {
+    const rows = this.recRows(w.auditId);
+    if (rows.has(w.fingerprint)) return false;
+    rows.set(w.fingerprint, { ...structuredClone(w), version: 1 });
+    this.pushRecEvent(w.auditId, w.fingerprint, event.actor, event.action, null, w.status, event.note, null);
+    return true;
+  }
+  async recordRecEvent(auditId: string, fingerprint: string, e: { actor: RecActor; action: string; note: string | null; evidence?: VerificationEvidence | null }, patch: { assignee?: string | null } = {}): Promise<RecWorkflow> {
+    const rows = this.recRows(auditId);
+    const cur = rows.get(fingerprint) ?? { ...emptyRecWorkflow(auditId, fingerprint), version: 1 };
+    const next: RecWorkflow = { ...cur, ...("assignee" in patch ? { assignee: patch.assignee ?? null } : {}), version: cur.version + (rows.has(fingerprint) ? 1 : 0), updatedAt: nowIso() };
+    rows.set(fingerprint, next);
+    this.pushRecEvent(auditId, fingerprint, e.actor, e.action, next.status, next.status, e.note, e.evidence ?? null);
+    return structuredClone(next);
+  }
+  async listRecEvents(auditId: string, fingerprint: string, limit = 200): Promise<RecEvent[]> { return structuredClone(this.recEvents.filter((e) => e.auditId === auditId && e.fingerprint === fingerprint).slice(-limit)); }
+  async createRecApproval(a: { auditId: string; fingerprint: string; requestedBy: string }): Promise<RecApproval> {
+    const row: RecApproval = { id: newId("rapp"), auditId: a.auditId, fingerprint: a.fingerprint, requestedBy: a.requestedBy, requestedAt: nowIso(), decision: null, decidedBy: null, decidedAt: null, note: null };
+    this.recApprovals.push(row);
+    return structuredClone(row);
+  }
+  async decideRecApproval(auditId: string, fingerprint: string, d: { decision: "approved" | "rejected" | "deferred"; decidedBy: string; note: string | null }): Promise<RecApproval | null> {
+    const open = [...this.recApprovals].reverse().find((r) => r.auditId === auditId && r.fingerprint === fingerprint && r.decision === null);
+    if (!open) return null;
+    Object.assign(open, { decision: d.decision, decidedBy: d.decidedBy, decidedAt: nowIso(), note: d.note });
+    return structuredClone(open);
+  }
+  async listRecApprovals(auditId: string, fingerprint: string): Promise<RecApproval[]> { return structuredClone(this.recApprovals.filter((r) => r.auditId === auditId && r.fingerprint === fingerprint).reverse()); }
 }

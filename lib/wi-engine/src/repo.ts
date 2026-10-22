@@ -1,5 +1,5 @@
 import { STAGE_IDS } from "@workspace/wi-core";
-import type { CompetitorCandidate, CompetitorClass, CompetitorStatus } from "@workspace/wi-core";
+import type { CompetitorCandidate, CompetitorClass, CompetitorStatus, RecActor, RecApproval, RecEvent, RecStatus, RecWorkflow, VerificationEvidence } from "@workspace/wi-core";
 import type {
   AuditConfig, AuditProgress, AuditStatus, AuditSummary, CheckResult, CoverageReport, EnvironmentRecord, Finding, FindingStatus, FindingWorkflow, Horizon, PageFacts, PerformanceSample,
   Recommendation, RemediationTask, RetestStatus, ScoreBreakdown, StageId, StageState, TaskStatus,
@@ -86,6 +86,33 @@ export interface EngineRepo {
   createCompetitorRun(r: { ownerId: string; hostname: string; auditId: string | null; provider: string | null; queries: string[] }): Promise<CompetitorRunRow>;
   finishCompetitorRun(id: string, p: { status: CompetitorRunRow["status"]; summary: unknown; error?: string | null }): Promise<void>;
   listCompetitorRuns(ownerId: string, hostname: string, limit?: number): Promise<CompetitorRunRow[]>;
+  /** Recommendation lifecycle. A recommendation with no row is implicitly NEW (version 0). */
+  loadRecWorkflows(auditId: string): Promise<Map<string, RecWorkflow>>;
+  getRecWorkflow(auditId: string, fingerprint: string): Promise<RecWorkflow | null>;
+  /** Compare-and-set. Returns the new row, or null when the row was not in the expected state (a concurrent change). */
+  transitionRec(w: RecTransitionWrite): Promise<RecWorkflow | null>;
+  /** Writes a row for a later audit (carry-over). Does nothing when the row already exists. */
+  insertRecWorkflow(w: RecWorkflow, event: { actor: RecActor; action: string; note: string | null }): Promise<boolean>;
+  /** Records an event that does not change the status (assignment, notes). Creates the row if needed. */
+  recordRecEvent(auditId: string, fingerprint: string, e: { actor: RecActor; action: string; note: string | null; evidence?: VerificationEvidence | null }, patch?: { assignee?: string | null }): Promise<RecWorkflow>;
+  listRecEvents(auditId: string, fingerprint: string, limit?: number): Promise<RecEvent[]>;
+  createRecApproval(a: { auditId: string; fingerprint: string; requestedBy: string }): Promise<RecApproval>;
+  decideRecApproval(auditId: string, fingerprint: string, d: { decision: "approved" | "rejected" | "deferred"; decidedBy: string; note: string | null }): Promise<RecApproval | null>;
+  listRecApprovals(auditId: string, fingerprint: string): Promise<RecApproval[]>;
+}
+
+/** One atomic change to a recommendation's workflow row, with the audit-trail entry written in the same step. */
+export interface RecTransitionWrite {
+  auditId: string;
+  fingerprint: string;
+  /** The status the caller validated against. The write is refused (null result) if the row has moved on. */
+  expectFrom: RecStatus;
+  expectVersion: number | null;
+  patch: Partial<Omit<RecWorkflow, "auditId" | "fingerprint" | "version" | "createdAt" | "updatedAt">> & { status: RecStatus };
+  actor: RecActor;
+  action: string;
+  note: string | null;
+  evidence: VerificationEvidence | null;
 }
 
 export interface CompetitorPatch { status?: CompetitorStatus; classification?: CompetitorClass; name?: string | null; industry?: string | null; market?: string | null }
