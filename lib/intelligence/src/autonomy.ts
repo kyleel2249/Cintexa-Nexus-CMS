@@ -1,4 +1,4 @@
-import type { AutonomyLevel, ProposedAction } from './types.ts';
+import type { AutonomyLevel, ProposedAction } from './types';
 
 // Actions that ALWAYS need a human decision. Level 4 can never auto-run these; configuration cannot lower this.
 export const MANDATORY_APPROVAL_TYPES: ReadonlySet<string> = new Set([

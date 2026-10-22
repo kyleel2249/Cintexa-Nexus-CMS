@@ -107,6 +107,12 @@ function startJobs(db: Db, deps: Deps) {
   jobsTimer = setInterval(pass, 60_000);
 }
 
+/** Raw query handle on the same on-device database (used by Intelligence, which reads Sales tables and keeps its own intel_* tables beside them). */
+export async function getLocalQueryable(): Promise<{ query: (sql: string, params?: unknown[]) => Promise<{ rows: any[] }> }> {
+  const rt = await start();
+  return { query: (sql, params) => rt.pg.query(sql, params) };
+}
+
 export async function localStatus(): Promise<LocalStatus> {
   try {
     const r = await start();

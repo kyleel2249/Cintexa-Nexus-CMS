@@ -1,5 +1,5 @@
-import { createHash } from 'node:crypto';
-import type { AgentTask, Approval, AuditEvent } from './types.ts';
+import { sha256 as portableSha256 } from './portable';
+import type { AgentTask, Approval, AuditEvent } from './types';
 
 /** Persistence port. Implement against Drizzle/PostgreSQL (see migrations/0001). Every method is org-scoped by the caller. */
 export interface Store {
@@ -16,7 +16,7 @@ export interface Store {
   listAudit(orgId: string): Promise<AuditEvent[]>;
 }
 
-export function sha256(s: string): string { return createHash('sha256').update(s).digest('hex'); }
+export const sha256 = portableSha256;
 
 export function stableStringify(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableStringify).join(',')}]`;

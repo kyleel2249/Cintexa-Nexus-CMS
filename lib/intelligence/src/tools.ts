@@ -1,6 +1,6 @@
-import { OrchestratorError } from './types.ts';
-import { validate } from './validate.ts';
-import type { Schema } from './validate.ts';
+import { OrchestratorError } from './types';
+import { validate } from './validate';
+import type { Schema } from './validate';
 
 export type ToolRisk = 'read' | 'write' | 'external';
 export interface ToolContext { orgId: string; taskId: string; signal: AbortSignal }

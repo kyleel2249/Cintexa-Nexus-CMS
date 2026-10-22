@@ -1,4 +1,4 @@
-import type { Severity } from './types.ts';
+import type { Severity } from './types';
 
 export interface Opp { id: string; value: number; currency: string; probability: number }
 

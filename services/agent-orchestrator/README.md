@@ -1,10 +1,4 @@
-# agent-orchestrator
+# agent-orchestrator (moved)
 
-Standalone TypeScript module (no workspace deps) containing the agent orchestrator:
-task orchestration (`orchestrator.ts`), autonomy/approval policy (`autonomy.ts`), model routing (`llm.ts`),
-tool registry (`tools.ts`), store (`store.ts`), metrics (`metrics.ts`), SSRF guard (`ssrf.ts`),
-schema validation (`validate.ts`) and shared types (`types.ts`).
-
-Imports use explicit `.ts` extensions, so it lives outside the `api-server` typecheck project.
-
-Typecheck: `npx tsc -p services/agent-orchestrator/tsconfig.json`
+This module now lives in the workspace package **`lib/intelligence`** (`@workspace/intelligence`) so the API server
+and the browser app can both import it. See `lib/intelligence/README.md`.

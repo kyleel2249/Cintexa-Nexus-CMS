@@ -1,14 +1,14 @@
-import { randomUUID } from 'node:crypto';
-import { OrchestratorError } from './types.ts';
-import type { Actor, AgentOutput, AgentRole, AgentTask, Approval, AutonomyLevel, EvidenceRef, Finding, ProposedAction, Usage } from './types.ts';
-import { S, validate } from './validate.ts';
-import type { Schema } from './validate.ts';
-import { MANDATORY_APPROVAL_TYPES, decideDisposition } from './autonomy.ts';
-import type { AutonomyPolicy } from './autonomy.ts';
-import { ToolRegistry } from './tools.ts';
-import { sha256, stableStringify } from './store.ts';
-import type { Store } from './store.ts';
-import type { LlmResult, ModelRouter } from './llm.ts';
+import { randomUUID } from './portable';
+import { OrchestratorError } from './types';
+import type { Actor, AgentOutput, AgentRole, AgentTask, Approval, AutonomyLevel, EvidenceRef, Finding, ProposedAction, Usage } from './types';
+import { S, validate } from './validate';
+import type { Schema } from './validate';
+import { MANDATORY_APPROVAL_TYPES, decideDisposition } from './autonomy';
+import type { AutonomyPolicy } from './autonomy';
+import { ToolRegistry } from './tools';
+import { sha256, stableStringify } from './store';
+import type { Store } from './store';
+import type { LlmResult, ModelRouter } from './llm';
 
 // ---------- Agent contracts ----------
 export interface AgentDraft {
@@ -24,6 +24,8 @@ export interface AgentContext {
   delegate(role: AgentRole, input: Record<string, unknown>, opts?: { dependsOn?: string[]; priority?: number }): Promise<string>;
   awaitTasks(ids: string[]): Promise<AgentTask[]>;
   getResult(taskId: string): Promise<AgentOutput | null>;
+  /** True when an AI provider is configured. Agents skip optional narrative instead of reporting a degraded run. */
+  aiConfigured: boolean;
   markDegraded(reason: string): void;
   setProgress(pct: number): void;
 }
@@ -280,7 +282,7 @@ export class Orchestrator {
       return this.o.tools.invokeForAgent(def.tools, name, args, { orgId: t.orgId, taskId: t.id, signal });
     };
     return {
-      task: t, orgId: t.orgId, signal, now: this.o.now, callTool, markDegraded,
+      task: t, orgId: t.orgId, signal, now: this.o.now, callTool, markDegraded, aiConfigured: this.o.llm.configured,
       async tryTool(name, args) {
         try { return { ok: true as const, value: await callTool(name, args) }; }
         catch (e) {
@@ -309,7 +311,7 @@ export class Orchestrator {
         for (const id of ids) { alive(); out.push(await this.runToCompletion(t.orgId, id)); }
         return out;
       },
-      async getResult(taskId) { alive(); return (await ({ get: (id: string) => id }).get(taskId) && null) as null; },
+      getResult: async (taskId) => { alive(); const r = await this.o.store.getTask(t.orgId, taskId); return r?.result ?? null; },
       setProgress: (pct) => { void this.o.store.updateTask(t.orgId, t.id, { progress: Math.max(0, Math.min(100, Math.round(pct))) }).catch(() => undefined); },
     };
   }
@@ -347,7 +349,7 @@ export class Orchestrator {
   private async createApproval(t: AgentTask, action: ProposedAction, status: 'prepared' | 'pending'): Promise<Approval> {
     const a: Approval = {
       id: `apr_${randomUUID()}`, orgId: t.orgId, taskId: t.id, agentRole: t.agentRole, action, payloadHash: sha256(stableStringify(action)),
-      status, requestedBy: t.createdBy, requestedAt: this.iso(), decidedBy: null, decidedAt: null, decisionNote: null, executedAt: null, executionResult: null,
+      status, requestedBy: `agent:${t.agentRole}`, requestedAt: this.iso(), decidedBy: null, decidedAt: null, decisionNote: null, executedAt: null, executionResult: null,
     };
     await this.o.store.insertApproval(a);
     await this.audit(t.orgId, `agent:${t.agentRole}`, `approval.${status}`, 'approval', a.id, { actionType: action.type, risk: action.risk });

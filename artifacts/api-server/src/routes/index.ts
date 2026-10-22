@@ -25,6 +25,7 @@ import intakePublicRouter from "./intake-public";
 import settingsRouter from "./settings";
 import websiteAuditsRouter from "./website-audits";
 import salesRouter from "./sales";
+import intelligenceRouter from "./intelligence";
 import { apiGuard } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
@@ -60,5 +61,6 @@ router.use("/intake", intakePublicRouter);
 router.use("/settings", settingsRouter);
 router.use("/v1/website-audits", websiteAuditsRouter);
 router.use("/sales", salesRouter);
+router.use("/intelligence", intelligenceRouter);
 
 export default router;

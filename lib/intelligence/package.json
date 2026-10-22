@@ -1,0 +1,20 @@
+{
+  "name": "@workspace/intelligence",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "CINTEXA NEXUS Intelligence Orchestrator - agents, autonomy policy, SQL store, tools and request handler. Runs on the API server (pg) and on-device (PGlite).",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ssrf": "./src/ssrf.ts"
+  },
+  "scripts": {
+    "test": "tsx --test \"test/**/*.test.ts\"",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@electric-sql/pglite": "*",
+    "@types/node": "^25.3.3",
+    "tsx": "^4.21.0"
+  }
+}

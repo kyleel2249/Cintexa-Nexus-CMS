@@ -25,6 +25,9 @@
     },
     {
       "path": "../../lib/wi-engine"
+    },
+    {
+      "path": "../../lib/intelligence"
     }
   ]
 }

@@ -47,6 +47,7 @@ const Plugins = lazyWithRecovery(() => import("@/pages/plugins"));
 const Subscribers = lazyWithRecovery(() => import("@/pages/subscribers"));
 const BusinessDiagnostic = lazyWithRecovery(() => import("@/pages/business-diagnostic"));
 const PublicIntake = lazyWithRecovery(() => import("@/pages/public-intake"));
+const IntelligenceCentre = lazyWithRecovery(() => import("@/pages/intelligence"));
 const WebsiteIntelligence = lazyWithRecovery(() => import("@/pages/website-intelligence"));
 const WebsiteIntelligenceShared = lazyWithRecovery(() => import("@/pages/website-intelligence/shared"));
 const SalesRoutes = lazyWithRecovery(() => import("@/pages/sales/routes").then((m) => ({ default: m.SalesRoutes })));
@@ -96,6 +97,7 @@ function AppRoutes() {
           <Switch>
             <Route path="/" component={Dashboard} />
             <Route path="/diagnostics" component={BusinessDiagnostic} />
+            <Route path="/intelligence" component={IntelligenceCentre} />
             <Route path="/website-intelligence" component={WebsiteIntelligence} />
             <Route path="/website-intelligence/new" component={WebsiteIntelligence} />
             <Route path="/website-intelligence/audits" component={WebsiteIntelligence} />

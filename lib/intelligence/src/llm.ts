@@ -1,6 +1,6 @@
-import type { Usage } from './types.ts';
-import { validate } from './validate.ts';
-import type { Schema } from './validate.ts';
+import type { Usage } from './types';
+import { validate } from './validate';
+import type { Schema } from './validate';
 
 export interface ProviderRequest { model: string; system: string; user: string; maxTokens: number; signal: AbortSignal }
 export interface ProviderResponse { text: string; usage: Usage }
@@ -23,6 +23,9 @@ export class ModelRouter {
     private fallbackRoute: RouteConfig,
     private now: () => number = Date.now,
   ) {}
+
+  /** Whether any provider is wired in (says nothing about its health). */
+  get configured(): boolean { return this.provider !== null; }
 
   availability(model: string): 'available' | 'cooling_down' {
     return (this.unavailableUntil.get(model) ?? 0) > this.now() ? 'cooling_down' : 'available';
