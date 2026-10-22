@@ -10,7 +10,7 @@ interface Hit { type: string; id: number; title: string; subtitle: string; href:
 interface Entry { key: string; title: string; subtitle?: string; href: string; group: string; icon?: React.ComponentType<{ className?: string }> }
 
 const CMS_PAGES: { title: string; href: string }[] = [
-  { title: "Dashboard", href: "/" }, { title: "Intelligence Command Centre", href: "/intelligence" }, { title: "Business Diagnostic", href: "/diagnostics" }, { title: "Website Intelligence", href: "/website-intelligence" }, { title: "Sites", href: "/sites" }, { title: "Pages", href: "/pages" },
+  { title: "Dashboard", href: "/" }, { title: "AI Agents", href: "/agents" }, { title: "Intelligence Command Centre", href: "/intelligence" }, { title: "Business Diagnostic", href: "/diagnostics" }, { title: "Website Intelligence", href: "/website-intelligence" }, { title: "Sites", href: "/sites" }, { title: "Pages", href: "/pages" },
   { title: "Posts", href: "/posts" }, { title: "Content Calendar", href: "/calendar" }, { title: "Content Pipeline", href: "/pipeline" }, { title: "Media Library", href: "/media" }, { title: "Subscribers", href: "/subscribers" },
   { title: "Users", href: "/users" }, { title: "Categories", href: "/categories" }, { title: "Menus", href: "/menus" }, { title: "Forms", href: "/forms" }, { title: "SEO", href: "/seo" }, { title: "AI Studio", href: "/ai" }, { title: "Plugins", href: "/plugins" }, { title: "Settings", href: "/settings" },
 ];

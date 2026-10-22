@@ -44,3 +44,4 @@ Unzip the archive at the repository root; paths line up one-to-one. Then run `np
 - `artifacts/api-server/src/services/website-intelligence/store.ts`; test `__tests__/recommendation-workflow.store.test.ts` (needs `DATABASE_URL`)
 - `artifacts/cintexa/src/pages/website-intelligence/recommendations.tsx`, `settings.tsx`; `lib/website-intelligence/api.ts`
 - `docs/website-intelligence/recommendation-workflow.md`
+- `lib/wi-core/src/agents.ts` (+ test), `artifacts/cintexa/src/pages/agents.tsx`; edited `App.tsx`, `Sidebar.tsx`, `GlobalSearch.tsx`, `pages/intelligence.tsx` (AI Agents page and nav entry)

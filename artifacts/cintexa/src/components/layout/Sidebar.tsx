@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -17,6 +17,7 @@ import { NAV_ICONS } from "@/lib/sales/nav-icons";
 const navGroups = [
   { title: "Overview", items: [{ name: "Dashboard", href: "/", icon: LayoutDashboard }] },
   { title: "Intelligence", items: [
+    { name: "AI Agents", href: "/agents", icon: Bot },
     { name: "Command Centre", href: "/intelligence", icon: BrainCircuit },
     { name: "Business Diagnostic", href: "/diagnostics", icon: Activity },
     { name: "Diagnostic History", href: "/diagnostics?history=1", icon: History },
