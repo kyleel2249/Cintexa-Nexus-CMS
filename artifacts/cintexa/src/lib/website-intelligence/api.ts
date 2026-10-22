@@ -37,9 +37,22 @@ export interface WiEvents { status: AuditStatus; stage: string | null; stages: A
 export interface WiIntegration { id: string; name: string; status: "available" | "not_configured" | "unreachable" | "error"; detail: string; enables?: string[] }
 export interface WiMonitor { id: string; ownerId: string; hostname: string; name: string | null; frequency: "daily" | "weekly" | "monthly"; enabled: boolean; nextRunAt: string | null; lastRunAt: string | null; lastAuditId: string | null; notify: { email: string[]; webhook: boolean; scoreDropThreshold: number }; config: AuditConfig; workspace: string | null }
 export interface WiReportRecord { id: string; type: ReportType; filename: string; bytes: number; pages: number; sha256: string | null; createdBy: string | null; createdAt: string }
-export interface WiSettings { weights: Record<CategoryId, number>; limits: Record<string, number>; allowedHosts: string[]; blockedHosts: string[]; aiExplanations: boolean; allowAuthenticatedScope: boolean; allowPublicShare: boolean }
+export interface WiSettings { weights: Record<CategoryId, number>; limits: Record<string, number>; allowedHosts: string[]; blockedHosts: string[]; aiExplanations: boolean; autoDiscoverCompetitors: boolean; allowAuthenticatedScope: boolean; allowPublicShare: boolean }
 export interface WiCatalogTest { id: string; category: CategoryId; subcategory: string; title: string; measures: string; severity: string; scope: string; method: string; requires: string | null; wcag: string[]; gate: boolean; appliesToTypes: string[] | null; refs: { title: string; url: string }[]; module: string }
-export interface WiBenchmarks { own: BenchRow | null; competitors: BenchRow[]; note: string }
+export interface WiBenchmarks { own: BenchRow | null; competitors: BenchRow[]; note: string; sample?: { level: "none" | "insufficient" | "provisional" | "indicative"; note: string }; peerMedian?: number | null; report?: import("@workspace/wi-core").BenchmarkReport }
+export type CompetitorClassId = "direct" | "indirect" | "search" | "aspirational" | "reference";
+export interface WiCompetitor {
+  domain: string; url: string; name: string | null; classification: CompetitorClassId; classificationLabel: string; classificationReason: string; status: "pending" | "approved" | "rejected" | "unverifiable";
+  sources: string[]; evidence: { kind: string; detail: string; url?: string; at: string }[]; confidence: number;
+  breakdown: { searchOverlap: number | null; contentSimilarity: number | null; geographicOverlap: number | null; evidenceQuality: number; confidence: number; cap: number | null; capReason: string | null; notes: string[] };
+  industry: string | null; market: string | null; userConfirmed: boolean; firstDiscoveredAt: string; lastVerifiedAt: string | null; selected: boolean;
+  benchmark: { id: string; status: AuditStatus; overall: number | null } | null;
+}
+export interface WiCompetitorRun { id: string; status: "running" | "completed" | "partial" | "failed"; provider: string | null; queries: string[]; startedAt: string; finishedAt: string | null; error: string | null; summary: { unavailable?: string[]; alternatives?: string[]; candidatesFound?: number; hitsReceived?: number; droppedExclusions?: { domain: string; reason: string }[] } | null }
+export interface WiCompetitors {
+  hostname: string; searchProvider: { status: "available" | "not_configured" | "unreachable"; detail: string; envVars: string[] } | null; discoveryRunning: boolean;
+  defaults: { maxDiscover: number; maxCompare: number; minConfidence: number }; classes: { id: CompetitorClassId; label: string }[]; competitors: WiCompetitor[]; runs: WiCompetitorRun[];
+}
 export interface BenchRow { id: string; hostname: string; status: AuditStatus; overall: number | null; provisional: boolean | null; coverage: number | null; categories: Record<string, number | null>; pagesSampled: number }
 export interface WiExplanation { text: string; source: "ai" | "deterministic"; model?: string | null; disclaimer: string }
 
@@ -153,6 +166,20 @@ export function useShareMutations(id: string) {
 export function useBenchmarkStart(id: string) {
   const inv = useInvalidate();
   return useMutation({ mutationFn: (b: { url: string; name?: string }) => apiJson<AuditSummary>(`${BASE}/${id}/benchmark`, { method: "POST", ...json({ ...b, authorization: { confirmed: true } }) }), onSuccess: () => inv("bench", "list") });
+}
+export function useCompetitors(id: string | undefined) {
+  return useQuery({ queryKey: ["wi", "competitors", id], enabled: Boolean(id), queryFn: () => apiJson<WiCompetitors>(`${BASE}/${id}/competitors`), refetchInterval: (q) => (q.state.data?.discoveryRunning || q.state.data?.competitors.some((c) => c.benchmark && isActive(c.benchmark.status)) ? 4000 : false) });
+}
+export function useCompetitorMutations(id: string) {
+  const inv = useInvalidate();
+  const done = () => inv("competitors", "bench", "list");
+  return {
+    discover: useMutation({ mutationFn: () => apiJson<{ started: boolean }>(`${BASE}/${id}/competitors/discover`, { method: "POST", ...json({}) }), onSuccess: done }),
+    add: useMutation({ mutationFn: (b: { url: string; name?: string }) => apiJson<WiCompetitor>(`${BASE}/${id}/competitors`, { method: "POST", ...json(b) }), onSuccess: done }),
+    update: useMutation({ mutationFn: (v: { domain: string; patch: { status?: "pending" | "approved" | "rejected"; classification?: CompetitorClassId; name?: string | null; industry?: string | null } }) => apiJson<WiCompetitor>(`${BASE}/${id}/competitors/${encodeURIComponent(v.domain)}`, { method: "PATCH", ...json(v.patch) }), onSuccess: done }),
+    remove: useMutation({ mutationFn: (domain: string) => apiJson<null>(`${BASE}/${id}/competitors/${encodeURIComponent(domain)}`, { method: "DELETE" }), onSuccess: done }),
+    benchmark: useMutation({ mutationFn: () => apiJson<{ started: string[]; skipped: { domain: string; reason: string }[] }>(`${BASE}/${id}/competitors/benchmark`, { method: "POST", ...json({ authorization: { confirmed: true } }) }), onSuccess: done }),
+  };
 }
 export function useMonitorMutations() {
   const inv = useInvalidate();

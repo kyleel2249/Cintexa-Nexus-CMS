@@ -19,3 +19,9 @@
 | GET | `/:id/comparison` | Regression vs previous audit |
 | GET/POST/DELETE | `/:id/share` | Client share link |
 | GET/POST | `/:id/benchmark(s)` | Competitor benchmarking |
+| GET | `/:id/competitors` | Competitors for the audited site (owner-scoped), search-provider status, recent discovery runs, and the automatic comparison selection |
+| POST | `/:id/competitors/discover` | Starts discovery in the background (202). 409 while the audit is unfinished or a run is already in progress; 400 for benchmark audits |
+| POST | `/:id/competitors` | Adds a competitor by hand (approved and user-confirmed). Rejects social profiles, the site itself and invalid hosts. Capped at 100 per site |
+| PATCH/DELETE | `/:id/competitors/:domain` | Approve, reject, reclassify, rename; or remove. Edits mark the record user-confirmed so reruns cannot override them |
+| POST | `/:id/competitors/benchmark` | Starts passive benchmark audits for approved competitors (or the automatic selection). Needs `authorization.confirmed`; idempotent per domain |
+| GET | `/:id/benchmarks` | Per-site scores plus `report` (per-dimension benchmark, method `benchmark-1.0`), `sample` note and `peerMedian` |

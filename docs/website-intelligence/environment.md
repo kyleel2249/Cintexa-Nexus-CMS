@@ -16,3 +16,11 @@ Frontend: no new variables.
 |---|---|---|
 | `FIREBASE_PROJECT_ID` | `cintexa-nexus` | Audience/issuer checked on the Firebase ID token |
 | `WI_RELAY_ALLOWED_ORIGINS` | none | Extra browser origins allowed to call the relay |
+
+## Competitor discovery (API host)
+| Variable | Default | Purpose |
+|---|---|---|
+| `BRAVE_SEARCH_API_KEY` | none | Brave Search API key. Preferred provider |
+| `GOOGLE_CSE_API_KEY`, `GOOGLE_CSE_ID` | none | Google Programmable Search (Custom Search JSON API), used when no Brave key is set |
+
+Neither set = search-based discovery is reported as not configured in Settings and on the Competitors tab. Competitors can still be added by hand. Result pages are never scraped. Setting `autoDiscoverCompetitors` (Settings) controls automatic discovery after each audit and only has an effect when a provider is configured.

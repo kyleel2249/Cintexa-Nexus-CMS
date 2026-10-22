@@ -17,6 +17,7 @@ import { runInfra, type InfraOutcome } from "./site-infra";
 import { runBusinessSite, runFunctionalitySite, runPerformanceSite } from "./site-misc";
 import { runRobotsAndSitemap, runSeoCrosspage } from "./site-seo";
 import { runSecurity } from "./site-security";
+import { maybeAutoDiscover } from "./competitor-discovery";
 import { finalizeRetest } from "./retest";
 
 export const ENGINE_VERSION = "1.0.0";
@@ -120,6 +121,9 @@ export async function runAudit(auditId: string): Promise<RunResult> {
     await store.patchAudit(auditId, { status, stage: null, error: error ?? null, completedAt: new Date(), progress, heartbeat: true });
     log(status === "failed" ? "error" : "info", "report_prep", `Audit ${status}${error ? `: ${error}` : ""}`);
     try { await finalizeRetest(auditId); await ports.notifier.finished(auditId); } catch (e) { log("warn", "report_prep", `Notification failed: ${(e as Error).message}`); }
+    try {
+      if (await maybeAutoDiscover(auditId, (e) => log("warn", "report_prep", `Competitor discovery failed: ${e.message}`))) log("info", "report_prep", "Competitor discovery started in the background.");
+    } catch (e) { log("warn", "report_prep", `Competitor discovery could not start: ${(e as Error).message}`); }
     return { status };
   };
 

@@ -12,3 +12,12 @@
 
 ## Local mode limits
 TLS tests are not tested, compression is inconclusive, audits run only while the tab is open, history is per browser, and monitors, share links, authenticated crawling and the browser worker are unavailable. Details: [local-mode.md](local-mode.md).
+
+## Competitor intelligence (stated plainly)
+- Discovery needs an approved search API key. Without one, only manual and previously benchmarked competitors exist, and the product says so.
+- Topic inference uses titles and descriptions of audited pages (term frequency), not a language model. Sites with little descriptive text yield no queries and an explicit "insufficient evidence" report.
+- Geography is inferred only from country-code domains and page language; otherwise it is reported as not measured.
+- Classification is heuristic and transparent (thresholds in `lib/wi-core/src/competitors.ts`). "Direct" requires fetched, similar content; an unverified suggestion can never be direct. "Aspirational" is only ever set by a person.
+- Competitor pages are sampled passively (home page for discovery; up to 15 pages for a benchmark). Peer medians describe the selected peer set and are never presented as industry averages.
+- Registrable-domain detection uses a built-in list of common multi-part suffixes, not the full public suffix list.
+- Not implemented: AI-generated competitor suggestions, directory or publication mining, scheduled re-discovery and competitor-change alerts, and page-level competitor comparison. Local mode keeps competitors in memory only and has no search provider.

@@ -75,12 +75,12 @@ function AdminPanel() {
   const [limits, setLimits] = useState<Record<string, number>>({});
   const [allowed, setAllowed] = useState("");
   const [blocked, setBlocked] = useState("");
-  const [flags, setFlags] = useState({ aiExplanations: true, allowAuthenticatedScope: false, allowPublicShare: true });
+  const [flags, setFlags] = useState({ aiExplanations: true, autoDiscoverCompetitors: true, allowAuthenticatedScope: false, allowPublicShare: true });
   useEffect(() => {
     const s = settings.data;
     if (!s) return;
     setWeights(s.weights); setLimits(s.limits); setAllowed(s.allowedHosts.join("\n")); setBlocked(s.blockedHosts.join("\n"));
-    setFlags({ aiExplanations: s.aiExplanations, allowAuthenticatedScope: s.allowAuthenticatedScope, allowPublicShare: s.allowPublicShare });
+    setFlags({ aiExplanations: s.aiExplanations, autoDiscoverCompetitors: s.autoDiscoverCompetitors ?? true, allowAuthenticatedScope: s.allowAuthenticatedScope, allowPublicShare: s.allowPublicShare });
   }, [settings.data]);
   if (settings.isLoading) return <Loading />;
   if (settings.error) return <ErrorNote error={settings.error} />;
@@ -101,7 +101,7 @@ function AdminPanel() {
           <label className="space-y-1 text-sm">Blocked hosts<textarea className="w-full rounded-md border bg-background p-2 text-sm" rows={3} value={blocked} onChange={(e) => setBlocked(e.target.value)} /></label>
         </div>
         <div className="flex flex-wrap gap-5 text-sm">
-          {([["aiExplanations", "AI-assisted explanations"], ["allowAuthenticatedScope", "Allow authenticated scope"], ["allowPublicShare", "Allow read-only client links"]] as const).map(([k, t]) => <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={flags[k]} onChange={(e) => setFlags({ ...flags, [k]: e.target.checked })} />{t}</label>)}
+          {([["aiExplanations", "AI-assisted explanations"], ["autoDiscoverCompetitors", "Discover competitors automatically after each audit (needs a search API key)"], ["allowAuthenticatedScope", "Allow authenticated scope"], ["allowPublicShare", "Allow read-only client links"]] as const).map(([k, t]) => <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={flags[k]} onChange={(e) => setFlags({ ...flags, [k]: e.target.checked })} />{t}</label>)}
         </div>
         {save.error && <ErrorNote error={save.error} />}
         {save.isSuccess && <p className="text-sm text-emerald-400" role="status">Settings saved.</p>}

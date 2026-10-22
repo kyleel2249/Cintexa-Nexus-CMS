@@ -1,4 +1,5 @@
 import { STAGE_IDS } from "@workspace/wi-core";
+import type { CompetitorCandidate, CompetitorClass, CompetitorStatus } from "@workspace/wi-core";
 import type {
   AuditConfig, AuditProgress, AuditStatus, AuditSummary, CheckResult, CoverageReport, EnvironmentRecord, Finding, FindingStatus, FindingWorkflow, Horizon, PageFacts, PerformanceSample,
   Recommendation, RemediationTask, RetestStatus, ScoreBreakdown, StageId, StageState, TaskStatus,
@@ -31,6 +32,11 @@ export interface ReportInput { auditId: string; type: string; filename: string; 
 export interface ReportRow { id: string; type: string; filename: string; bytes: number; pages: number; sha256: string | null; createdBy: string | null; createdAt: string; meta: unknown }
 export interface EventRow { id: number; at: string; level: string; stage: string | null; message: string; data: unknown }
 export interface PageRow { facts: PageFacts; score: number | null; skippedReason: string | null }
+
+export interface CompetitorRunRow {
+  id: string; ownerId: string; hostname: string; auditId: string | null; status: "running" | "completed" | "partial" | "failed";
+  provider: string | null; queries: string[]; summary: unknown; startedAt: string; finishedAt: string | null; error: string | null;
+}
 
 /** Raw audit row as the router reads it (snake_case ownership fields). */
 export type AuditRow = Record<string, any>;
@@ -72,4 +78,14 @@ export interface EngineRepo {
   saveReport(r: ReportInput): Promise<{ id: string; createdAt: string }>;
   listReports(auditId: string): Promise<ReportRow[]>;
   saveComparison(ownerId: string, currentId: string, previousId: string, data: unknown): Promise<void>;
+  /** Competitors are scoped to (owner, site hostname) and keyed by canonical domain. */
+  listCompetitors(ownerId: string, hostname: string): Promise<CompetitorCandidate[]>;
+  upsertCompetitors(ownerId: string, hostname: string, list: CompetitorCandidate[]): Promise<void>;
+  patchCompetitor(ownerId: string, hostname: string, domain: string, patch: CompetitorPatch): Promise<CompetitorCandidate | null>;
+  deleteCompetitor(ownerId: string, hostname: string, domain: string): Promise<boolean>;
+  createCompetitorRun(r: { ownerId: string; hostname: string; auditId: string | null; provider: string | null; queries: string[] }): Promise<CompetitorRunRow>;
+  finishCompetitorRun(id: string, p: { status: CompetitorRunRow["status"]; summary: unknown; error?: string | null }): Promise<void>;
+  listCompetitorRuns(ownerId: string, hostname: string, limit?: number): Promise<CompetitorRunRow[]>;
 }
+
+export interface CompetitorPatch { status?: CompetitorStatus; classification?: CompetitorClass; name?: string | null; industry?: string | null; market?: string | null }

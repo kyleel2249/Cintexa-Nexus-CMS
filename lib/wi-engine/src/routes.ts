@@ -7,9 +7,11 @@
 import {
   ALL_TESTS, CATEGORY_IDS, CATEGORY_LABELS, DEFAULT_WEIGHTS, FINDING_STATUSES, PROFILE_PRESETS, REPORT_TYPES, SCORING_VERSION, STAGE_IDS, STAGE_LABELS, TASK_STATUSES, WEBSITE_TYPES, WEBSITE_TYPE_LABELS,
   buildRoadmap, compareAudits, parseAuditUrl, reportFileName, validateTransition, PRIORITY_FORMULA, SCORE_FORMULA, aggregateOutcomes,
+  COMPETITOR_CLASSES, COMPETITOR_CLASS_LABELS, buildBenchmarkReport, COMPETITOR_STATUSES, DEFAULT_SELECTION, benchmarkSampleNote, canonicalDomain, median, selectForComparison,
   type AuditBundle, type CheckResult, type Finding, type FindingStatus, type FindingView, type Horizon, type TestStatus,
 } from "@workspace/wi-core";
 import { normalizeConfig } from "./config";
+import { addManualCompetitor, isDiscoveryRunning, startDiscoveryInBackground } from "./competitor-discovery";
 import { persistComparison } from "./engine";
 import type { Explanation } from "./explain";
 import { evaluateGate, findingsToCsv, findingsToSarif } from "./export";
@@ -101,6 +103,8 @@ async function owned(req: ReqLike, res: ResLike, id: string) {
   if (!row || (row.owner_id !== uid(req) && !isAdmin(req))) { bad(res, "Audit not found.", 404); return null; }
   return row;
 }
+
+const clampNum = (v: unknown, d: number, lo: number, hi: number): number => { if (v === undefined || v === "" || v === null) return d; const n = Number(v); return Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : d; };
 
 function parseLimit(v: unknown, d: number, max: number): number { const n = Number(v); return Number.isFinite(n) ? Math.min(max, Math.max(1, Math.round(n))) : d; }
 
@@ -412,29 +416,116 @@ router.get("/:id/comparison", async (req, res) => {
 });
 
 // ---- competitor benchmarking
-router.post("/:id/benchmark", async (req, res) => {
-  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+/** Creates one passive benchmark audit of a competitor. Shared by the single-URL and the approved-competitors endpoints. */
+async function startBenchmarkAudit(req: ReqLike, row: Record<string, any>, rawUrl: string, name: unknown, maxPagesIn: unknown): Promise<{ ok: true; audit: Awaited<ReturnType<EngineRepo["createAudit"]>> } | { ok: false; status: number; error: string; field?: string }> {
   const settings = await deps.settings.load();
-  const parsed = parseAuditUrl(String(req.body?.url ?? ""));
-  if (!parsed.ok || !parsed.url) return bad(res, parsed.error ?? "Invalid URL.", 400, "url");
-  if (req.body?.authorization?.confirmed !== true) return bad(res, "Confirm that a passive, public-page benchmark of this site is acceptable. Only publicly reachable pages are requested, robots.txt is respected, and crawling is limited to a small sample.", 400, "authorization");
+  const parsed = parseAuditUrl(String(rawUrl ?? ""));
+  if (!parsed.ok || !parsed.url) return { ok: false, status: 400, error: parsed.error ?? "Invalid URL.", field: "url" };
   const host = parsed.url.hostname.toLowerCase();
   const allowed = hostAllowed(host, settings);
-  if (!allowed.ok) return bad(res, allowed.reason ?? "Host not permitted.", 403, "url");
-  if (!isAdmin(req) && (await countActive(uid(req))) >= settings.limits.maxActiveAuditsPerUser) return bad(res, "Too many audits are running. Try again shortly.", 429);
-  const r = normalizeConfig({ url: parsed.url.toString(), name: req.body?.name ?? host, websiteType: row.website_type, profile: "standard", maxPages: Math.min(Number(req.body?.maxPages) || 10, 15), maxDepth: 1, devices: ["mobile"], externalLinkCheck: false, authorization: req.body.authorization, modules: { ...row.config.modules, security: true } }, settings.limits, { userEmail: email(req), allowAuthenticated: false });
-  if (!r.ok || !r.cfg) return bad(res, r.error ?? "Invalid configuration.", 400, r.field);
+  if (!allowed.ok) return { ok: false, status: 403, error: allowed.reason ?? "Host not permitted.", field: "url" };
+  if (!isAdmin(req) && (await countActive(uid(req))) >= settings.limits.maxActiveAuditsPerUser) return { ok: false, status: 429, error: "Too many audits are running. Try again shortly." };
+  const r = normalizeConfig({ url: parsed.url.toString(), name: name ?? host, websiteType: row.website_type, profile: "standard", maxPages: Math.min(Number(maxPagesIn) || 10, 15), maxDepth: 1, devices: ["mobile"], externalLinkCheck: false, authorization: req.body.authorization, modules: { ...row.config.modules, security: true } }, settings.limits, { userEmail: email(req), allowAuthenticated: false });
+  if (!r.ok || !r.cfg) return { ok: false, status: 400, error: r.error ?? "Invalid configuration.", field: r.field };
   const audit = await repo.createAudit({ ownerId: row.owner_id, ownerEmail: req.auth?.email ?? null, hostname: host, cfg: r.cfg, kind: "benchmark", parentAuditId: row.id, workspace: row.workspace });
   await repo.addEvent(audit.id, "info", null, `Competitor benchmark against ${row.hostname}, requested by ${email(req)}. Passive, public-page sample only.`);
   deps.enqueue(audit.id);
-  res.status(202).json(audit);
+  return { ok: true, audit };
+}
+const BENCHMARK_CONSENT = "Confirm that a passive, public-page benchmark of this site is acceptable. Only publicly reachable pages are requested, robots.txt is respected, and crawling is limited to a small sample.";
+router.post("/:id/benchmark", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const parsed = parseAuditUrl(String(req.body?.url ?? ""));
+  if (!parsed.ok || !parsed.url) return bad(res, parsed.error ?? "Invalid URL.", 400, "url");
+  if (req.body?.authorization?.confirmed !== true) return bad(res, BENCHMARK_CONSENT, 400, "authorization");
+  const r = await startBenchmarkAudit(req, row, String(req.body?.url ?? ""), req.body?.name, req.body?.maxPages);
+  if (!r.ok) return bad(res, r.error, r.status, r.field);
+  res.status(202).json(r.audit);
+});
+// ---- competitors (automatic discovery, review, and benchmarking of the approved set)
+const competitorView = (c: import("@workspace/wi-core").CompetitorCandidate) => ({ ...c, classificationLabel: COMPETITOR_CLASS_LABELS[c.classification] });
+router.get("/:id/competitors", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const [list, runs, integrations, benchAudits] = await Promise.all([
+    repo.listCompetitors(row.owner_id, row.hostname), repo.listCompetitorRuns(row.owner_id, row.hostname, 10), deps.integrations(),
+    repo.listAudits({ ownerId: row.owner_id, admin: true, kind: "benchmark", limit: 200 }),
+  ]);
+  const search = integrations.find((i) => i.id === "search_provider") ?? null;
+  const benchByDomain = new Map<string, { id: string; status: string; overall: number | null }>();
+  for (const a of benchAudits.items.filter((x) => x.parentAuditId === row.id)) { const d = canonicalDomain(a.hostname); if (d) benchByDomain.set(d, { id: a.id, status: a.status, overall: a.scores?.overall ?? null }); }
+  const selected = new Set(selectForComparison(list).map((c) => c.domain));
+  res.json({
+    hostname: row.hostname,
+    searchProvider: search ? { status: search.status, detail: search.detail, envVars: search.envVars } : null,
+    discoveryRunning: isDiscoveryRunning(row.owner_id, row.hostname) || runs.some((r) => r.status === "running" && Date.now() - Date.parse(r.startedAt) < 10 * 60_000),
+    defaults: { maxDiscover: DEFAULT_SELECTION.maxDiscover, maxCompare: DEFAULT_SELECTION.maxCompare, minConfidence: DEFAULT_SELECTION.minConfidence },
+    classes: COMPETITOR_CLASSES.map((c) => ({ id: c, label: COMPETITOR_CLASS_LABELS[c] })),
+    competitors: list.map((c) => ({ ...competitorView(c), selected: selected.has(c.domain), benchmark: benchByDomain.get(c.domain) ?? null })),
+    runs,
+  });
+});
+router.post("/:id/competitors/discover", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  if (row.kind !== "audit") return bad(res, "Competitor discovery runs from a primary audit of the site.", 400);
+  if (row.status !== "completed" && row.status !== "partial") return bad(res, "Wait for the audit to finish. Discovery uses the audited pages to work out what the site is about.", 409);
+  const started = startDiscoveryInBackground({ ownerId: row.owner_id, auditId: row.id, hostname: row.hostname, options: { maxDiscover: clampNum(req.body?.maxDiscover, DEFAULT_SELECTION.maxDiscover, 1, 50), maxCompare: clampNum(req.body?.maxCompare, DEFAULT_SELECTION.maxCompare, 1, 25) }, onError: (e) => { void repo.addEvent(row.id, "warn", null, `Competitor discovery failed: ${e.message}`); } });
+  if (!started) return bad(res, "Competitor discovery is already running for this site.", 409);
+  await repo.addEvent(row.id, "info", null, `Competitor discovery requested by ${email(req)}.`);
+  res.status(202).json({ started: true });
+});
+router.post("/:id/competitors", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const r = await addManualCompetitor({ ownerId: row.owner_id, hostname: row.hostname, url: String(req.body?.url ?? ""), name: typeof req.body?.name === "string" ? req.body.name.slice(0, 120) : null, industry: typeof req.body?.industry === "string" ? req.body.industry.slice(0, 120) : null });
+  if (!r.ok) return bad(res, r.error, 400, "url");
+  res.status(201).json(competitorView(r.candidate));
+});
+router.patch("/:id/competitors/:domain", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  const body = req.body ?? {};
+  const patch: import("./repo").CompetitorPatch = {};
+  if (body.status !== undefined) { if (!(COMPETITOR_STATUSES as readonly string[]).includes(body.status) || body.status === "unverifiable") return bad(res, "Status must be pending, approved or rejected.", 400, "status"); patch.status = body.status; }
+  if (body.classification !== undefined) { if (!(COMPETITOR_CLASSES as readonly string[]).includes(body.classification)) return bad(res, "Unknown classification.", 400, "classification"); patch.classification = body.classification; }
+  for (const k of ["name", "industry", "market"] as const) if (body[k] !== undefined) { if (body[k] !== null && typeof body[k] !== "string") return bad(res, `${k} must be text.`, 400, k); patch[k] = body[k] === null ? null : String(body[k]).trim().slice(0, 120) || null; }
+  const updated = await repo.patchCompetitor(row.owner_id, row.hostname, String(req.params.domain).toLowerCase(), patch);
+  if (!updated) return bad(res, "Competitor not found.", 404);
+  await repo.addEvent(row.id, "info", null, `Competitor ${updated.domain} updated by ${email(req)}${patch.status ? ` (status: ${patch.status})` : ""}.`);
+  res.json(competitorView(updated));
+});
+router.delete("/:id/competitors/:domain", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  if (!(await repo.deleteCompetitor(row.owner_id, row.hostname, String(req.params.domain).toLowerCase()))) return bad(res, "Competitor not found.", 404);
+  res.status(204).end();
+});
+/** Starts passive benchmark audits for the approved competitors (or, when none are approved, the automatic selection) that have not been measured yet. */
+router.post("/:id/competitors/benchmark", async (req, res) => {
+  const row = await owned(req, res, String(req.params.id)); if (!row) return;
+  if (req.body?.authorization?.confirmed !== true) return bad(res, BENCHMARK_CONSENT, 400, "authorization");
+  const list = await repo.listCompetitors(row.owner_id, row.hostname);
+  const approved = list.filter((c) => c.status === "approved");
+  const targets = (approved.length ? approved : selectForComparison(list)).slice(0, DEFAULT_SELECTION.maxCompare);
+  if (!targets.length) return bad(res, "There are no approved or eligible competitors to benchmark yet.", 409);
+  const existing = await repo.listAudits({ ownerId: row.owner_id, admin: true, kind: "benchmark", limit: 200 });
+  const done = new Set(existing.items.filter((a) => a.parentAuditId === row.id && a.status !== "failed" && a.status !== "cancelled").map((a) => canonicalDomain(a.hostname)));
+  const started: string[] = []; const skipped: { domain: string; reason: string }[] = [];
+  for (const c of targets) {
+    if (done.has(c.domain)) { skipped.push({ domain: c.domain, reason: "Already benchmarked." }); continue; }
+    const r = await startBenchmarkAudit(req, row, c.url, c.name ?? c.domain, req.body?.maxPages);
+    if (r.ok) started.push(c.domain); else skipped.push({ domain: c.domain, reason: r.error });
+    if (!r.ok && r.status === 429) break;
+  }
+  res.status(started.length ? 202 : 200).json({ started, skipped });
 });
 router.get("/:id/benchmarks", async (req, res) => {
   const row = await owned(req, res, String(req.params.id)); if (!row) return;
   const own = await repo.getAudit(row.id);
   const all = await repo.listAudits({ ownerId: row.owner_id, admin: true, kind: "benchmark", limit: 100 });
   const list = all.items.filter((a) => a.parentAuditId === row.id);
-  const row_ = (a: NonNullable<typeof own>) => ({ id: a.id, hostname: a.hostname, status: a.status, overall: a.scores?.overall ?? null, provisional: a.scores?.provisional ?? null, coverage: a.scores?.coverage ?? null, categories: Object.fromEntries((a.scores?.categories ?? []).map((c) => [c.category, c.score])), pagesSampled: a.progress.inspected });
-  res.json({ own: own ? row_(own) : null, competitors: list.map(row_), note: "Benchmarks compare a small passive sample of public pages. Scores are comparable only where coverage is similar; treat gaps as prompts for investigation, not rankings." });
+  const row_ = (a: NonNullable<typeof own>) => ({ id: a.id, hostname: a.hostname, status: a.status, overall: a.scores?.overall ?? null, provisional: a.scores?.provisional ?? null, coverage: a.scores?.coverage ?? null, categories: Object.fromEntries((a.scores?.categories ?? []).map((c) => [c.category, c.score])), pagesSampled: a.progress.inspected, scoringVersion: a.scoringVersion });
+  const rows = list.map(row_);
+  const sample = benchmarkSampleNote(rows);
+  const peerMedian = sample.level === "none" || sample.level === "insufficient" ? null : median(rows.map((r) => r.overall).filter((n): n is number => typeof n === "number"));
+  const ownRow = own ? row_(own) : null;
+  const report = buildBenchmarkReport(ownRow, rows.filter((r) => r.status === "completed" || r.status === "partial"));
+  res.json({ own: ownRow, competitors: rows, sample, peerMedian, report, note: "Benchmarks compare a small passive sample of public pages. Scores are comparable only where coverage is similar; treat gaps as prompts for investigation, not rankings." });
 });
 }

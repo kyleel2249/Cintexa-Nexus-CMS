@@ -1,4 +1,5 @@
 import { ensureSchema, pool } from "@workspace/db";
+import type { CompetitorPatch, CompetitorRunRow } from "@workspace/wi-engine/repo";
 import { emptyProgress, initialStages, newId, stripSecrets, type AuditPatch, type ListFilter, type NewAudit, type WorkflowPatch } from "@workspace/wi-engine/repo";
 
 export { emptyProgress, initialStages, newId, stripSecrets };
@@ -7,7 +8,7 @@ import {
   AUDIT_SCHEMA_VERSION, SCORING_VERSION, STAGE_IDS,
   type AuditConfig, type AuditProgress, type AuditStatus, type AuditSummary, type CheckResult, type CoverageReport, type EnvironmentRecord,
   type Finding, type FindingStatus, type FindingWorkflow, type PageFacts, type PerformanceSample, type Recommendation, type RemediationTask, type RetestStatus,
-  type ScoreBreakdown, type StageId, type StageState, type WebsiteType, type AuditProfile, type Horizon, type TaskStatus,
+  type CompetitorCandidate, type ScoreBreakdown, type StageId, type StageState, type WebsiteType, type AuditProfile, type Horizon, type TaskStatus,
 } from "@workspace/wi-core";
 
 async function q<T = any>(sql: string, params: unknown[] = []): Promise<T[]> {
@@ -232,3 +233,50 @@ export async function patchMonitor(id: string, p: { enabled?: boolean; frequency
 }
 export async function deleteMonitor(id: string): Promise<void> { await q(`DELETE FROM wi_monitors WHERE id=$1`, [id]); }
 export async function dueMonitors(): Promise<MonitorRow[]> { return (await q(`SELECT * FROM wi_monitors WHERE enabled AND next_run_at IS NOT NULL AND next_run_at <= NOW() ORDER BY next_run_at LIMIT 10`)).map(toMonitor); }
+
+
+// ---- competitors (scoped to owner + audited site hostname, keyed by canonical domain)
+const toCompetitor = (r: any): CompetitorCandidate => ({
+  domain: r.domain, url: r.url, name: r.name, classification: r.classification, classificationReason: r.classification_reason, status: r.status, sources: r.sources ?? [], evidence: r.evidence ?? [],
+  confidence: Number(r.confidence), breakdown: r.breakdown, industry: r.industry, market: r.market, userConfirmed: r.user_confirmed, firstDiscoveredAt: iso(r.first_discovered_at) as string, lastVerifiedAt: iso(r.last_verified_at),
+});
+export async function listCompetitors(ownerId: string, hostname: string): Promise<CompetitorCandidate[]> {
+  return (await q(`SELECT * FROM wi_competitors WHERE owner_id=$1 AND site_hostname=$2 ORDER BY confidence DESC, domain`, [ownerId, hostname.toLowerCase()])).map(toCompetitor);
+}
+export async function upsertCompetitors(ownerId: string, hostname: string, list: CompetitorCandidate[]): Promise<void> {
+  for (const c of list) {
+    await q(
+      `INSERT INTO wi_competitors (owner_id, site_hostname, domain, url, name, classification, classification_reason, status, sources, evidence, confidence, breakdown, industry, market, user_confirmed, first_discovered_at, last_verified_at)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+       ON CONFLICT (owner_id, site_hostname, domain) DO UPDATE SET url=EXCLUDED.url, name=EXCLUDED.name, classification=EXCLUDED.classification, classification_reason=EXCLUDED.classification_reason, status=EXCLUDED.status,
+         sources=EXCLUDED.sources, evidence=EXCLUDED.evidence, confidence=EXCLUDED.confidence, breakdown=EXCLUDED.breakdown, industry=EXCLUDED.industry, market=EXCLUDED.market,
+         user_confirmed=EXCLUDED.user_confirmed, last_verified_at=EXCLUDED.last_verified_at, updated_at=NOW()`,
+      [ownerId, hostname.toLowerCase(), c.domain, c.url, c.name, c.classification, c.classificationReason, c.status, JSON.stringify(c.sources), JSON.stringify(c.evidence.slice(0, 40)), c.confidence, JSON.stringify(c.breakdown), c.industry, c.market, c.userConfirmed, c.firstDiscoveredAt, c.lastVerifiedAt],
+    );
+  }
+}
+export async function patchCompetitor(ownerId: string, hostname: string, domain: string, p: CompetitorPatch): Promise<CompetitorCandidate | null> {
+  const sets = ["user_confirmed = TRUE", "updated_at = NOW()"]; const v: unknown[] = [];
+  const add = (col: string, val: unknown) => { v.push(val); sets.push(`${col} = $${v.length}`); };
+  if (p.status) add("status", p.status);
+  if (p.classification) { add("classification", p.classification); add("classification_reason", "Classification set by a person."); }
+  if ("name" in p) add("name", p.name ?? null);
+  if ("industry" in p) add("industry", p.industry ?? null);
+  if ("market" in p) add("market", p.market ?? null);
+  v.push(ownerId, hostname.toLowerCase(), domain);
+  const rows = await q(`UPDATE wi_competitors SET ${sets.join(", ")} WHERE owner_id=$${v.length - 2} AND site_hostname=$${v.length - 1} AND domain=$${v.length} RETURNING *`, v);
+  return rows[0] ? toCompetitor(rows[0]) : null;
+}
+export async function deleteCompetitor(ownerId: string, hostname: string, domain: string): Promise<boolean> {
+  return (await q(`DELETE FROM wi_competitors WHERE owner_id=$1 AND site_hostname=$2 AND domain=$3 RETURNING domain`, [ownerId, hostname.toLowerCase(), domain])).length > 0;
+}
+const toRun = (r: any): CompetitorRunRow => ({ id: r.id, ownerId: r.owner_id, hostname: r.site_hostname, auditId: r.audit_id, status: r.status, provider: r.provider, queries: r.queries ?? [], summary: r.summary, startedAt: iso(r.started_at) as string, finishedAt: iso(r.finished_at), error: r.error });
+export async function createCompetitorRun(r: { ownerId: string; hostname: string; auditId: string | null; provider: string | null; queries: string[] }): Promise<CompetitorRunRow> {
+  return toRun((await q(`INSERT INTO wi_competitor_runs (id, owner_id, site_hostname, audit_id, provider, queries) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *`, [newId("crun"), r.ownerId, r.hostname.toLowerCase(), r.auditId, r.provider, JSON.stringify(r.queries)]))[0]);
+}
+export async function finishCompetitorRun(id: string, p: { status: CompetitorRunRow["status"]; summary: unknown; error?: string | null }): Promise<void> {
+  await q(`UPDATE wi_competitor_runs SET status=$2, summary=$3, error=$4, finished_at=NOW() WHERE id=$1`, [id, p.status, JSON.stringify(p.summary ?? null), p.error ?? null]);
+}
+export async function listCompetitorRuns(ownerId: string, hostname: string, limit = 20): Promise<CompetitorRunRow[]> {
+  return (await q(`SELECT * FROM wi_competitor_runs WHERE owner_id=$1 AND site_hostname=$2 ORDER BY started_at DESC LIMIT $3`, [ownerId, hostname.toLowerCase(), Math.min(limit, 100)])).map(toRun);
+}

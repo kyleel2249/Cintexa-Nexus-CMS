@@ -43,6 +43,15 @@ export interface RuntimeInfo {
   browserWorkerConfigured: boolean;
 }
 
+export interface SearchHit { url: string; title: string; snippet: string; rank: number }
+export interface SearchOutcome { ok: boolean; hits: SearchHit[]; error?: string }
+/** An approved search API (never scraped result pages). Absent or `configured: false` means discovery reports the capability as unavailable. */
+export interface SearchPort {
+  configured: boolean;
+  provider: string;
+  search(query: string, signal: AbortSignal): Promise<SearchOutcome>;
+}
+
 export interface EnginePorts {
   net: NetPort;
   repo: EngineRepo;
@@ -51,6 +60,8 @@ export interface EnginePorts {
   pagespeed: PageSpeedPort;
   notifier: { finished(auditId: string): Promise<void> };
   runtime: RuntimeInfo;
+  /** Optional. Local mode and hosts without a search API key omit it. */
+  search?: SearchPort;
 }
 
 let current: EnginePorts | null = null;

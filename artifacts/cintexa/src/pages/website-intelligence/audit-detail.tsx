@@ -10,11 +10,13 @@ import { cn } from "@/lib/utils";
 import {
   downloadExport, isActive, useAudit, useGate, useAuditAction, useBenchmarkStart, useBenchmarks, useBundle, useComparison, useEvents, useRetest, useShare, useShareMutations, useTrend,
 } from "@/lib/website-intelligence/api";
+import { BenchmarkReportPanel } from "./benchmark-report";
+import CompetitorsView from "./competitors";
 import {
   AuditStatusBadge, CategoryBars, CategoryRadar, EmptyState, ErrorNote, Loading, Panel, ScoreRing, SeverityBadge, SeverityChart, Stat, WI, fmtDate, label, pct, scoreColor,
 } from "./components";
 
-type Tab = "dashboard" | "pages" | "performance" | "compare" | "benchmarks" | "log";
+type Tab = "dashboard" | "pages" | "performance" | "compare" | "competitors" | "benchmarks" | "log";
 
 export default function AuditDetail({ id }: { id: string }) {
   const audit = useAudit(id);
@@ -36,6 +38,7 @@ export default function AuditDetail({ id }: { id: string }) {
     { id: "pages", label: "Pages", show: finished },
     { id: "performance", label: "Performance", show: finished },
     { id: "compare", label: "Compare", show: finished },
+    { id: "competitors", label: "Competitors", show: finished && a.kind === "audit" },
     { id: "benchmarks", label: "Benchmarks", show: finished && a.kind === "audit" },
     { id: "log", label: "Execution log", show: true },
   ];
@@ -74,6 +77,7 @@ export default function AuditDetail({ id }: { id: string }) {
       {finished && current === "pages" && bundle.data && <PagesView bundle={bundle.data} />}
       {finished && current === "performance" && bundle.data && <PerformanceView bundle={bundle.data} />}
       {finished && current === "compare" && <CompareView id={id} hostname={a.hostname} />}
+      {finished && current === "competitors" && <CompetitorsView id={id} />}
       {finished && current === "benchmarks" && <BenchmarksView id={id} />}
     </div>
   );
@@ -328,6 +332,8 @@ function BenchmarksView({ id }: { id: string }) {
         <div className="overflow-x-auto rounded-xl border"><table className="w-full text-sm"><thead className="bg-muted/40 text-left text-xs uppercase text-muted-foreground"><tr><th className="p-2">Site</th><th className="p-2">Status</th><th className="p-2">Overall</th><th className="p-2">Coverage</th><th className="p-2">Pages</th>{Object.keys(rows[0].categories).map((c) => <th key={c} className="p-2">{CATEGORY_SHORT_LABELS[c as keyof typeof CATEGORY_SHORT_LABELS] ?? c}</th>)}</tr></thead>
           <tbody className="divide-y">{rows.map((r) => <tr key={r.id} className={r.own ? "bg-primary/5" : ""}><td className="p-2 font-medium">{r.hostname}{r.own && " (you)"}</td><td className="p-2"><AuditStatusBadge s={r.status} /></td><td className="p-2 tabular-nums">{r.overall == null ? "n/a" : `${Math.round(r.overall)}${r.provisional ? "*" : ""}`}</td><td className="p-2 tabular-nums">{r.coverage == null ? "n/a" : pct(r.coverage)}</td><td className="p-2 tabular-nums">{r.pagesSampled}</td>{Object.keys(rows[0].categories).map((c) => <td key={c} className="p-2 tabular-nums">{r.categories[c] == null ? "n/a" : Math.round(r.categories[c] as number)}</td>)}</tr>)}</tbody></table></div>
       )}
+      {b.data?.report && b.data.report.comparableSites + b.data.report.excluded.length > 0 && <BenchmarkReportPanel report={b.data.report} />}
+      {b.data?.sample && b.data.sample.level !== "none" && <p role="note" className="rounded-md border bg-muted/30 p-2 text-xs"><span className="font-medium capitalize">{b.data.sample.level} sample. </span>{b.data.sample.note}{typeof b.data.peerMedian === "number" ? ` Peer-set median overall score: ${b.data.peerMedian}.` : ""}</p>}
       {b.data && <p className="text-xs text-muted-foreground">{b.data.note} * provisional.</p>}
     </div>
   );

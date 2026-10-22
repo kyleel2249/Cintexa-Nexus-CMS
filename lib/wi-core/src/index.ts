@@ -5,3 +5,5 @@ export * from "./findings";
 export * from "./workflow";
 export * from "./compare";
 export * from "./url";
+export * from "./competitors";
+export * from "./benchmarks";

@@ -27,3 +27,11 @@ Unzip the archive at the repository root; paths line up one-to-one. Then run `np
 - `functions/api/wi-relay.ts` (+ identical copy in `artifacts/cintexa/functions/api/`)
 - `artifacts/cintexa/src/lib/website-intelligence/local.ts`, `pages/website-intelligence/local-banner.tsx`
 - `docs/website-intelligence/local-mode.md`
+
+## Competitor intelligence files
+- `lib/wi-core/src/competitors.ts`, `benchmarks.ts` (+ `__tests__/competitors.test.ts`, `benchmarks.test.ts`)
+- `lib/wi-engine/src/competitor-discovery.ts`; edited: `ports.ts`, `repo.ts`, `memory-repo.ts`, `routes.ts`, `engine.ts`, `settings.ts`, `index.ts`
+- `lib/wi-engine/test/competitor-discovery.test.ts`, `competitor-routes.test.ts`
+- `lib/db/src/wi-schema.ts` (two tables appended)
+- `artifacts/api-server/src/services/website-intelligence/search-provider.ts`; edited: `store.ts`, `wiring.ts`, `integrations.ts`; test `__tests__/competitors.store.test.ts` (needs `DATABASE_URL`)
+- `artifacts/cintexa/src/pages/website-intelligence/competitors.tsx`, `benchmark-report.tsx`; edited: `audit-detail.tsx`, `settings.tsx`, `lib/website-intelligence/api.ts`

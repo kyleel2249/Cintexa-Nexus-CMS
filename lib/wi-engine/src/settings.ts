@@ -7,11 +7,13 @@ export interface WiSettings {
   allowedHosts: string[];
   blockedHosts: string[];
   aiExplanations: boolean;
+  /** Start competitor discovery automatically when an audit finishes (only when a search provider is configured). */
+  autoDiscoverCompetitors: boolean;
   allowAuthenticatedScope: boolean;
   allowPublicShare: boolean;
 }
 
-export const DEFAULT_WI_SETTINGS: WiSettings = { weights: { ...DEFAULT_WEIGHTS }, limits: { ...DEFAULT_LIMITS }, allowedHosts: [], blockedHosts: [], aiExplanations: true, allowAuthenticatedScope: false, allowPublicShare: true };
+export const DEFAULT_WI_SETTINGS: WiSettings = { weights: { ...DEFAULT_WEIGHTS }, limits: { ...DEFAULT_LIMITS }, allowedHosts: [], blockedHosts: [], aiExplanations: true, autoDiscoverCompetitors: true, allowAuthenticatedScope: false, allowPublicShare: true };
 
 const LIMIT_BOUNDS: Record<keyof AuditLimits, [number, number]> = {
   maxPages: [1, 1000], maxDepth: [0, 12], maxConcurrency: [1, 12], maxDurationMs: [30_000, 60 * 60 * 1000], requestTimeoutMs: [2000, 60_000], maxResponseBytes: [64 * 1024, 10 * 1024 * 1024],
@@ -37,6 +39,7 @@ export function normalizeStoredSettings(stored: Partial<WiSettings>): WiSettings
     allowedHosts: (stored.allowedHosts ?? []).map((h) => h.toLowerCase()),
     blockedHosts: (stored.blockedHosts ?? []).map((h) => h.toLowerCase()),
     aiExplanations: stored.aiExplanations ?? true,
+    autoDiscoverCompetitors: stored.autoDiscoverCompetitors ?? true,
     allowAuthenticatedScope: stored.allowAuthenticatedScope ?? false,
     allowPublicShare: stored.allowPublicShare ?? true,
   };

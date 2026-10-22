@@ -3,12 +3,13 @@
  * Mirrors the SQL semantics of the Postgres store: soft delete, workflow carry-over, upserts keyed by URL/fingerprint.
  */
 import { AUDIT_SCHEMA_VERSION, SCORING_VERSION } from "@workspace/wi-core";
+import type { CompetitorCandidate } from "@workspace/wi-core";
 import type {
   AuditSummary, CheckResult, Finding, FindingWorkflow, PageFacts, PerformanceSample, Recommendation, RemediationTask,
 } from "@workspace/wi-core";
 import {
   emptyProgress, initialStages, newId, stripSecrets,
-  type AuditPatch, type AuditRow, type EngineRepo, type EventRow, type ListFilter, type NewAudit, type PageRow, type ReportInput, type ReportRow, type TaskInput, type TaskPatch, type WorkflowPatch,
+  type AuditPatch, type AuditRow, type CompetitorPatch, type CompetitorRunRow, type EngineRepo, type EventRow, type ListFilter, type NewAudit, type PageRow, type ReportInput, type ReportRow, type TaskInput, type TaskPatch, type WorkflowPatch,
 } from "./repo";
 
 interface AuditRecord {
@@ -40,6 +41,9 @@ const MAX_EVENTS = 2000;
 export class MemoryRepo implements EngineRepo {
   private readonly audits = new Map<string, AuditRecord>();
   private readonly comparisons = new Map<string, unknown>();
+  /** Competitors and discovery runs are held in memory only in local mode (not persisted to IndexedDB). */
+  private readonly competitors = new Map<string, Map<string, CompetitorCandidate>>();
+  private readonly competitorRuns: CompetitorRunRow[] = [];
 
   constructor(private readonly onChange: (auditId: string, kind: "write" | "delete") => void = () => undefined) {}
 
@@ -227,4 +231,34 @@ export class MemoryRepo implements EngineRepo {
   }
   async listReports(auditId: string): Promise<ReportRow[]> { return structuredClone(this.rec(auditId)?.reports ?? []); }
   async saveComparison(_ownerId: string, currentId: string, previousId: string, data: unknown): Promise<void> { this.comparisons.set(`${currentId}:${previousId}`, data); }
+
+  // ---- competitors
+  private compKey(ownerId: string, hostname: string): string { return `${ownerId}\u0000${hostname.toLowerCase()}`; }
+  async listCompetitors(ownerId: string, hostname: string): Promise<CompetitorCandidate[]> { return structuredClone([...(this.competitors.get(this.compKey(ownerId, hostname))?.values() ?? [])]); }
+  async upsertCompetitors(ownerId: string, hostname: string, list: CompetitorCandidate[]): Promise<void> {
+    const k = this.compKey(ownerId, hostname);
+    const m = this.competitors.get(k) ?? new Map<string, CompetitorCandidate>();
+    for (const c of list) m.set(c.domain, structuredClone(c));
+    this.competitors.set(k, m);
+  }
+  async patchCompetitor(ownerId: string, hostname: string, domain: string, p: CompetitorPatch): Promise<CompetitorCandidate | null> {
+    const cur = this.competitors.get(this.compKey(ownerId, hostname))?.get(domain);
+    if (!cur) return null;
+    const next: CompetitorCandidate = { ...cur, ...(p.status ? { status: p.status } : {}), ...(p.classification ? { classification: p.classification, classificationReason: "Classification set by a person." } : {}), ...("name" in p ? { name: p.name ?? null } : {}), ...("industry" in p ? { industry: p.industry ?? null } : {}), ...("market" in p ? { market: p.market ?? null } : {}), userConfirmed: true };
+    this.competitors.get(this.compKey(ownerId, hostname))!.set(domain, next);
+    return structuredClone(next);
+  }
+  async deleteCompetitor(ownerId: string, hostname: string, domain: string): Promise<boolean> { return this.competitors.get(this.compKey(ownerId, hostname))?.delete(domain) ?? false; }
+  async createCompetitorRun(r: { ownerId: string; hostname: string; auditId: string | null; provider: string | null; queries: string[] }): Promise<CompetitorRunRow> {
+    const row: CompetitorRunRow = { id: newId("crun"), ownerId: r.ownerId, hostname: r.hostname.toLowerCase(), auditId: r.auditId, status: "running", provider: r.provider, queries: r.queries, summary: null, startedAt: nowIso(), finishedAt: null, error: null };
+    this.competitorRuns.push(row);
+    return structuredClone(row);
+  }
+  async finishCompetitorRun(id: string, p: { status: CompetitorRunRow["status"]; summary: unknown; error?: string | null }): Promise<void> {
+    const row = this.competitorRuns.find((r) => r.id === id);
+    if (row) { row.status = p.status; row.summary = structuredClone(p.summary); row.error = p.error ?? null; row.finishedAt = nowIso(); }
+  }
+  async listCompetitorRuns(ownerId: string, hostname: string, limit = 20): Promise<CompetitorRunRow[]> {
+    return structuredClone(this.competitorRuns.filter((r) => r.ownerId === ownerId && r.hostname === hostname.toLowerCase()).slice(-limit).reverse());
+  }
 }
