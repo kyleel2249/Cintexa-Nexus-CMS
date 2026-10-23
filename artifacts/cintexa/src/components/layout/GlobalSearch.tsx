@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { useSalesOptional } from "@/context/SalesContext";
 import { useDebounced, useSalesQuery } from "@/lib/sales/hooks";
 import { NAV_ICONS } from "@/lib/sales/nav-icons";
+import { SALES_AI_NAV, showAiNav } from "@/lib/sales/nav";
 
 interface Hit { type: string; id: number; title: string; subtitle: string; href: string }
 interface Entry { key: string; title: string; subtitle?: string; href: string; group: string; icon?: React.ComponentType<{ className?: string }> }
@@ -34,7 +35,7 @@ export function GlobalSearch({ open, onClose }: { open: boolean; onClose: () => 
   const entries = useMemo<Entry[]>(() => {
     const t = text.trim().toLowerCase();
     const pages: Entry[] = [
-      ...(sales?.access === "ready" ? sales.nav.map((i) => ({ key: `s-${i.key}`, title: i.label, href: i.href, group: "Sales Management", icon: NAV_ICONS[i.icon] })) : []),
+      ...(sales?.access === "ready" ? [...sales.nav, ...(showAiNav(sales.perms) ? [SALES_AI_NAV] : [])].map((i) => ({ key: `s-${i.key}`, title: i.label, href: i.href, group: "Sales Management", icon: NAV_ICONS[i.icon] })) : []),
       ...CMS_PAGES.map((p) => ({ key: `c-${p.href}`, title: p.title, href: p.href, group: "Pages" })),
     ].filter((e) => !t || e.title.toLowerCase().includes(t)).slice(0, t ? 8 : 12);
     const records: Entry[] = (q.data?.items ?? []).map((h) => ({ key: `r-${h.type}-${h.id}`, title: h.title, subtitle: h.subtitle, href: h.href, group: h.type[0]!.toUpperCase() + h.type.slice(1) }));

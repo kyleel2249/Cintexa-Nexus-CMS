@@ -3,6 +3,9 @@ import { buildRouter } from "./modules";
 import { dispatch, type Deps } from "./core/router";
 import { handleEvents } from "./modules/automation";
 import { runSalesJobs } from "./jobs";
+import { recordEvents } from "./agents/events";
+import { createOpenRouterProvider } from "./agents/llm";
+import { resolveOpenRouterApiKey, getOpenRouterSettings } from "../../lib/openrouter";
 import type { Integrations } from "./integrations/providers";
 import type { SalesRequest, SalesResponse } from "./core/types";
 import { logger } from "../../lib/logger";
@@ -13,7 +16,15 @@ import { logger } from "../../lib/logger";
  * could be verified against a live service; add one by assigning to this object at start-up, e.g.
  *   import { integrations } from "./services/sales"; integrations.email = myEmailAdapter;
  */
-export const integrations: Integrations = {};
+export const integrations: Integrations = {
+  // OpenRouter adapter for agent narration and the contextual assistant. It is inert until an administrator turns on
+  // Sales Settings -> Integrations -> AI AND allows an external provider; the API key is read from the platform OpenRouter
+  // settings or OPENROUTER_API_KEY at call time and is never stored in code. If it is missing, agents stay deterministic.
+  ai: createOpenRouterProvider({
+    resolveKey: () => resolveOpenRouterApiKey(),
+    defaultModel: async () => { try { return (await getOpenRouterSettings()).model; } catch { return "openai/gpt-4o-mini"; } },
+  }),
+};
 
 const router = buildRouter();
 const db = createSalesDb(pool);
@@ -21,7 +32,7 @@ const deps: Deps = {
   now: () => new Date(),
   integrations,
   log: { info: (o, m) => logger.info(o as object, m), warn: (o, m) => logger.warn(o as object, m), error: (o, m) => logger.error(o as object, m) },
-  onCommitted: (events, ctx) => handleEvents(events, ctx),
+  onCommitted: async (events, ctx) => { await recordEvents(events, ctx); await handleEvents(events, ctx); },
 };
 
 export function handleSalesRequest(req: SalesRequest): Promise<SalesResponse> {

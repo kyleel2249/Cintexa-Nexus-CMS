@@ -5,7 +5,7 @@ import { useTheme } from "../ThemeProvider";
 import { Button } from "@/components/ui/button";
 import { GlobalSearch } from "./GlobalSearch";
 import { NotificationBell } from "./NotificationBell";
-import { SALES_NAV, activeNavKey } from "@/lib/sales/nav";
+import { SALES_NAV, SALES_AI_NAV, activeNavKey } from "@/lib/sales/nav";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,7 +32,7 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
 
   const paths = location.split("/").filter(Boolean);
   const salesKey = paths[0] === "sales" ? activeNavKey(location) : null;
-  const salesLabel = salesKey ? SALES_NAV.find((i) => i.key === salesKey)?.label : undefined;
+  const salesLabel = salesKey ? [...SALES_NAV, SALES_AI_NAV].find((i) => i.key === salesKey)?.label : undefined;
   const breadcrumb = paths.length === 0 ? "Dashboard" : paths[0] === "sales" ? (salesLabel ?? "Sales") : paths[0].charAt(0).toUpperCase() + paths[0].slice(1);
 
   return (

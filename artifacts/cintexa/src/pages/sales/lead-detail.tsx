@@ -12,6 +12,7 @@ import { FormModal, type FieldDef } from "@/components/sales/forms";
 import { ActivityList, ActivityFormModal, type ActivityRow } from "@/components/sales/activity";
 import { OwnerSelect, AccountPicker } from "@/components/sales/pickers";
 import { LEAD_FIELDS } from "./leads";
+import { RecordAssistant } from "@/components/sales/agents/RecordAssistant";
 
 interface Detail {
   lead: any; activities: ActivityRow[]; ownershipHistory: { id: number; from_owner_id: number | null; to_owner_id: number | null; changed_by: string; reason: string | null; at: string }[];
@@ -104,6 +105,7 @@ export default function LeadDetailPage({ id }: { id: string }) {
               </div>
             </div>
 
+            <div className="mt-6"><RecordAssistant type="lead" id={Number(id)} /></div>
             <FormModal open={dlg === "edit"} onClose={() => setDlg(null)} title="Edit lead" size="lg" fields={LEAD_FIELDS} initial={l} nullEmpty submit={(b) => sales.patch(`/leads/${id}`, b)} success="Lead updated" invalidate={["/leads"]} />
             <FormModal open={dlg === "touch"} onClose={() => setDlg(null)} title="Log contact" fields={TOUCH_FIELDS} initial={{ channel: "call" }} submit={(b) => sales.post(`/leads/${id}/touch`, b)} success="Contact logged" invalidate={inv} />
             <ActivityFormModal open={dlg === "activity"} onClose={() => setDlg(null)} link={{ lead_id: Number(id) }} />

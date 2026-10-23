@@ -1,0 +1,189 @@
+-- Sales AI agent network (tables sales_agents, sales_agent_tasks, sales_agent_executions, sales_agent_recommendations,
+-- sales_approval_policies, sales_approvals, sales_events). Additive and idempotent: safe to run more than once.
+-- The API applies the same statements automatically on boot (lib/db/src/sales-agents-schema.ts); this file is for manual / Supabase setups.
+-- Requires the Sales Management migration (20261019120000_sales_management.sql) to have run first.
+CREATE TABLE IF NOT EXISTS sales_agents (
+  key TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  purpose TEXT NOT NULL,
+  version TEXT NOT NULL DEFAULT '1.0.0',
+  status TEXT NOT NULL DEFAULT 'paused' CHECK (status IN ('active','paused','disabled')),
+  level SMALLINT NOT NULL DEFAULT 1 CHECK (level BETWEEN 1 AND 3),
+  max_level SMALLINT NOT NULL DEFAULT 2 CHECK (max_level BETWEEN 1 AND 3),
+  model_tier TEXT NOT NULL DEFAULT 'economy' CHECK (model_tier IN ('economy','standard','reasoning')),
+  model TEXT,
+  fallback_model TEXT,
+  use_ai BOOLEAN NOT NULL DEFAULT TRUE,
+  schedule_minutes INTEGER CHECK (schedule_minutes IS NULL OR schedule_minutes BETWEEN 5 AND 10080),
+  next_run_at TIMESTAMPTZ,
+  thresholds JSONB NOT NULL DEFAULT '{}'::jsonb,
+  tools JSONB NOT NULL DEFAULT '[]'::jsonb,
+  permissions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  current_task_id BIGINT,
+  last_activity_at TIMESTAMPTZ,
+  last_success_at TIMESTAMPTZ,
+  updated_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (level <= max_level)
+);
+CREATE TABLE IF NOT EXISTS sales_agent_tasks (
+  id BIGSERIAL PRIMARY KEY,
+  agent_key TEXT NOT NULL REFERENCES sales_agents(key) ON DELETE CASCADE,
+  kind TEXT NOT NULL DEFAULT 'analysis' CHECK (kind IN ('analysis','diagnostic','test','orchestration','event')),
+  trigger TEXT NOT NULL DEFAULT 'manual' CHECK (trigger IN ('manual','schedule','event','orchestrator')),
+  status TEXT NOT NULL DEFAULT 'queued' CHECK (status IN ('queued','running','completed','failed','cancelled','awaiting_approval')),
+  priority INTEGER NOT NULL DEFAULT 50 CHECK (priority BETWEEN 0 AND 100),
+  entity_type TEXT,
+  entity_id INTEGER,
+  parent_task_id BIGINT,
+  input JSONB NOT NULL DEFAULT '{}'::jsonb,
+  result JSONB,
+  idempotency_key TEXT NOT NULL,
+  attempts INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  queued_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  started_at TIMESTAMPTZ,
+  finished_at TIMESTAMPTZ,
+  created_by TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS sales_agent_tasks_idem ON sales_agent_tasks(idempotency_key);
+CREATE INDEX IF NOT EXISTS sales_agent_tasks_agent ON sales_agent_tasks(agent_key, queued_at DESC);
+CREATE INDEX IF NOT EXISTS sales_agent_tasks_status ON sales_agent_tasks(status, priority DESC) WHERE status IN ('queued','running');
+CREATE TABLE IF NOT EXISTS sales_agent_executions (
+  id BIGSERIAL PRIMARY KEY,
+  task_id BIGINT REFERENCES sales_agent_tasks(id) ON DELETE SET NULL,
+  agent_key TEXT NOT NULL REFERENCES sales_agents(key) ON DELETE CASCADE,
+  status TEXT NOT NULL CHECK (status IN ('running','success','failed')),
+  level SMALLINT NOT NULL,
+  prompt_version TEXT,
+  ai_status TEXT NOT NULL DEFAULT 'not_used' CHECK (ai_status IN ('not_used','ok','fallback_model','invalid_output','unavailable','refused','error')),
+  provider TEXT,
+  model TEXT,
+  prompt_tokens INTEGER,
+  completion_tokens INTEGER,
+  cost_usd NUMERIC(12,6),
+  latency_ms INTEGER,
+  findings_count INTEGER NOT NULL DEFAULT 0,
+  actions_prepared INTEGER NOT NULL DEFAULT 0,
+  actions_executed INTEGER NOT NULL DEFAULT 0,
+  error TEXT,
+  log JSONB NOT NULL DEFAULT '[]'::jsonb,
+  started_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  finished_at TIMESTAMPTZ
+);
+CREATE INDEX IF NOT EXISTS sales_agent_exec_agent ON sales_agent_executions(agent_key, started_at DESC);
+CREATE TABLE IF NOT EXISTS sales_agent_recommendations (
+  id BIGSERIAL PRIMARY KEY,
+  agent_key TEXT NOT NULL REFERENCES sales_agents(key) ON DELETE CASCADE,
+  task_id BIGINT REFERENCES sales_agent_tasks(id) ON DELETE SET NULL,
+  stage TEXT NOT NULL CHECK (stage IN ('fact','metric','prediction','recommendation','proposed_action')),
+  status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','accepted','dismissed','actioned','verified','expired')),
+  severity TEXT NOT NULL DEFAULT 'info' CHECK (severity IN ('info','low','medium','high','critical')),
+  category TEXT NOT NULL DEFAULT 'info' CHECK (category IN ('risk','opportunity','efficiency','compliance','info')),
+  impact_amount NUMERIC(18,2),
+  priority_score INTEGER NOT NULL DEFAULT 0,
+  title TEXT NOT NULL,
+  what_detected TEXT NOT NULL,
+  why_it_matters TEXT,
+  recommended_action TEXT,
+  expected_outcome TEXT,
+  owner_member_id INTEGER,
+  due_on DATE,
+  entity_type TEXT,
+  entity_id INTEGER,
+  evidence JSONB NOT NULL DEFAULT '[]'::jsonb,
+  assumptions JSONB,
+  dedupe_key TEXT NOT NULL,
+  ai_narrative TEXT,
+  outcome JSONB,
+  decided_by TEXT,
+  decided_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS sales_agent_rec_open_dedupe ON sales_agent_recommendations(dedupe_key) WHERE status IN ('open','accepted');
+CREATE INDEX IF NOT EXISTS sales_agent_rec_list ON sales_agent_recommendations(status, priority_score DESC, created_at DESC);
+CREATE INDEX IF NOT EXISTS sales_agent_rec_entity ON sales_agent_recommendations(entity_type, entity_id);
+CREATE TABLE IF NOT EXISTS sales_approval_policies (
+  action_type TEXT PRIMARY KEY,
+  label TEXT NOT NULL,
+  requires_approval BOOLEAN NOT NULL DEFAULT TRUE,
+  always_protected BOOLEAN NOT NULL DEFAULT FALSE,
+  auto_executable BOOLEAN NOT NULL DEFAULT FALSE,
+  has_executor BOOLEAN NOT NULL DEFAULT FALSE,
+  approver_role TEXT NOT NULL DEFAULT 'sales_manager' CHECK (approver_role IN ('sales_manager','sales_director','sales_admin','finance')),
+  threshold_amount NUMERIC(18,2),
+  ttl_hours INTEGER NOT NULL DEFAULT 72 CHECK (ttl_hours BETWEEN 1 AND 720),
+  updated_by TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (NOT always_protected OR requires_approval)
+);
+CREATE TABLE IF NOT EXISTS sales_approvals (
+  id BIGSERIAL PRIMARY KEY,
+  action_type TEXT NOT NULL REFERENCES sales_approval_policies(action_type),
+  agent_key TEXT REFERENCES sales_agents(key) ON DELETE SET NULL,
+  recommendation_id BIGINT REFERENCES sales_agent_recommendations(id) ON DELETE SET NULL,
+  entity_type TEXT,
+  entity_id INTEGER,
+  summary TEXT NOT NULL,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  payload_hash TEXT NOT NULL,
+  data_version TEXT,
+  amount NUMERIC(18,2),
+  currency TEXT,
+  required_role TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING','APPROVED','REJECTED','EXECUTING','COMPLETED','FAILED','CANCELLED','EXPIRED')),
+  requested_by TEXT NOT NULL,
+  decided_by TEXT,
+  decided_at TIMESTAMPTZ,
+  decision_note TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  executed_at TIMESTAMPTZ,
+  execution_mode TEXT CHECK (execution_mode IS NULL OR execution_mode IN ('automatic','manual')),
+  result JSONB,
+  error TEXT,
+  idempotency_key TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  CHECK (decided_by IS NULL OR decided_by <> requested_by OR requested_by LIKE 'agent:%')
+);
+CREATE UNIQUE INDEX IF NOT EXISTS sales_approvals_idem ON sales_approvals(idempotency_key);
+CREATE INDEX IF NOT EXISTS sales_approvals_status ON sales_approvals(status, created_at DESC);
+CREATE TABLE IF NOT EXISTS sales_events (
+  id BIGSERIAL PRIMARY KEY,
+  event_id TEXT NOT NULL,
+  type TEXT NOT NULL,
+  entity_type TEXT NOT NULL,
+  entity_id INTEGER NOT NULL,
+  origin TEXT NOT NULL DEFAULT 'system',
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  depth INTEGER NOT NULL DEFAULT 0,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','processed','failed','dead','ignored')),
+  attempts INTEGER NOT NULL DEFAULT 0,
+  last_error TEXT,
+  occurred_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  next_attempt_at TIMESTAMPTZ,
+  processed_at TIMESTAMPTZ
+);
+CREATE UNIQUE INDEX IF NOT EXISTS sales_events_event_id ON sales_events(event_id);
+CREATE INDEX IF NOT EXISTS sales_events_status ON sales_events(status, next_attempt_at) WHERE status IN ('pending','failed');
+CREATE INDEX IF NOT EXISTS sales_events_type ON sales_events(type, occurred_at DESC);
+-- Default approval policies (never overwrites administrator edits)
+INSERT INTO sales_approval_policies (action_type, label, requires_approval, always_protected, auto_executable, has_executor, approver_role, ttl_hours) VALUES
+   ('activity.create_followup','Create internal follow-up task',FALSE,FALSE,TRUE,TRUE,'sales_manager',72),
+   ('notification.internal','Send internal notification / risk alert',FALSE,FALSE,TRUE,TRUE,'sales_manager',72),
+   ('lead.assign','Assign an unassigned lead',FALSE,FALSE,TRUE,TRUE,'sales_manager',72),
+   ('message.customer','Send customer-facing message',TRUE,TRUE,FALSE,TRUE,'sales_manager',72),
+   ('campaign.publish','Publish campaign message',TRUE,TRUE,FALSE,FALSE,'sales_director',72),
+   ('price.change','Change official price',TRUE,TRUE,FALSE,FALSE,'sales_director',72),
+   ('discount.exceptional','Apply exceptional discount',TRUE,TRUE,FALSE,FALSE,'sales_director',72),
+   ('proposal.issue','Issue final commercial proposal',TRUE,TRUE,FALSE,FALSE,'sales_manager',72),
+   ('order.confirm','Confirm material sales order',TRUE,TRUE,FALSE,FALSE,'sales_manager',72),
+   ('commission.rule_change','Change commission rules',TRUE,TRUE,FALSE,FALSE,'sales_director',72),
+   ('commission.release','Release commission payment',TRUE,TRUE,FALSE,FALSE,'finance',72),
+   ('record.delete','Delete business-critical record',TRUE,TRUE,FALSE,FALSE,'sales_admin',72),
+   ('permission.change','Change user permissions',TRUE,TRUE,FALSE,FALSE,'sales_admin',72),
+   ('data.export_sensitive','Export sensitive customer information',TRUE,TRUE,FALSE,FALSE,'sales_director',72),
+   ('lead.convert','Convert lead to account, contact and opportunity',TRUE,FALSE,FALSE,FALSE,'sales_manager',72)
+   ON CONFLICT (action_type) DO NOTHING;

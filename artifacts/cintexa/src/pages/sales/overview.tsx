@@ -8,6 +8,7 @@ import { BarChart, Funnel, LineChart } from "@/components/sales/charts";
 import { OwnerSelect } from "@/components/sales/pickers";
 import { formatKpi, KPI_ORDER, type DashboardData } from "@/components/sales/SalesOverviewWidget";
 import { labelOf } from "@/lib/sales/labels";
+import { AgentStrip } from "@/components/sales/agents/AgentStrip";
 
 interface Agenda { today: string; overdue: Act[]; today_items: Act[]; upcoming: Act[] }
 interface Act { id: number; subject: string; type: string; due_at: string | null; related_name: string | null; priority: string }
@@ -33,6 +34,7 @@ export default function SalesOverviewPage() {
           </>
         }
       />
+      <AgentStrip />
       <QueryBoundary q={q} skeletonRows={8}>
         {(d) => {
           const defs = new Map(d.definitions.map((x) => [x.key, x]));

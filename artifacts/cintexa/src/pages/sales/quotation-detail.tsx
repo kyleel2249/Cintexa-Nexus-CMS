@@ -9,6 +9,7 @@ import { dateOnly, dateTime, money, percent } from "@/lib/sales/format";
 import { PageHeader, Panel, StatusBadge, QueryBoundary, DefinitionList, ConfirmModal, Modal, Field, Input, Select, Textarea, DataTable, Tag } from "@/components/sales/ui";
 import { LinesEditor, draftToBody, linesToDraft, type LineDraft } from "@/components/sales/LinesEditor";
 import { FormModal } from "@/components/sales/forms";
+import { RecordAssistant } from "@/components/sales/agents/RecordAssistant";
 
 interface Detail {
   quotation: any; lines: { id: number; position: number; product_id: number | null; description: string; quantity: string; unit_price: string; discount_percent: string; tax_rate: string; net: string; total: string; sku?: string; unit_cost?: string }[];
@@ -85,6 +86,7 @@ export default function QuotationDetailPage({ id }: { id: string }) {
               </div>
             </div>
 
+            <div className="mt-6"><RecordAssistant type="quotation" id={Number(id)} /></div>
             {dlg === "lines" && <LinesModal id={id} initial={linesToDraft(d.lines)} onClose={() => setDlg(null)} />}
             <FormModal open={dlg === "meta"} onClose={() => setDlg(null)} title="Terms & dates" initial={x} nullEmpty success="Saved" invalidate={[`/quotations/${id}`]} submit={(b) => sales.patch(`/quotations/${id}`, b)}
               fields={[{ name: "validity_date", label: "Valid until", type: "date", required: true }, { name: "payment_terms_days", label: "Payment terms (days)", type: "number", min: 0, max: 365, required: true }, { name: "terms", label: "Terms", type: "textarea" }, { name: "delivery_terms", label: "Delivery terms", type: "textarea" }, { name: "notes", label: "Internal notes", type: "textarea" }]} />

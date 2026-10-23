@@ -6,7 +6,7 @@ export interface SalesNavItem {
   perm: string;
   /** any one of these permissions is enough (used instead of perm when set) */
   anyPerm?: string[];
-  icon: "Gauge" | "Inbox" | "Users" | "User" | "Kanban" | "CalendarCheck2" | "Goal" | "Tag" | "FileText" | "ListChecks" | "TrendingUp" | "BarChart3" | "Network" | "Star" | "Repeat" | "Send" | "Radar" | "ScrollText" | "Zap" | "Lightbulb" | "File" | "Settings";
+  icon: "Gauge" | "Inbox" | "Users" | "User" | "Kanban" | "CalendarCheck2" | "Goal" | "Tag" | "FileText" | "ListChecks" | "TrendingUp" | "BarChart3" | "Network" | "Star" | "Repeat" | "Send" | "Radar" | "ScrollText" | "Zap" | "Lightbulb" | "File" | "Settings" | "Bot";
 }
 
 export const SALES_NAV: SalesNavItem[] = [
@@ -34,12 +34,20 @@ export const SALES_NAV: SalesNavItem[] = [
   { key: "settings", label: "Sales Settings", href: "/sales/settings", perm: "settings:read", icon: "Settings" },
 ];
 
+/** The AI agent network lives inside Sales Overview but gets its own pinned sidebar entry so it is always discoverable. It is not one of the 22 sections. */
+export const SALES_AI_NAV: SalesNavItem = { key: "command-centre", label: "Sales AI Command Centre", href: "/sales/command-centre", perm: "agents:read", icon: "Bot" };
+
+export function showAiNav(perms: ReadonlySet<string>): boolean {
+  return perms.has(SALES_AI_NAV.perm);
+}
+
 export function navFor(perms: ReadonlySet<string>): SalesNavItem[] {
   return SALES_NAV.filter((i) => (i.anyPerm ?? [i.perm]).some((p) => perms.has(p)));
 }
 
 /** Longest-prefix match so /sales/leads/12 highlights "Leads" and /sales highlights only the overview. */
 export function activeNavKey(pathname: string): string | null {
+  if (pathname.startsWith("/sales/command-centre") || pathname.startsWith("/sales/approvals")) return SALES_AI_NAV.key;
   let best: SalesNavItem | null = null;
   for (const i of SALES_NAV) {
     const hit = i.href === "/sales" ? pathname === "/sales" || pathname === "/sales/" : pathname === i.href || pathname.startsWith(`${i.href}/`);

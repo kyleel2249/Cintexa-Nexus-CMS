@@ -3,6 +3,7 @@
  * Set SALES_TEST_DATABASE_URL. Uses the production `pg` adapter when available, otherwise Bun's client (authoring sandbox).
  */
 import { handleEvents } from "../../modules/automation";
+import { recordEvents } from "../../agents/events";
 import { dispatch, type Deps } from "../../core/router";
 import { buildRouter } from "../../modules";
 import { NO_INTEGRATIONS } from "../../integrations/providers";
@@ -34,7 +35,7 @@ export const deps: Deps = {
   now: () => new Date(),
   integrations: NO_INTEGRATIONS,
   log: { info: () => undefined, warn: () => undefined, error: (o) => console.error("[sales-test]", o) },
-  onCommitted: (events, c) => handleEvents(events, c),
+  onCommitted: async (events, c) => { await recordEvents(events, c); await handleEvents(events, c); },
 };
 
 export const router = buildRouter();

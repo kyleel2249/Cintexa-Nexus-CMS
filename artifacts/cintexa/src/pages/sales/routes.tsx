@@ -31,6 +31,7 @@ const Automation = lazy(() => import("./automation"));
 const Playbook = lazy(() => import("./playbook"));
 const Documents = lazy(() => import("./documents"));
 const SalesSettings = lazy(() => import("./settings"));
+const CommandCentre = lazy(() => import("./command-centre"));
 
 const R = (path: string, component: React.ComponentType<any>, perm?: string, anyPerm?: string[]) => (
   <Route path={path} key={path}>{(params: Record<string, string>) => <SalesRoute perm={perm} anyPerm={anyPerm} component={component} params={params} />}</Route>
@@ -39,6 +40,10 @@ const R = (path: string, component: React.ComponentType<any>, perm?: string, any
 /** Server-generated links (notifications, search) use /sales/playbook/:id; the library opens articles from ?id=. */
 function PlaybookArticleRedirect({ id }: { id: string }) {
   return <Redirect to={`/sales/playbook?id=${encodeURIComponent(id)}`} replace />;
+}
+
+function ApprovalsRedirect() {
+  return <Redirect to="/sales/command-centre?tab=approvals" replace />;
 }
 
 /**
@@ -50,6 +55,8 @@ export function SalesRoutes() {
       <Suspense fallback={<div className="flex min-h-[300px] items-center justify-center"><Spinner className="h-6 w-6" /></div>}>
         <Switch>
           {R("/sales", Overview, "dashboard:read")}
+          {R("/sales/command-centre", CommandCentre, "agents:read")}
+          {R("/sales/approvals", ApprovalsRedirect, "agents:read")}
           {R("/sales/leads", Leads, "leads:read")}
           {R("/sales/leads/:id", LeadDetail, "leads:read")}
           {R("/sales/accounts", Accounts, "accounts:read")}

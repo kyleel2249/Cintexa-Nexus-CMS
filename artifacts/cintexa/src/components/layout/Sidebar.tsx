@@ -10,7 +10,8 @@ import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
 import { CintexaLogo } from "@/components/SplashScreen";
 import { useSalesOptional } from "@/context/SalesContext";
-import { SALES_NAV } from "@/lib/sales/nav";
+import { SALES_NAV, SALES_AI_NAV, showAiNav } from "@/lib/sales/nav";
+import { useSalesQuery } from "@/lib/sales/hooks";
 import { activeNavKey } from "@/lib/sales/nav";
 import { NAV_ICONS } from "@/lib/sales/nav-icons";
 
@@ -66,6 +67,11 @@ function SalesGroup({ location, onNavigate }: { location: string; onNavigate?: (
   // before that (or when sign-in / the API is unavailable) every section is listed and each page explains what is missing.
   const items = s && s.access === "ready" && s.nav.length > 0 ? s.nav : SALES_NAV;
   const activeKey = activeNavKey(location.split("?")[0]!);
+  const ready = Boolean(s && s.access === "ready");
+  // AI Command Centre: pinned under the 22 sections. Shown when the role may use it (or while the profile is still loading / unavailable, like the other sections).
+  const showAi = !ready || (s ? showAiNav(s.perms) : true);
+  const pending = useSalesQuery<{ total: number }>(ready && s?.can("approvals:read") ? "/approvals" : null, { status: "PENDING", page_size: 1 });
+  const AiIcon = NAV_ICONS[SALES_AI_NAV.icon];
   const toggle = () => {
     const next = !open;
     setStored(next);
@@ -79,6 +85,12 @@ function SalesGroup({ location, onNavigate }: { location: string; onNavigate?: (
       {open && (
         <nav id="sales-nav" aria-label="Sales Management" className="space-y-1">
           {items.map((i) => <NavLink key={i.key} href={i.href} label={i.label} Icon={NAV_ICONS[i.icon]} active={activeKey === i.key} onNavigate={onNavigate} />)}
+          {showAi && (
+            <div className="mt-2 border-t border-border/50 pt-2">
+              <NavLink href={SALES_AI_NAV.href} label={SALES_AI_NAV.label} Icon={AiIcon} active={activeKey === SALES_AI_NAV.key} onNavigate={onNavigate}
+                extra={pending.data && pending.data.total > 0 ? <span className="ml-auto rounded-full bg-amber-500/20 px-1.5 text-[10px] font-semibold text-amber-500" title="Approvals waiting for a decision">{pending.data.total}</span> : <span className="ml-auto rounded bg-violet-500/15 px-1 text-[9px] font-semibold uppercase text-violet-500">AI</span>} />
+            </div>
+          )}
         </nav>
       )}
     </div>

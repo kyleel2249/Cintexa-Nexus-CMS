@@ -50,7 +50,7 @@ export const searchRoutes: Route[] = [
 // ───── facts & AI assist ─────
 type Facts = Record<string, unknown>;
 
-async function gatherFacts(q: Queryable, actor: Actor, type: string, id: number, settings: SalesSettings, now: Date): Promise<{ title: string; facts: Facts }> {
+export async function gatherFacts(q: Queryable, actor: Actor, type: string, id: number, settings: SalesSettings, now: Date): Promise<{ title: string; facts: Facts }> {
   if (type === "account") {
     const a = await loadOwned<any>(q, actor, "sales_accounts", id, "Account");
     const orders = (await q.query("SELECT number, net_total::text, status, booked_at FROM sales_orders WHERE account_id = $1 AND status <> 'cancelled' ORDER BY booked_at DESC NULLS LAST LIMIT 5", [id])).rows;

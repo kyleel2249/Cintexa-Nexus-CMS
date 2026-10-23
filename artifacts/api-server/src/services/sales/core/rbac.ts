@@ -35,6 +35,7 @@ export const PERMISSIONS = [
   "settings:read", "settings:write",
   "audit:read",
   "ai:use",
+  "agents:read", "agents:run", "agents:manage", "approvals:read", "approvals:decide",
   "members:read", "members:write",
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
@@ -49,7 +50,7 @@ const REPS = new Set<Permission>([
   "opportunities:read", "opportunities:write", "activities:read", "activities:write", "targets:read", "products:read",
   "quotations:read", "quotations:write", "quotations:send", "orders:read", "orders:write", "forecast:read",
   "performance:read", "leaderboard:read", "commissions:read", "retention:read", "retention:write", "campaigns:read",
-  "competitors:read", "competitors:write", "reports:read", "playbook:read", "documents:read", "documents:write", "ai:use", "teams:read",
+  "competitors:read", "competitors:write", "reports:read", "playbook:read", "documents:read", "documents:write", "ai:use", "teams:read", "agents:read",
 ]);
 
 const MANAGERS = new Set<Permission>([
@@ -57,6 +58,7 @@ const MANAGERS = new Set<Permission>([
   "leads:assign", "leads:merge", "leads:import", "accounts:assign", "accounts:export", "opportunities:assign", "opportunities:override_close",
   "targets:write", "quotations:approve", "orders:approve", "orders:cancel", "orders:fulfil", "forecast:override", "reports:export", "reports:schedule",
   "automation:read", "campaigns:write", "playbook:write", "retention:write", "cost:read", "members:read", "teams:write", "documents:restricted",
+  "agents:run", "approvals:read", "approvals:decide",
 ]);
 
 export const ROLE_PERMISSIONS: Record<SalesRole, Set<Permission>> = {
@@ -66,18 +68,18 @@ export const ROLE_PERMISSIONS: Record<SalesRole, Set<Permission>> = {
   sales_rep: REPS,
   sales_analyst: new Set<Permission>([
     ...readOf("dashboard", "leads", "accounts", "contacts", "opportunities", "activities", "targets", "products", "quotations", "orders", "forecast", "performance", "leaderboard", "teams", "commissions", "retention", "campaigns", "competitors", "reports", "automation", "playbook", "documents", "settings", "members"),
-    "cost:read", "reports:export", "reports:schedule", "leads:export", "accounts:export", "ai:use",
+    "cost:read", "reports:export", "reports:schedule", "leads:export", "accounts:export", "ai:use", "agents:read", "agents:run", "approvals:read",
   ]),
   finance: new Set<Permission>([
     ...readOf("dashboard", "accounts", "contacts", "opportunities", "products", "quotations", "orders", "forecast", "performance", "targets", "commissions", "reports", "documents", "members", "teams"),
-    "cost:read", "payments:record", "orders:fulfil", "commissions:write", "commissions:approve", "commissions:pay", "reports:export", "documents:restricted", "accounts:export",
+    "cost:read", "payments:record", "orders:fulfil", "commissions:write", "commissions:approve", "commissions:pay", "reports:export", "documents:restricted", "accounts:export", "approvals:read", "approvals:decide",
   ]),
   support_agent: new Set<Permission>([
     "dashboard:read", "accounts:read", "contacts:read", "contacts:write", "activities:read", "activities:write", "orders:read", "retention:read", "retention:write", "playbook:read", "products:read", "documents:read",
   ]),
   readonly_exec: new Set<Permission>([
     ...readOf("dashboard", "leads", "accounts", "contacts", "opportunities", "activities", "targets", "products", "quotations", "orders", "forecast", "performance", "leaderboard", "teams", "commissions", "retention", "campaigns", "competitors", "reports", "playbook", "documents", "members"),
-    "cost:read", "reports:export",
+    "cost:read", "reports:export", "agents:read", "approvals:read",
   ]),
 };
 

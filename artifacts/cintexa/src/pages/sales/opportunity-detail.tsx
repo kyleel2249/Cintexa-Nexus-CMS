@@ -12,6 +12,7 @@ import { ActivityList, ActivityFormModal, type ActivityRow } from "@/components/
 import { OwnerSelect } from "@/components/sales/pickers";
 import { RowsEditor } from "@/components/sales/RowsEditor";
 import type { Stage } from "./pipeline";
+import { RecordAssistant } from "@/components/sales/agents/RecordAssistant";
 
 const EDIT_FIELDS: FieldDef[] = [
   { name: "name", label: "Name", required: true, wide: true },
@@ -110,6 +111,7 @@ export default function OpportunityDetailPage({ id }: { id: string }) {
               </div>
             </div>
 
+            <div className="mt-6"><RecordAssistant type="opportunity" id={Number(id)} /></div>
             <FormModal open={dlg === "edit"} onClose={() => setDlg(null)} title="Edit opportunity" size="lg" fields={EDIT_FIELDS} nullEmpty initial={{ ...o, reset_probability: false }} submit={(b) => sales.patch(`/opportunities/${id}`, b)} success="Opportunity updated" invalidate={inv} />
             <ActivityFormModal open={dlg === "activity"} onClose={() => setDlg(null)} link={{ opportunity_id: Number(id), account_id: o.account_id }} />
             <Modal open={dlg === "assign"} onClose={() => setDlg(null)} title="Reassign opportunity" size="sm" footer={<><Button variant="outline" onClick={() => setDlg(null)}>Cancel</Button><Button disabled={!assignTo || assign.pending} onClick={() => void assign.run()}>Reassign</Button></>}>

@@ -65,12 +65,16 @@ export interface AiRequest {
   system: string;
   prompt: string;
   maxTokens?: number;
+  /** optional per-call model override (agents choose a model per task); providers ignore it if unsupported */
+  model?: string;
 }
 export interface AiResponse {
   text: string;
   model: string;
   promptTokens?: number;
   completionTokens?: number;
+  /** provider-reported cost in USD when available */
+  costUsd?: number;
 }
 export interface AiProvider {
   readonly name: string;

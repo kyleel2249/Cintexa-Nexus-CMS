@@ -9,6 +9,7 @@
 import { buildRouter } from "@sales-engine/modules";
 import { dispatch, type Deps } from "@sales-engine/core/router";
 import { handleEvents } from "@sales-engine/modules/automation";
+import { recordEvents } from "@sales-engine/agents/events";
 import { runSalesJobs } from "@sales-engine/jobs";
 import type { Db, Queryable, SalesRequest, SalesResponse } from "@sales-engine/core/types";
 import { SALES_SCHEMA_STATEMENTS } from "@sales-schema";
@@ -85,7 +86,7 @@ function start() {
         now: () => new Date(),
         integrations: {},
         log: { info: () => undefined, warn: (o, m) => console.warn("[sales]", m ?? "", o), error: (o, m) => console.error("[sales]", m ?? "", o) },
-        onCommitted: (events, ctx) => handleEvents(events, ctx),
+        onCommitted: async (events, ctx) => { await recordEvents(events, ctx); await handleEvents(events, ctx); },
       };
       startJobs(db, deps);
       return { db, pg, deps, persistent };

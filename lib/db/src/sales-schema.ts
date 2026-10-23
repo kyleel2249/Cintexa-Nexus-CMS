@@ -6,6 +6,8 @@
  * referential integrity is enforced with foreign keys, enums with CHECK constraints, and "at most one live row"
  * rules with partial unique indexes. Records are archived (archived_at) rather than deleted.
  */
+import { SALES_AGENT_SCHEMA_STATEMENTS } from "./sales-agents-schema";
+
 const T = (name: string, body: string) => `CREATE TABLE IF NOT EXISTS ${name} (\n${body}\n)`;
 const IX = (sql: string) => `CREATE INDEX IF NOT EXISTS ${sql}`;
 const UX = (sql: string) => `CREATE UNIQUE INDEX IF NOT EXISTS ${sql}`;
@@ -1002,4 +1004,6 @@ BEGIN NEW.search_text := to_tsvector('simple', coalesce(NEW.title,'') || ' ' || 
   `DO $$ BEGIN
   CREATE TRIGGER sales_playbook_tsv_t BEFORE INSERT OR UPDATE ON sales_playbook_articles FOR EACH ROW EXECUTE FUNCTION sales_playbook_tsv();
 EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
+  // ───────────────────────── AI agent network ─────────────────────────
+  ...SALES_AGENT_SCHEMA_STATEMENTS,
 ];

@@ -34,3 +34,9 @@ Build the frontend with `VITE_SALES_API_MODE=remote` and deploy the Express API 
 ## Rollback
 The change is additive. Revert the frontend deploy to hide the UI; set `SALES_JOBS=off` to stop jobs. `sales_*` tables
 are independent and can stay or be dropped (`DROP TABLE sales_… CASCADE`) without touching CMS data.
+
+## AI agent network (added 2026-10-23)
+1. Run `supabase/migrations/20261023120000_sales_ai_agents.sql` (or just boot the API: the same statements run automatically).
+2. Optional AI narration: set `OPENROUTER_API_KEY` on the API server (or use the platform OpenRouter settings), optionally `SALES_AI_MODEL_ECONOMY|STANDARD|REASONING`. Then in Sales Settings → Integrations enable AI **and** allow the external provider. Without this the agents run deterministically and no record data leaves the system.
+3. Open `/sales/command-centre` as a Sales Administrator, use **Activate all**, then **Run all agents**. Agents start paused by design.
+4. Background scheduling uses the existing Sales job runner (`SALES_JOBS`); with the orchestrator active only it runs on schedule and delegates.

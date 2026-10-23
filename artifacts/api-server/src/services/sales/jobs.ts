@@ -98,6 +98,8 @@ export async function housekeeping(db: Db, deps: Deps): Promise<void> {
   void deps;
 }
 
+import { runAgentJobs } from "./agents/jobs";
+
 let running = false;
 let tick = 0;
 /** One scheduler pass (called every minute). Returns a summary for logs and tests. */
@@ -112,6 +114,7 @@ export async function runSalesJobs(db: Db, deps: Deps): Promise<Record<string, u
   try {
     await step("outbox", () => processOutbox(db, deps));
     await step("automationRetries", () => retryRuns(db, deps));
+    await step("agents", () => runAgentJobs(db, deps));
     if (tick % 5 === 1) {
       await step("expireQuotations", () => expireQuotations(db, deps));
       await step("automationSchedule", () => runScheduledTriggers(db, deps));
