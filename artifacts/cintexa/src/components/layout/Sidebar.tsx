@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -32,7 +32,7 @@ const navGroups = [
   { title: "Media", items: [{ name: "Library", href: "/media", icon: ImageIcon }] },
   { title: "Audience", items: [{ name: "Subscribers", href: "/subscribers", icon: Mail }, { name: "Users", href: "/users", icon: Users }] },
   { title: "Taxonomy", items: [{ name: "Categories", href: "/categories", icon: Tags }, { name: "Menus", href: "/menus", icon: MenuSquare }, { name: "Forms", href: "/forms", icon: FormInput }] },
-  { title: "System", items: [{ name: "SEO", href: "/seo", icon: Search }, { name: "AI Studio", href: "/ai", icon: Wand2 }, { name: "Plugins", href: "/plugins", icon: Puzzle }, { name: "Settings", href: "/settings", icon: Settings }] },
+  { title: "System", items: [{ name: "SEO", href: "/seo", icon: Search }, { name: "AI Studio", href: "/ai", icon: Wand2 }, { name: "Sentinel Key", href: "/sentinel-key", icon: ShieldCheck }, { name: "Plugins", href: "/plugins", icon: Puzzle }, { name: "Settings", href: "/settings", icon: Settings }] },
 ];
 
 const SALES_OPEN_KEY = "cintexa-sales-nav-open";

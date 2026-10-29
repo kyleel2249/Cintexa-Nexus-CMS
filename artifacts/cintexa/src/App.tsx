@@ -44,6 +44,7 @@ const Settings = lazyWithRecovery(() => import("@/pages/settings"));
 const ContentCalendar = lazyWithRecovery(() => import("@/pages/calendar"));
 const ContentPipeline = lazyWithRecovery(() => import("@/pages/pipeline"));
 const Plugins = lazyWithRecovery(() => import("@/pages/plugins"));
+const SentinelKey = lazyWithRecovery(() => import("@/pages/sentinel-key"));
 const Subscribers = lazyWithRecovery(() => import("@/pages/subscribers"));
 const BusinessDiagnostic = lazyWithRecovery(() => import("@/pages/business-diagnostic"));
 const PublicIntake = lazyWithRecovery(() => import("@/pages/public-intake"));
@@ -126,6 +127,7 @@ function AppRoutes() {
             <Route path="/ai" component={AiStudio} />
             <Route path="/settings" component={Settings} />
             <Route path="/plugins" component={Plugins} />
+            <Route path="/sentinel-key" component={SentinelKey} />
             <Route path="/subscribers" component={Subscribers} />
             <Route path="/sales/*?" component={SalesRoutes} />
             <Route component={NotFound} />
