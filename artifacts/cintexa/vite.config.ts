@@ -41,6 +41,9 @@ export default defineConfig({
       // The Sales engine and schema are shared with the API server and also run on-device (see src/lib/sales/local).
       "@sales-engine": path.resolve(import.meta.dirname, "..", "api-server", "src", "services", "sales"),
       "@sales-schema": path.resolve(import.meta.dirname, "..", "..", "lib", "db", "src", "sales-schema.ts"),
+      // Sentinel Key store: same service code as the API server, also run on-device against PGlite (see src/lib/sentinel-key/store).
+      "@sentinel-engine": path.resolve(import.meta.dirname, "..", "api-server", "src", "services", "sentinel"),
+      "@sentinel-schema": path.resolve(import.meta.dirname, "..", "..", "lib", "db", "src", "sentinel-schema.ts"),
     },
     dedupe: ["react", "react-dom"],
   },

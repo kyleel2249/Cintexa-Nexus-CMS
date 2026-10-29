@@ -15,7 +15,9 @@
     "paths": {
       "@/*": ["./src/*"],
       "@sales-engine/*": ["../api-server/src/services/sales/*"],
-      "@sales-schema": ["../../lib/db/src/sales-schema.ts"]
+      "@sales-schema": ["../../lib/db/src/sales-schema.ts"],
+      "@sentinel-engine/*": ["../api-server/src/services/sentinel/*"],
+      "@sentinel-schema": ["../../lib/db/src/sentinel-schema.ts"]
     }
   },
   "references": [

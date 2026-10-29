@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -32,7 +32,7 @@ const navGroups = [
   { title: "Media", items: [{ name: "Library", href: "/media", icon: ImageIcon }] },
   { title: "Audience", items: [{ name: "Subscribers", href: "/subscribers", icon: Mail }, { name: "Users", href: "/users", icon: Users }] },
   { title: "Taxonomy", items: [{ name: "Categories", href: "/categories", icon: Tags }, { name: "Menus", href: "/menus", icon: MenuSquare }, { name: "Forms", href: "/forms", icon: FormInput }] },
-  { title: "System", items: [{ name: "SEO", href: "/seo", icon: Search }, { name: "AI Studio", href: "/ai", icon: Wand2 }, { name: "Sentinel Key", href: "/sentinel-key", icon: ShieldCheck }, { name: "Plugins", href: "/plugins", icon: Puzzle }, { name: "Settings", href: "/settings", icon: Settings }] },
+  { title: "System", items: [{ name: "SEO", href: "/seo", icon: Search }, { name: "AI Studio", href: "/ai", icon: Wand2 }, { name: "Sentinel Key", href: "/sentinel-key", icon: ShieldCheck }, { name: "Secure Vault", href: "/sentinel-key/vault", icon: LockKeyhole }, { name: "Generation History", href: "/sentinel-key/history", icon: ScrollText }, { name: "Alias Manager", href: "/sentinel-key/aliases", icon: Tag }, { name: "Plugins", href: "/plugins", icon: Puzzle }, { name: "Settings", href: "/settings", icon: Settings }] },
 ];
 
 const SALES_OPEN_KEY = "cintexa-sales-nav-open";
@@ -119,7 +119,7 @@ function Group({ group, location, onNavigate }: { group: (typeof navGroups)[numb
       <h4 className="text-xs font-semibold text-muted-foreground uppercase tracking-wider px-2">{group.title}</h4>
       <nav className="space-y-1">
         {group.items.map((item) => {
-          const active = location === item.href || (item.href !== "/" && location.startsWith(item.href));
+          const active = item.href === "/sentinel-key" ? location === item.href || (location.startsWith("/sentinel-key/") && !/^\/sentinel-key\/(vault|history|aliases)/.test(location)) : location === item.href || (item.href !== "/" && location.startsWith(item.href));
           return <NavLink key={item.name} href={item.href} label={item.name} Icon={item.icon} active={active} onNavigate={onNavigate} extra={item.href === "/diagnostics" ? <Target className="ml-auto w-3 h-3 opacity-70" /> : undefined} />;
         })}
       </nav>

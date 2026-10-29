@@ -6,7 +6,8 @@ import { RangeField, TextField, ToggleRow, Notice, Stat } from "./ui-bits";
 import { SecretField } from "./SecretField";
 import { generateRandomId, generateUnique, ID_LIMITS, randomIdEntropyBits, ulid, uuidv4, uuidv5, uuidv7, UUID_NAMESPACES, type RandomIdOptions } from "@/lib/sentinel-key/ids";
 import { copyText, downloadText } from "@/lib/sentinel-key/clipboard";
-import { recordGenerated } from "@/lib/sentinel-key/session-store";
+import { useStoredGeneration } from "@/lib/sentinel-key/store/use-stored-generation";
+import { StorageControls } from "./StorageControls";
 
 type Kind = "random" | "uuidv4" | "uuidv7" | "ulid" | "uuidv5";
 const KIND_INFO: Record<Kind, string> = {
@@ -18,6 +19,7 @@ const KIND_INFO: Record<Kind, string> = {
 };
 
 export function IdPanel() {
+  const sg = useStoredGeneration("id");
   const [kind, setKind] = useState<Kind>("random");
   const [o, setO] = useState<RandomIdOptions>({ length: ID_LIMITS.defaultLength, lower: true, upper: true, digits: true, symbols: false, excludeAmbiguous: false, prefix: "", suffix: "", custom: "", exclude: "" });
   const [count, setCount] = useState(1);
@@ -29,17 +31,16 @@ export function IdPanel() {
   const set = (p: Partial<RandomIdOptions>) => setO((x) => ({ ...x, ...p }));
 
   const generate = async (n = count) => {
-    try {
-      let out: string[];
-      if (kind === "uuidv5") {
-        if (!name.trim()) throw new Error("Enter a name to derive the ID from.");
-        out = [await uuidv5(name, UUID_NAMESPACES[ns])];
-      } else {
-        const make = kind === "random" ? () => generateRandomId(o) : kind === "uuidv4" ? uuidv4 : kind === "uuidv7" ? () => uuidv7() : () => ulid();
-        out = generateUnique(make, n);
-      }
-      setIds(out); setError(null); setNote(""); recordGenerated("id", out.length);
-    } catch (e) { setError(e instanceof Error ? e.message : "Generation failed."); }
+    if (kind === "uuidv5" && !name.trim()) { setError("Enter a name to derive the ID from."); return; }
+    let out: string[] = [];
+    const res = await sg.run(async () => {
+      if (kind === "uuidv5") out = [await uuidv5(name, UUID_NAMESPACES[ns])];
+      else out = generateUnique(kind === "random" ? () => generateRandomId(o) : kind === "uuidv4" ? uuidv4 : kind === "uuidv7" ? () => uuidv7() : () => ulid(), n);
+      return out.join("\n");
+    }, { format: kind, ...(kind === "random" ? { length: o.length } : {}) }, kind === "uuidv5" ? 1 : n);
+    setNote("");
+    if (!res.generated) { setError(res.error ?? "Nothing was generated."); setIds([]); return; }
+    setIds(out); setError(null);
   };
 
   return (
@@ -86,9 +87,11 @@ export function IdPanel() {
       </div>
 
       <div className="lg:col-span-2 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-4 space-y-4 self-start lg:sticky lg:top-20">
-        <Button type="button" className="w-full" onClick={() => generate()}><Fingerprint /> Generate{kind !== "uuidv5" && count > 1 ? ` ${count} IDs` : " ID"}</Button>
+        <StorageControls sg={sg} />
+        <Button type="button" className="w-full" onClick={() => generate()} disabled={!!sg.blocked || sg.busy}><Fingerprint /> Generate{kind !== "uuidv5" && count > 1 ? ` ${count} IDs` : " ID"}</Button>
+        {sg.blocked && <p className="text-xs text-muted-foreground" role="status">{sg.blocked}</p>}
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-        {ids.length <= 1 ? <SecretField label="Generated ID" value={ids[0] ?? null} onRegenerate={() => generate(1)} onClear={() => setIds([])} />
+        {ids.length <= 1 ? <SecretField label="Generated ID" value={ids[0] ?? null} onRegenerate={sg.blocked ? undefined : () => generate(1)} onClear={() => { setIds([]); sg.clear(); }} />
           : <div className="space-y-2"><ul className="max-h-72 overflow-auto rounded-lg border bg-background p-2 font-mono text-xs space-y-1" aria-label="Generated IDs">{ids.map((i) => <li key={i} className="break-all">{i}</li>)}</ul><Stat label="IDs generated (all unique)" value={ids.length} /></div>}
         {ids.length > 0 && (
           <div className="flex flex-wrap gap-2">

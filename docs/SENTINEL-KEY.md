@@ -30,3 +30,27 @@ Route: `/sentinel-key` (sidebar: System > Sentinel Key; dashboard card "Sentinel
 - `npm run build --workspace=@workspace/cintexa`: succeeds.
 - Headless Chromium smoke test against the production build: generate and reveal a password, website check, vault create/lock/wrong-password/unlock/audit, dashboard card, sidebar link; no page errors.
 - Not performed: formal WCAG audit with assistive technology, dependency vulnerability scan, third-party security review.
+
+---
+
+# Update: automatic Vault + History, mandatory aliases
+
+## Behaviour
+- Every generator (password, passphrase, ID, token, recovery codes) requires an **alias** (autocomplete over existing aliases, inline create). Generation is disabled until an alias is chosen and the vault is unlocked.
+- Flow: `begin` (history event "pending") -> generate -> encrypt in the browser -> `commit` (vault entry + history "saved" in ONE database transaction). Failures at any step mark the event "failed" with a code; the UI reports "Not fully saved" and offers Retry with the same ids (idempotent). The secret is generated only after the history event exists.
+- Bulk results (several passwords/IDs, a set of recovery codes) are stored as ONE vault record plus ONE history event (`itemCount` shows the size).
+- Tabs and routes: `/sentinel-key` (Generate), `/sentinel-key/vault`, `/sentinel-key/history`, `/sentinel-key/aliases`, plus Analyze, Website safety, Overview. Sidebar and dashboard show Secure Vault, Generation History, Alias Manager and Storage Health.
+
+## Storage and access control
+- Tables (`lib/db/src/sentinel-schema.ts`, applied by the existing idempotent bootstrap): `sk_user_keys`, `sk_aliases`, `sk_vault_entries`, `sk_history`, `sk_audit`. Foreign keys, indexes, `owner_id` on every row. No existing table was changed.
+- Service code: `artifacts/api-server/src/services/sentinel/` (same code runs on the API server and in the browser). Every statement is scoped by `owner_id`; another owner's ids behave like missing ids (404). API keys are refused. Per-owner rate limits (in-memory per process).
+- **Two stores, one contract.** This app has no sign-in, so by default the store runs on-device (PGlite in IndexedDB, one owner per browser profile; same model as the Sales module). Set `VITE_SENTINEL_API_MODE=remote` to use `/api/sentinel/*` on the server instead, where `apiGuard` authentication and per-user scoping apply (Firebase uid or JWT subject).
+- Encryption: PBKDF2-SHA-256 600k -> AES-256-GCM, in the browser. AAD binds each ciphertext to its record id and type. The database/server stores ciphertext, IV, KDF parameters and a verifier only. Argon2id is not available in Web Crypto, so PBKDF2 is used.
+- NOT encrypted (visible to whoever holds the database): alias names/metadata, credential type, generation settings, tags, notes, dates, counts. Not "zero-knowledge" for metadata. No master-password recovery. Changing the shared-store master password is not implemented.
+- Deleting history never deletes the vault record and vice versa unless "both" is explicitly chosen and confirmed. Deleting an alias is refused while records reference it (archive instead); renaming keeps all links (History also keeps the name at generation time).
+
+## Verification performed
+- `tsx --test` on `src/services/sentinel/__tests__/sentinel.test.ts`: 16 tests against real PostgreSQL semantics (PGlite): alias required for all five types, vault+history written under the same alias id, ciphertext-only storage, alias reuse, rename, idempotent begin/commit (including concurrent), failure + retry, atomic rollback, cross-user access attempts, independent deletes, pagination/filters, key envelope, API-key/rate-limit behaviour.
+- `bun test tests/`: 46 pass, including the client workflow against the real service (alias required, locked vault, begin/generate/encrypt/save failures, safe retries, decryption/AAD checks).
+- Typecheck of both apps, production build, and a headless-Chromium run: create master password, inline alias creation, generate, saved banner, open vault record, reveal (masked by default), history, rename propagation, dashboard health tile, sidebar links. No page errors.
+- Not verified: the node-postgres adapter against a live Postgres server, remote mode end to end, WCAG audit with assistive technology, dependency vulnerability scan, third-party security review.

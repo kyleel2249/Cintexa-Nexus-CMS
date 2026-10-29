@@ -7,11 +7,14 @@ import { RangeField, StrengthMeter, Stat, TextField, ToggleRow, Notice } from ".
 import { DEFAULT_PASSWORD_OPTIONS, generatePasswords, PASSWORD_LIMITS, validatePasswordOptions, type GeneratedSecret, type PasswordOptions } from "@/lib/sentinel-key/password";
 import { searchSpace, labelFor } from "@/lib/sentinel-key/analysis";
 import { copyText } from "@/lib/sentinel-key/clipboard";
-import { recordGenerated, useSentinelSettings } from "@/lib/sentinel-key/session-store";
+import { useSentinelSettings } from "@/lib/sentinel-key/session-store";
+import { useStoredGeneration } from "@/lib/sentinel-key/store/use-stored-generation";
+import { StorageControls } from "./StorageControls";
 
 export function PasswordPanel() {
   const reduce = useReducedMotion();
   const settings = useSentinelSettings();
+  const sg = useStoredGeneration("password");
   const [o, setO] = useState<PasswordOptions>(DEFAULT_PASSWORD_OPTIONS);
   const [count, setCount] = useState(1);
   const [results, setResults] = useState<GeneratedSecret[]>([]);
@@ -20,17 +23,18 @@ export function PasswordPanel() {
   const set = (p: Partial<PasswordOptions>) => setO((prev) => ({ ...prev, ...p }));
   const invalid = validatePasswordOptions(o);
 
-  const generate = (n = count) => {
+  const generate = async (n = count) => {
     const err = validatePasswordOptions(o);
     if (err) { setError(err); return; }
-    try {
-      const out = generatePasswords(o, n);
-      setResults(out); setError(null); setNote("");
-      recordGenerated("password", out.length);
-    } catch (e) { setError(e instanceof Error ? e.message : "Generation failed."); }
+    let made: GeneratedSecret[] = [];
+    const res = await sg.run(() => { made = generatePasswords(o, n); return made.map((r) => r.value).join("\n"); },
+      { length: o.length, lower: !!o.lower, upper: !!o.upper, digits: !!o.digits, symbols: !!o.symbols, excludeAmbiguous: !!o.excludeAmbiguous, avoidRepeats: !!o.avoidRepeats, avoidSequences: !!o.avoidSequences }, n);
+    setNote("");
+    if (!res.generated) { setError(res.error ?? "Nothing was generated."); setResults([]); return; }
+    setResults(made); setError(null);
   };
   const first = results[0];
-  const clear = () => { setResults([]); setNote(""); };
+  const clear = () => { setResults([]); setNote(""); sg.clear(); };
 
   return (
     <div className="grid gap-4 lg:grid-cols-5">
@@ -57,9 +61,11 @@ export function PasswordPanel() {
 
       <div className="space-y-4 lg:col-span-2">
         <div className="rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-4 space-y-4 lg:sticky lg:top-20">
-          <Button type="button" className="w-full" onClick={() => generate()} disabled={!!invalid}><KeyRound /> Generate password{count > 1 ? `s (${count})` : ""}</Button>
+          <StorageControls sg={sg} />
+          <Button type="button" className="w-full" onClick={() => generate()} disabled={!!invalid || !!sg.blocked || sg.busy}><KeyRound /> Generate password{count > 1 ? `s (${count})` : ""}</Button>
+          {sg.blocked && <p className="text-xs text-muted-foreground" role="status">{sg.blocked}</p>}
           {(error || invalid) && <p className="text-sm text-destructive" role="alert">{error ?? invalid}</p>}
-          {results.length <= 1 && <SecretField label="Generated password" value={first?.value ?? null} onRegenerate={() => generate(1)} onClear={clear} />}
+          {results.length <= 1 && <SecretField label="Generated password" value={first?.value ?? null} onRegenerate={sg.blocked ? undefined : () => generate(1)} onClear={clear} />}
           {first && (
             <motion.div initial={reduce ? false : { opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
               <StrengthMeter bits={first.entropyBits} />

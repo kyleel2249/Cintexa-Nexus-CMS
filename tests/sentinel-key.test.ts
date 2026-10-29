@@ -25,7 +25,7 @@ describe("secure randomness", () => {
   test("shuffle keeps the same elements", () => expect(shuffle([1, 2, 3, 4, 5]).sort()).toEqual([1, 2, 3, 4, 5]));
   test("source never uses Math.random", () => {
     const dir = join(import.meta.dir, "../artifacts/cintexa/src/lib/sentinel-key");
-    for (const f of readdirSync(dir)) expect(readFileSync(join(dir, f), "utf8").replace(/Math\.random\(\)\s*(is|\)|never)/g, "")).not.toMatch(/Math\.random\(\)/);
+    for (const f of (readdirSync(dir, { recursive: true }) as string[]).filter((x) => x.endsWith(".ts"))) expect(readFileSync(join(dir, f), "utf8").replace(/Math\.random\(\)\s*(is|\)|never)/g, "")).not.toMatch(/Math\.random\(\)/);
   });
 });
 

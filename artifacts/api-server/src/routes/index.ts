@@ -26,6 +26,7 @@ import settingsRouter from "./settings";
 import websiteAuditsRouter from "./website-audits";
 import salesRouter from "./sales";
 import intelligenceRouter from "./intelligence";
+import sentinelRouter from "./sentinel";
 import { apiGuard } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
@@ -62,5 +63,6 @@ router.use("/settings", settingsRouter);
 router.use("/v1/website-audits", websiteAuditsRouter);
 router.use("/sales", salesRouter);
 router.use("/intelligence", intelligenceRouter);
+router.use("/sentinel", sentinelRouter);
 
 export default router;

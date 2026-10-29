@@ -37,7 +37,7 @@ export function OverviewPanel({ vault, go }: { vault: VaultApi; go: (mode: strin
       <p className="text-xs text-muted-foreground">Everything on this page is calculated locally in your browser. No data here is verified by a server, and no secret values are ever shown.</p>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <Stat label="Generated this session" value={total} />
-        <Stat label="Vault" value={<span className="flex items-center gap-2 text-base">{vault.session ? <><ShieldCheck className="h-4 w-4 text-emerald-500" aria-hidden />Unlocked</> : vault.exists ? <><Lock className="h-4 w-4 text-primary" aria-hidden />Locked</> : "Not created"}</span>} />
+        <Stat label="Local-only vault (earlier)" value={<span className="flex items-center gap-2 text-base">{vault.session ? <><ShieldCheck className="h-4 w-4 text-emerald-500" aria-hidden />Unlocked</> : vault.exists ? <><Lock className="h-4 w-4 text-primary" aria-hidden />Locked</> : "Not created"}</span>} />
         <Stat label="Last local audit" value={<span className="text-base">{stats.lastAuditAt ? format(stats.lastAuditAt, "p") : "Not run"}</span>} />
         <Stat label="Last backup export" value={<span className="text-base">{vault.lastBackup ? format(vault.lastBackup, "PP") : "None"}</span>} />
       </div>

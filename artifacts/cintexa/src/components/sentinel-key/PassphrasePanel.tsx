@@ -6,14 +6,21 @@ import { RangeField, StrengthMeter, Stat, TextField, ToggleRow, Notice } from ".
 import { DEFAULT_PASSPHRASE_OPTIONS, generatePassphrase, PASSPHRASE_LIMITS, type PassphraseCase, type PassphraseOptions } from "@/lib/sentinel-key/passphrase";
 import type { GeneratedSecret } from "@/lib/sentinel-key/password";
 import { searchSpace } from "@/lib/sentinel-key/analysis";
-import { recordGenerated } from "@/lib/sentinel-key/session-store";
+import { useStoredGeneration } from "@/lib/sentinel-key/store/use-stored-generation";
+import { StorageControls } from "./StorageControls";
 
 export function PassphrasePanel() {
+  const sg = useStoredGeneration("passphrase");
   const [o, setO] = useState<PassphraseOptions>(DEFAULT_PASSPHRASE_OPTIONS);
   const [res, setRes] = useState<GeneratedSecret | null>(null);
   const [error, setError] = useState<string | null>(null);
   const set = (p: Partial<PassphraseOptions>) => setO((x) => ({ ...x, ...p }));
-  const generate = () => { try { setRes(generatePassphrase(o)); setError(null); recordGenerated("passphrase"); } catch (e) { setError(e instanceof Error ? e.message : "Generation failed."); } };
+  const generate = async () => {
+    let made: GeneratedSecret | null = null;
+    const r = await sg.run(() => { made = generatePassphrase(o); return made.value; }, { words: o.words, casing: o.casing, includeNumber: o.includeNumber, separatorLength: o.separator.length });
+    if (!r.generated || !made) { setError(r.error ?? "Nothing was generated."); setRes(null); return; }
+    setRes(made); setError(null);
+  };
   return (
     <div className="grid gap-4 lg:grid-cols-5">
       <div className="lg:col-span-3 rounded-xl border bg-card p-4 space-y-4">
@@ -31,9 +38,11 @@ export function PassphrasePanel() {
         <Notice>Words come from the EFF Large Wordlist (7,776 words, about 12.9 bits each) and are picked with unbiased secure randomness. Do not swap words for ones you prefer; that lowers the strength.</Notice>
       </div>
       <div className="lg:col-span-2 rounded-xl border border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card p-4 space-y-4 lg:sticky lg:top-20 self-start">
-        <Button type="button" className="w-full" onClick={generate}><Type /> Generate passphrase</Button>
+        <StorageControls sg={sg} />
+        <Button type="button" className="w-full" onClick={generate} disabled={!!sg.blocked || sg.busy}><Type /> Generate passphrase</Button>
+        {sg.blocked && <p className="text-xs text-muted-foreground" role="status">{sg.blocked}</p>}
         {error && <p className="text-sm text-destructive" role="alert">{error}</p>}
-        <SecretField label="Generated passphrase" value={res?.value ?? null} mono={false} onRegenerate={generate} onClear={() => setRes(null)} />
+        <SecretField label="Generated passphrase" value={res?.value ?? null} mono={false} onRegenerate={sg.blocked ? undefined : generate} onClear={() => { setRes(null); sg.clear(); }} />
         {res && <><StrengthMeter bits={res.entropyBits} /><div className="grid grid-cols-2 gap-2"><Stat label="Wordlist size" value={res.poolSize.toLocaleString()} /><Stat label="Search space" value={<span className="text-sm">{searchSpace(res.entropyBits)}</span>} /></div></>}
       </div>
     </div>

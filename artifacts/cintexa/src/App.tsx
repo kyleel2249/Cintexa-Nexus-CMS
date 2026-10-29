@@ -127,7 +127,7 @@ function AppRoutes() {
             <Route path="/ai" component={AiStudio} />
             <Route path="/settings" component={Settings} />
             <Route path="/plugins" component={Plugins} />
-            <Route path="/sentinel-key" component={SentinelKey} />
+            <Route path="/sentinel-key/:section?" component={SentinelKey} />
             <Route path="/subscribers" component={Subscribers} />
             <Route path="/sales/*?" component={SalesRoutes} />
             <Route component={NotFound} />
