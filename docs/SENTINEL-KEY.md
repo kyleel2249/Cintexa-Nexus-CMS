@@ -42,11 +42,11 @@ Route: `/sentinel-key` (sidebar: System > Sentinel Key; dashboard card "Sentinel
 - Tabs and routes: `/sentinel-key` (Generate), `/sentinel-key/vault`, `/sentinel-key/history`, `/sentinel-key/aliases`, plus Analyze, Website safety, Overview. Sidebar and dashboard show Secure Vault, Generation History, Alias Manager and Storage Health.
 
 ## Storage and access control
-- Tables (`lib/db/src/sentinel-schema.ts`, applied by the existing idempotent bootstrap): `sk_user_keys`, `sk_aliases`, `sk_vault_entries`, `sk_history`, `sk_audit`. Foreign keys, indexes, `owner_id` on every row. No existing table was changed.
+- Tables (`lib/db/src/sentinel-schema.ts`, applied by the existing idempotent bootstrap; the same statements ship as `supabase/migrations/20261030120000_sentinel_key_store.sql`, kept in sync by a test and verified to apply twice on a fresh PostgreSQL 16): `sk_user_keys`, `sk_aliases`, `sk_vault_entries`, `sk_history`, `sk_audit`. Foreign keys, indexes, `owner_id` on every row. No existing table was changed.
 - Service code: `artifacts/api-server/src/services/sentinel/` (same code runs on the API server and in the browser). Every statement is scoped by `owner_id`; another owner's ids behave like missing ids (404). API keys are refused. Per-owner rate limits (in-memory per process).
 - **Two stores, one contract.** This app has no sign-in, so by default the store runs on-device (PGlite in IndexedDB, one owner per browser profile; same model as the Sales module). Set `VITE_SENTINEL_API_MODE=remote` to use `/api/sentinel/*` on the server instead, where `apiGuard` authentication and per-user scoping apply (Firebase uid or JWT subject).
 - Encryption: PBKDF2-SHA-256 600k -> AES-256-GCM, in the browser. AAD binds each ciphertext to its record id and type. The database/server stores ciphertext, IV, KDF parameters and a verifier only. Argon2id is not available in Web Crypto, so PBKDF2 is used.
-- NOT encrypted (visible to whoever holds the database): alias names/metadata, credential type, generation settings, tags, notes, dates, counts. Not "zero-knowledge" for metadata. No master-password recovery. Changing the shared-store master password is not implemented.
+- NOT encrypted (visible to whoever holds the database): alias names/metadata, credential type, generation settings, tags, notes, dates, counts. Not "zero-knowledge" for metadata. No master-password recovery. The master password CAN be changed (Vault tab): every record is re-encrypted in the browser and swapped with the new key envelope in one atomic server call (`POST /sentinel/key/rotate`); the call is refused, changing nothing, if the set of records changed meanwhile. Older encrypted exports still need the old password.
 - Deleting history never deletes the vault record and vice versa unless "both" is explicitly chosen and confirmed. Deleting an alias is refused while records reference it (archive instead); renaming keeps all links (History also keeps the name at generation time).
 
 ## Verification performed
@@ -58,3 +58,8 @@ Route: `/sentinel-key` (sidebar: System > Sentinel Key; dashboard card "Sentinel
 - axe-core (WCAG 2.0/2.1/2.2 A and AA rule sets) reports 0 violations on all Sentinel Key pages at 1280 and 390 px, with no horizontal overflow. The slider thumbs now carry accessible names (small backward-compatible change to `components/ui/slider.tsx`).
 - Not verified: the real `apiGuard` with Firebase/JWT tokens, remote mode in a deployed environment, manual screen-reader and keyboard testing, third-party security review.
 - `npm audit --omit=dev` reports 19 findings (2 critical: dompurify, proxy-addr) in the repository's EXISTING dependencies; this work added no dependencies and did not change package files. They need their own review.
+
+## Later additions (verified)
+- Master-password change with atomic re-encryption: 3 service/client tests (success, record added mid-rotation, corrupted record/foreign/duplicate ids) plus a browser run (generate, change password, reload, old password rejected, new one unlocks, the same secret decrypts).
+- On-device durability: every write transaction now flushes PGlite to IndexedDB before success is reported. Without it a credential saved right before a reload could be lost; the browser run saves, reloads immediately and finds it.
+- The Sales module's on-device store (separate code) may have the same flush behaviour; it was not changed or tested here.

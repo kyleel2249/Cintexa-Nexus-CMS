@@ -25,6 +25,7 @@ const ROUTES: { method: string; re: RegExp; cls: keyof typeof LIMITS; status?: n
   { method: "GET", re: /^\/summary$/, cls: "read", run: (db, o) => svc.summary(db, o) },
   { method: "GET", re: /^\/key$/, cls: "key", run: (db, o) => svc.getKey(db, o) },
   { method: "PUT", re: /^\/key$/, cls: "key", status: 201, run: (db, o, r) => svc.createKey(db, o, r.body) },
+  { method: "POST", re: /^\/key\/rotate$/, cls: "key", run: (db, o, r) => svc.rotateKey(db, o, r.body) },
   { method: "GET", re: /^\/aliases$/, cls: "read", run: (db, o, r) => svc.listAliases(db, o, q1(r)) },
   { method: "POST", re: /^\/aliases$/, cls: "write", status: 201, run: (db, o, r) => svc.createAlias(db, o, r.body) },
   { method: "PATCH", re: /^\/aliases\/([^/]+)$/, cls: "write", run: (db, o, r, p) => svc.updateAlias(db, o, p[0]!, r.body) },

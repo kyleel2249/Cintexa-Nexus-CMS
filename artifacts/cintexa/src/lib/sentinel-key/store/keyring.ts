@@ -1,6 +1,6 @@
 import { useSyncExternalStore } from "react";
 import { sk, SkClientError } from "./api";
-import { checkVerifier, deriveKey, makeVerifier, newKdf, type KdfParams } from "./crypto";
+import { checkVerifier, deriveKey, makeVerifier, newKdf, reencryptAll, type KdfParams } from "./crypto";
 
 /** In-memory only. The derived key is non-extractable and is never written anywhere; locking or leaving the page drops it. */
 export type KeyPhase = "loading" | "none" | "locked" | "unlocked" | "error";
@@ -53,3 +53,17 @@ export async function unlockKeyring(master: string): Promise<void> {
 }
 
 export function lockKeyring() { key = null; if (state.phase === "unlocked") set({ phase: "locked" }); }
+
+/** Change the master password: re-encrypt every record in the browser, then swap key + ciphertexts atomically on the store. */
+export async function changeKeyringPassword(newMaster: string): Promise<{ reencrypted: number }> {
+  if (!key || !envelope) throw new Error("Unlock the vault first.");
+  if (newMaster.length < 12) throw new Error("Use a master password of at least 12 characters.");
+  const exp = await sk<{ entries: { id: string; type: string; iv: string; ciphertext: string }[] }>("GET", "/vault-export");
+  const kdf = newKdf();
+  const nk = await deriveKey(newMaster, kdf);
+  const entries = await reencryptAll(key, nk, exp.entries);
+  const v = await makeVerifier(nk);
+  await sk("POST", "/key/rotate", { body: { kdf, ...v, entries } }); // 409 vault_changed => nothing was modified
+  key = nk; envelope = { kdf, ...v }; fails = 0; blockedUntil = 0;
+  return { reencrypted: entries.length };
+}

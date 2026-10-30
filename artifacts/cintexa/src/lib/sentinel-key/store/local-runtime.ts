@@ -11,7 +11,7 @@ const DB_NAME = "cintexa-sentinel";
 const LOCAL_OWNER = "local-device-owner";
 
 type PgRunner = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; affectedRows?: number }> };
-interface PgLite extends PgRunner { exec: (sql: string) => Promise<unknown>; transaction: <T>(fn: (tx: PgRunner) => Promise<T>) => Promise<T>; waitReady: Promise<unknown> }
+interface PgLite extends PgRunner { exec: (sql: string) => Promise<unknown>; transaction: <T>(fn: (tx: PgRunner) => Promise<T>) => Promise<T>; waitReady: Promise<unknown>; syncToFs: () => Promise<void> }
 
 const parsers: Record<number, (v: string) => unknown> = {
   1184: (v) => new Date(v).toISOString(),
@@ -34,11 +34,13 @@ function start() {
     ready = (async () => {
       const { PGlite } = (await import("@electric-sql/pglite")) as unknown as { PGlite: new (dir?: string, opts?: Record<string, unknown>) => PgLite };
       let pg: PgLite; let persistent = true;
-      try { pg = new PGlite(`idb://${DB_NAME}`, { parsers }); await pg.waitReady; }
+      try { pg = new PGlite(`idb://${DB_NAME}`, { parsers, relaxedDurability: false }); await pg.waitReady; }
       catch { persistent = false; pg = new PGlite(undefined, { parsers }); await pg.waitReady; } // IndexedDB blocked: this tab only
       await pg.exec(SENTINEL_SCHEMA_STATEMENTS.map((s) => `${s.trim().replace(/;$/, "")};`).join("\n"));
       const base = wrap(pg);
-      return { db: { query: base.query, tx: (fn) => pg.transaction((t) => fn(wrap(t))) } as Db, persistent };
+      // Flush to IndexedDB before reporting success so a "saved" change survives an immediate reload or tab close.
+      const tx: Db["tx"] = async (fn) => { const out = await pg.transaction((t) => fn(wrap(t))); await pg.syncToFs(); return out; };
+      return { db: { query: base.query, tx } as Db, persistent };
     })();
     ready.catch(() => { ready = null; });
   }

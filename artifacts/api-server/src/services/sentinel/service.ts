@@ -24,17 +24,46 @@ export async function getKey(db: Queryable, owner: string) {
   return r ? { exists: true, kdf: r.kdf, verifierIv: r.verifier_iv, verifierCt: r.verifier_ct, version: r.version } : { exists: false };
 }
 
-export async function createKey(db: Db, owner: string, input: unknown) {
-  const b = v.obj(input);
+function parseKeyBody(b: Record<string, unknown>) {
   const kdf = v.obj(b.kdf, "kdf");
   if (kdf.name !== "PBKDF2" || kdf.hash !== "SHA-256" || !Number.isInteger(kdf.iterations) || (kdf.iterations as number) < 200_000 || (kdf.iterations as number) > 5_000_000) throw new SkError(400, "validation_failed", "kdf: unsupported key-derivation settings");
-  const clean = { name: "PBKDF2", hash: "SHA-256", iterations: kdf.iterations, salt: v.b64(kdf.salt, "kdf.salt", 22, 64) };
-  const iv = v.b64(b.verifierIv, "verifierIv", 16, 16);
-  const ct = v.b64(b.verifierCt, "verifierCt", 24, 200);
+  return { kdf: { name: "PBKDF2", hash: "SHA-256", iterations: kdf.iterations, salt: v.b64(kdf.salt, "kdf.salt", 22, 64) }, iv: v.b64(b.verifierIv, "verifierIv", 16, 16), ct: v.b64(b.verifierCt, "verifierCt", 24, 200) };
+}
+
+export async function createKey(db: Db, owner: string, input: unknown) {
+  const { kdf, iv, ct } = parseKeyBody(v.obj(input));
   return db.tx(async (q) => {
-    const ins = await q.query(`INSERT INTO sk_user_keys (owner_id, kdf, verifier_iv, verifier_ct) VALUES ($1,$2::jsonb,$3,$4) ON CONFLICT (owner_id) DO NOTHING RETURNING owner_id`, [owner, JSON.stringify(clean), iv, ct]);
+    const ins = await q.query(`INSERT INTO sk_user_keys (owner_id, kdf, verifier_iv, verifier_ct) VALUES ($1,$2::jsonb,$3,$4) ON CONFLICT (owner_id) DO NOTHING RETURNING owner_id`, [owner, JSON.stringify(kdf), iv, ct]);
     if (!ins.rows.length) throw new SkError(409, "key_exists", "A vault key already exists. Unlock it with your master password.");
     await audit(q, owner, "key.create", "key", null);
+    return getKey(q, owner);
+  });
+}
+
+/**
+ * Master-password change. The client re-encrypts EVERY entry under the new key; this call swaps the key envelope and all
+ * ciphertexts in one transaction. It is refused (nothing changes) unless the submitted set of ids is exactly the owner's
+ * current set, so a record saved from another tab mid-rotation can never be left encrypted under the old key.
+ */
+export async function rotateKey(db: Db, owner: string, input: unknown) {
+  const b = v.obj(input);
+  const { kdf, iv, ct } = parseKeyBody(b);
+  if (!Array.isArray(b.entries) || b.entries.length > 5000) throw new SkError(400, "validation_failed", "entries: must be a list of at most 5000 records");
+  const next = new Map<string, { iv: string; ciphertext: string }>();
+  for (const e of b.entries as unknown[]) {
+    const o = v.obj(e, "entries[]"); const id = v.uuid(o.id, "entries[].id");
+    if (next.has(id)) throw new SkError(400, "validation_failed", "entries: duplicate id");
+    next.set(id, { iv: v.b64(o.iv, "entries[].iv", 16, 16), ciphertext: v.b64(o.ciphertext, "entries[].ciphertext", 24, v.MAX_CIPHERTEXT) });
+  }
+  return db.tx(async (q) => {
+    const k = await q.query(`SELECT 1 FROM sk_user_keys WHERE owner_id=$1 FOR UPDATE`, [owner]);
+    if (!k.rows.length) throw new SkError(404, "key_missing", "No vault key exists");
+    const cur = await q.query(`SELECT id FROM sk_vault_entries WHERE owner_id=$1 FOR UPDATE`, [owner]);
+    const ids = new Set<string>(cur.rows.map((r: any) => r.id));
+    if (ids.size !== next.size || [...ids].some((id) => !next.has(id))) throw new SkError(409, "vault_changed", "Your vault changed while the password was being changed. Nothing was modified; try again.");
+    for (const [id, e] of next) await q.query(`UPDATE sk_vault_entries SET iv=$3, ciphertext=$4, updated_at=now() WHERE id=$1 AND owner_id=$2`, [id, owner, e.iv, e.ciphertext]);
+    await q.query(`UPDATE sk_user_keys SET kdf=$2::jsonb, verifier_iv=$3, verifier_ct=$4, version=version+1, updated_at=now() WHERE owner_id=$1`, [owner, JSON.stringify(kdf), iv, ct]);
+    await audit(q, owner, "key.rotate", "key", null, { entries: next.size });
     return getKey(q, owner);
   });
 }

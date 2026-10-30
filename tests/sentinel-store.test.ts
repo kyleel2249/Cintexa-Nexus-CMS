@@ -3,7 +3,9 @@ import { randomUUID } from "node:crypto";
 import { memoryDb } from "../artifacts/api-server/src/services/sentinel/__tests__/helpers/pg";
 import { handleSentinelRequest, resetRateLimits } from "../artifacts/api-server/src/services/sentinel/router";
 import { runGeneration, retryGeneration, type WorkflowDeps } from "../artifacts/cintexa/src/lib/sentinel-key/store/workflow";
-import { aadFor, deriveKey, newKdf, open, seal } from "../artifacts/cintexa/src/lib/sentinel-key/store/crypto";
+import { readFileSync } from "node:fs";
+import { SENTINEL_SCHEMA_STATEMENTS } from "../lib/db/src/sentinel-schema";
+import { aadFor, deriveKey, newKdf, open, reencryptAll, makeVerifier, checkVerifier, seal } from "../artifacts/cintexa/src/lib/sentinel-key/store/crypto";
 
 const OWNER = { ownerId: "owner-1" };
 const SECRET = "Zq8#mLp2!vTn9xKe-TOP-SECRET";
@@ -101,5 +103,75 @@ describe("alias-linked generation workflow", () => {
     const o = await runGeneration(r.deps, input(r.alias.id)); // committed on the server
     const replay = await retryGeneration(r.deps, { ...o, status: "incomplete", pending: { eventId: o.eventId!, entryId: o.entryId!, type: "token", sealed: (await (async () => { const e = (await r.pg.query("SELECT iv, ciphertext FROM sk_vault_entries")).rows[0] as any; return { iv: e.iv, ciphertext: e.ciphertext }; })()) } });
     expect(replay.status).toBe("saved"); expect(await r.count("sk_vault_entries")).toBe(1);
+  });
+});
+
+describe("master password rotation", () => {
+  const call = async (db: any, method: string, path: string, body?: unknown) => handleSentinelRequest(db, { method, path, body, identity: OWNER });
+  async function withEntries() {
+    const r = await rig();
+    const oldKdf = newKdf(200_000); const oldKey = await deriveKey("old master password!", oldKdf); const v = await makeVerifier(oldKey);
+    expect((await call(r.db, "PUT", "/key", { kdf: oldKdf, ...v })).status).toBe(201);
+    const ids: { eventId: string; entryId: string; secret: string }[] = [];
+    for (const t of ["password", "token"]) {
+      const eventId = randomUUID(), entryId = randomUUID(), secret = `${t}-secret-${randomUUID()}`;
+      await call(r.db, "POST", "/generations", { eventId, aliasId: r.alias.id, type: t });
+      const s = await seal(oldKey, secret, aadFor(entryId, t));
+      expect((await call(r.db, "POST", `/generations/${eventId}/commit`, { entryId, iv: s.iv, ciphertext: s.ciphertext, encVersion: 1 })).status).toBe(200);
+      ids.push({ eventId, entryId, secret });
+    }
+    return { ...r, oldKey, ids };
+  }
+  const exportEntries = async (db: any) => ((await call(db, "GET", "/vault-export")).body as any).entries as { id: string; type: string; iv: string; ciphertext: string }[];
+
+  test("every record is re-encrypted under the new key in one step; the old key stops working", async () => {
+    const r = await withEntries();
+    const newKdf2 = newKdf(200_000); const newKey = await deriveKey("a brand new master pw", newKdf2);
+    const entries = await reencryptAll(r.oldKey, newKey, await exportEntries(r.db));
+    const res = await call(r.db, "POST", "/key/rotate", { kdf: newKdf2, ...(await makeVerifier(newKey)), entries });
+    expect(res.status).toBe(200);
+    const after = await exportEntries(r.db);
+    for (const e of after) {
+      const want = r.ids.find((i) => i.entryId === e.id)!.secret;
+      expect(await open(newKey, e, aadFor(e.id, e.type))).toBe(want);
+      await expect(open(r.oldKey, e, aadFor(e.id, e.type))).rejects.toBeDefined();
+    }
+    const k = (await call(r.db, "GET", "/key")).body as any;
+    expect(await checkVerifier(newKey, k.verifierIv, k.verifierCt)).toBe(true); expect(await checkVerifier(r.oldKey, k.verifierIv, k.verifierCt)).toBe(false); expect(k.version).toBe(2);
+    expect(await r.count("sk_history")).toBe(2);
+  });
+
+  test("a record added mid-rotation makes the rotation fail without changing anything", async () => {
+    const r = await withEntries();
+    const snapshot = await exportEntries(r.db);
+    const newKdf2 = newKdf(200_000); const newKey = await deriveKey("a brand new master pw", newKdf2);
+    const entries = await reencryptAll(r.oldKey, newKey, snapshot);
+    const eventId = randomUUID(), entryId = randomUUID();
+    await call(r.db, "POST", "/generations", { eventId, aliasId: r.alias.id, type: "id" });
+    const s = await seal(r.oldKey, "late", aadFor(entryId, "id")); await call(r.db, "POST", `/generations/${eventId}/commit`, { entryId, iv: s.iv, ciphertext: s.ciphertext, encVersion: 1 });
+    const res = await call(r.db, "POST", "/key/rotate", { kdf: newKdf2, ...(await makeVerifier(newKey)), entries });
+    expect(res.status).toBe(409); expect((res.body as any).code).toBe("vault_changed");
+    for (const e of await exportEntries(r.db)) await open(r.oldKey, e, aadFor(e.id, e.type)); // all still decrypt with the old key
+    expect(((await call(r.db, "GET", "/key")).body as any).version).toBe(1);
+  });
+
+  test("a corrupted record aborts the change before anything is sent; foreign ids and duplicates are rejected", async () => {
+    const r = await withEntries();
+    const newKey = await deriveKey("a brand new master pw", newKdf(200_000));
+    const snap = await exportEntries(r.db); snap[0]!.ciphertext = snap[1]!.ciphertext;
+    await expect(reencryptAll(r.oldKey, newKey, snap)).rejects.toThrow("NOT changed");
+    const k2 = newKdf(200_000); const body = { kdf: k2, ...(await makeVerifier(newKey)) };
+    const good = await reencryptAll(r.oldKey, newKey, await exportEntries(r.db));
+    expect((await call(r.db, "POST", "/key/rotate", { ...body, entries: [...good, good[0]] })).status).toBe(400);
+    expect((await call(r.db, "POST", "/key/rotate", { ...body, entries: [good[0]] })).status).toBe(409);
+    const other = await handleSentinelRequest(r.db, { method: "POST", path: "/key/rotate", body: { ...body, entries: good }, identity: { ownerId: "someone-else" } });
+    expect(other.status).toBe(404);
+  });
+});
+
+describe("SQL migration file", () => {
+  test("supabase migration contains every schema statement (no drift)", () => {
+    const sql = readFileSync(new URL("../supabase/migrations/20261030120000_sentinel_key_store.sql", import.meta.url), "utf8");
+    for (const s of SENTINEL_SCHEMA_STATEMENTS) expect(sql).toContain(s.trim().replace(/;$/, ""));
   });
 });

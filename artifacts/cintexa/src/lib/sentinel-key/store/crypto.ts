@@ -43,3 +43,19 @@ export async function makeVerifier(key: CryptoKey): Promise<{ verifierIv: string
 export async function checkVerifier(key: CryptoKey, verifierIv: string, verifierCt: string): Promise<boolean> {
   try { return (await open(key, { iv: verifierIv, ciphertext: verifierCt }, enc.encode("verifier"))) === VERIFIER_TEXT; } catch { return false; }
 }
+
+export interface StoredCipher { id: string; type: string; iv: string; ciphertext: string }
+
+/** Re-encrypts every record under a new key. Throws (changing nothing) if any record fails authentication. */
+export async function reencryptAll(oldKey: CryptoKey, newKey: CryptoKey, entries: StoredCipher[]): Promise<{ id: string; iv: string; ciphertext: string }[]> {
+  const out: { id: string; iv: string; ciphertext: string }[] = [];
+  for (const e of entries) {
+    const aad = aadFor(e.id, e.type);
+    let plain: string;
+    try { plain = await open(oldKey, { iv: e.iv, ciphertext: e.ciphertext }, aad); }
+    catch { throw new Error("A saved credential could not be decrypted with the current key, so the password was NOT changed."); }
+    const s = await seal(newKey, plain, aad);
+    out.push({ id: e.id, iv: s.iv, ciphertext: s.ciphertext });
+  }
+  return out;
+}

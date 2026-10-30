@@ -8,7 +8,8 @@ import { VaultKeyGate, STORE_WHERE } from "./StorageControls";
 import { Badge2, fmtDate, Pager, Select, settingsText, TYPE_LABEL, TYPES, useDebounced } from "./store-bits";
 import { sk } from "@/lib/sentinel-key/store/api";
 import { aadFor, open } from "@/lib/sentinel-key/store/crypto";
-import { getKey, useKeyring } from "@/lib/sentinel-key/store/keyring";
+import { changeKeyringPassword, getKey, useKeyring } from "@/lib/sentinel-key/store/keyring";
+import { analyzePassword } from "@/lib/sentinel-key/analysis";
 import { invalidateSk, useSk } from "@/lib/sentinel-key/store/queries";
 import { downloadText } from "@/lib/sentinel-key/clipboard";
 import type { AliasRow } from "./AliasPicker";
@@ -82,6 +83,32 @@ function EntryCard({ e, aliases, highlight }: { e: Entry; aliases: AliasRow[]; h
   );
 }
 
+function ChangePassword() {
+  const { phase } = useKeyring();
+  const [a, setA] = useState(""); const [b, setB] = useState(""); const [busy, setBusy] = useState(false); const [note, setNote] = useState<{ ok: boolean; text: string } | null>(null);
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault(); setNote(null);
+    if (a !== b) return setNote({ ok: false, text: "The two passwords do not match." });
+    if (analyzePassword(a).level < 2) return setNote({ ok: false, text: "That master password is too weak. Use a long passphrase." });
+    setBusy(true);
+    try { const r = await changeKeyringPassword(a); setNote({ ok: true, text: `Master password changed. ${r.reencrypted} saved credential${r.reencrypted === 1 ? "" : "s"} re-encrypted. Older encrypted exports still need the OLD password.` }); setA(""); setB(""); invalidateSk(); }
+    catch (x) { setNote({ ok: false, text: msg(x) }); } finally { setBusy(false); }
+  };
+  return (
+    <details className="rounded-xl border bg-card p-4">
+      <summary className="cursor-pointer text-sm font-medium">Change master password</summary>
+      <form onSubmit={submit} className="mt-3 max-w-md space-y-3">
+        {phase !== "unlocked" ? <p className="text-sm text-muted-foreground">Unlock the vault first.</p> : <>
+          <TextField id="cp-new" type="password" label="New master password" value={a} onChange={setA} autoComplete="new-password" />
+          <TextField id="cp-new2" type="password" label="Confirm new master password" value={b} onChange={setB} autoComplete="new-password" />
+          <p className="text-xs text-muted-foreground">Every saved credential is decrypted and re-encrypted in this browser, then replaced in one all-or-nothing step. If anything fails, nothing changes.</p>
+          <Button type="submit" disabled={busy || !a}>{busy ? "Re-encrypting…" : "Change master password"}</Button></>}
+        {note && <p role={note.ok ? "status" : "alert"} className={`text-sm ${note.ok ? "text-emerald-500" : "text-destructive"}`}>{note.text}</p>}
+      </form>
+    </details>
+  );
+}
+
 export function StoreVaultPanel() {
   const search = useSearch(); const params = new URLSearchParams(search);
   const entryParam = params.get("entry"); const aliasParam = params.get("alias");
@@ -110,6 +137,7 @@ export function StoreVaultPanel() {
         : (list.data?.items.length ?? 0) === 0 ? <div className="rounded-xl border border-dashed p-8 text-center text-sm text-muted-foreground">{list.data?.total === 0 && !q && !type && !aliasId && !flag && !entryParam ? "Your vault is empty. Generated credentials appear here automatically." : "No records match these filters."}</div>
         : <ul className="grid gap-3 lg:grid-cols-2">{list.data!.items.map((e) => <EntryCard key={e.id} e={e} aliases={(aliases.data?.items ?? []).filter((a) => !a.archivedAt)} highlight={e.id === entryParam} />)}</ul>}
       {!entryParam && <Pager page={page} pageSize={10} total={list.data?.total ?? 0} onPage={setPage} />}
+      <ChangePassword />
       <Notice title="How this vault protects you">Each credential is encrypted in your browser with AES-256-GCM before it is stored; the database holds ciphertext only. Alias names, types, settings, tags, notes and dates are not encrypted. There is no master-password recovery. This is not a claim that metadata is private.</Notice>
     </div>
   );
