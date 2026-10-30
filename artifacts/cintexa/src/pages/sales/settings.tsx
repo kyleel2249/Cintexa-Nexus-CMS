@@ -8,6 +8,7 @@ import { useList, useListState } from "@/lib/sales/list";
 import { dateTime, titleCase } from "@/lib/sales/format";
 import { PageHeader, Panel, TabBar, FilterBar, Select, Input, Field, Textarea, Checkbox, DataTable, Pagination, StatusBadge, EmptyState, ErrorState, Skeleton, Modal, KpiCard, Tag } from "@/components/sales/ui";
 import { ExportButton } from "@/components/sales/actions";
+import { ResearchAdminPanel } from "@/components/sales/ResearchAdminPanel";
 
 type Tab = "settings" | "integrations" | "audit" | "ai" | "data";
 type Kind = "int" | "number" | "text" | "bool" | "select" | "money" | "tags" | "textarea" | "record";
@@ -263,6 +264,7 @@ function AiStatus() {
         {d.features.length > 0 && <ul className="mt-3 flex flex-wrap gap-2">{d.features.map((f) => <Tag key={f}>{titleCase(f)}</Tag>)}</ul>}
         <p className="mt-3 text-xs text-muted-foreground">AI output is always a suggestion for a person to review. It never changes records, sends messages or sets amounts on its own.</p>
       </Panel>
+      <ResearchAdminPanel />
     </div>
   );
 }

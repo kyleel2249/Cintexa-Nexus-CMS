@@ -57,7 +57,7 @@ Job states: queued -> researching -> extracting -> validating -> awaiting_review
 | Durable jobs, progress, cancel, retry-safe, cache | **Done** (in-process worker over durable rows; no separate queue service) |
 | Pluggable AI provider abstraction for *research* | **Not needed for extraction** (deterministic). Existing OpenRouter layer unchanged |
 | Bulk enrichment of many records, scheduled refresh, import-mapping AI | **Not done** |
-| Admin UI for research settings | **Partial**: limits and providers are environment-driven and visible through `/research/status`; no settings screen yet |
+| Admin view of research | **Done (read-only)**: Settings -> AI tab shows providers, limits and every recent job incl. failures. Changing limits/keys is by server environment variables, deliberately, so keys never reach the browser |
 | Clues/explanations for every term | **Done for all sections, fields, columns, tabs, KPIs, statuses (~67% of all strings; remainder are actions/messages)** |
 
 ## Tests
