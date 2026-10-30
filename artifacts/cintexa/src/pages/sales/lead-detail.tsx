@@ -106,7 +106,7 @@ export default function LeadDetailPage({ id }: { id: string }) {
             </div>
 
             <div className="mt-6"><RecordAssistant type="lead" id={Number(id)} /></div>
-            <FormModal open={dlg === "edit"} onClose={() => setDlg(null)} title="Edit lead" size="lg" fields={LEAD_FIELDS} initial={l} nullEmpty submit={(b) => sales.patch(`/leads/${id}`, b)} success="Lead updated" invalidate={["/leads"]} />
+            <FormModal open={dlg === "edit"} onClose={() => setDlg(null)} title="Edit lead" size="lg" autofill="lead" entityId={Number(id)} fields={LEAD_FIELDS} initial={l} nullEmpty submit={(b) => sales.patch(`/leads/${id}`, b)} success="Lead updated" invalidate={["/leads"]} />
             <FormModal open={dlg === "touch"} onClose={() => setDlg(null)} title="Log contact" fields={TOUCH_FIELDS} initial={{ channel: "call" }} submit={(b) => sales.post(`/leads/${id}/touch`, b)} success="Contact logged" invalidate={inv} />
             <ActivityFormModal open={dlg === "activity"} onClose={() => setDlg(null)} link={{ lead_id: Number(id) }} />
             <Modal open={dlg === "status"} onClose={() => setDlg(null)} title="Change status" size="sm" footer={<><Button variant="outline" onClick={() => setDlg(null)}>Cancel</Button><Button disabled={status.pending} onClick={() => void status.run({ status: nextStatus })}>Update</Button></>}>

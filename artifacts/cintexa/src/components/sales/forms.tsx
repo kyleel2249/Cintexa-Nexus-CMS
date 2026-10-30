@@ -1,5 +1,7 @@
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { Button } from "@/components/ui/button";
+import { Hint } from "./Hint";
+import { AiAutofillPanel, type AutofillKind } from "./AiAutofillPanel";
 import { Modal, Field, Input, Select, Textarea, Checkbox, MoneyInput } from "./ui";
 import { useSalesMutation } from "@/lib/sales/hooks";
 import { fromLocalInput, toLocalInput } from "@/lib/sales/format";
@@ -15,6 +17,8 @@ export interface FieldDef {
   options?: { value: string; label: string }[];
   placeholder?: string;
   hint?: ReactNode;
+  /** plain-language clue shown behind the (i) icon; defaults to the glossary entry for the label */
+  explain?: ReactNode;
   rows?: number;
   /** span both columns of the form grid */
   wide?: boolean;
@@ -72,7 +76,10 @@ function issueFor(err: SalesApiError | null, name: string): string | undefined {
   return hit?.message;
 }
 
-export function FormModal({ open, onClose, title, description, fields, initial, submitLabel = "Save", submit, onDone, success, invalidate, size = "md", nullEmpty, extra, errorExtra }: {
+export function FormModal({ open, onClose, title, description, fields, initial, submitLabel = "Save", submit, onDone, success, invalidate, size = "md", nullEmpty, extra, errorExtra, autofill, entityId }: {
+  /** show the AI Autofill research panel for this kind of record */
+  autofill?: AutofillKind;
+  entityId?: number;
   open: boolean;
   onClose: () => void;
   title: string;
@@ -142,6 +149,7 @@ export function FormModal({ open, onClose, title, description, fields, initial, 
       <form id="sales-form" onSubmit={onSubmit} noValidate>
         {globalError && <p role="alert" className="mb-3 rounded-md border border-rose-500/30 bg-rose-500/10 px-3 py-2 text-sm text-rose-500">{globalError}</p>}
         {m.error && errorExtra?.(m.error, (more) => void retryWith(more))}
+        {autofill && <AiAutofillPanel kind={autofill} fields={fields} values={values} setValue={(n, val) => set(n, val)} entityId={entityId} />}
         <div className="grid grid-cols-1 gap-x-4 sm:grid-cols-2">
           {visible.map((f) => {
             const err = clientErrors[f.name] ?? issueFor(m.error, f.name);
@@ -149,7 +157,7 @@ export function FormModal({ open, onClose, title, description, fields, initial, 
             const common = { disabled: f.disabled, placeholder: f.placeholder };
             let control: ReactNode;
             if (f.type === "checkbox") {
-              return <div key={f.name} className="sm:col-span-2"><Checkbox label={f.label} checked={v === true} onChange={(e) => set(f.name, e.target.checked)} disabled={f.disabled} />{err && <p role="alert" className="-mt-2 mb-2 text-[11px] text-rose-500">{err}</p>}</div>;
+              return <div key={f.name} className="sm:col-span-2"><Checkbox label={<>{f.label}<Hint term={f.label} text={f.explain} /></>} checked={v === true} onChange={(e) => set(f.name, e.target.checked)} disabled={f.disabled} />{err && <p role="alert" className="-mt-2 mb-2 text-[11px] text-rose-500">{err}</p>}</div>;
             } else if (f.type === "textarea") control = <Textarea {...common} rows={f.rows ?? 3} value={String(v)} onChange={(e) => set(f.name, e.target.value)} />;
             else if (f.type === "select") control = <Select disabled={f.disabled} value={String(v)} onChange={(e) => set(f.name, e.target.value)}>{!f.required && <option value="">—</option>}{f.options?.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}</Select>;
             else if (f.type === "money") control = <MoneyInput {...common} value={String(v)} onChange={(x) => set(f.name, x)} />;
@@ -157,7 +165,7 @@ export function FormModal({ open, onClose, title, description, fields, initial, 
             else if (f.type === "datetime") control = <Input {...common} type="datetime-local" value={String(v)} onChange={(e) => set(f.name, e.target.value)} invalid={!!err} />;
             else if (f.type === "number") control = <Input {...common} type="number" min={f.min} max={f.max} step={f.step ?? "any"} value={String(v)} onChange={(e) => set(f.name, e.target.value)} invalid={!!err} />;
             else control = <Input {...common} type={f.type === "tags" || !f.type ? "text" : f.type} value={String(v)} onChange={(e) => set(f.name, e.target.value)} invalid={!!err} autoComplete="off" />;
-            return <Field key={f.name} label={f.label} error={err} hint={f.hint ?? (f.type === "tags" ? "Separate with commas" : undefined)} required={f.required} className={f.wide || f.type === "textarea" ? "sm:col-span-2" : undefined}>{control}</Field>;
+            return <Field key={f.name} label={f.label} explain={f.explain} error={err} hint={f.hint ?? (f.type === "tags" ? "Separate with commas" : undefined)} required={f.required} className={f.wide || f.type === "textarea" ? "sm:col-span-2" : undefined}>{control}</Field>;
           })}
         </div>
         {extra}

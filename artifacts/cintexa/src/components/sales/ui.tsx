@@ -7,6 +7,7 @@ import { TONE_CLASS, toneOf, labelOf, type Tone } from "@/lib/sales/labels";
 import type { QueryState } from "@/lib/sales/hooks";
 import type { SalesApiError } from "@/lib/sales/api";
 import { useDebounced } from "@/lib/sales/hooks";
+import { Term, Hint } from "./Hint";
 
 // ───────── layout ─────────
 export function PageHeader({ title, description, actions, back }: { title: string; description?: ReactNode; actions?: ReactNode; back?: { href: string; label: string } }) {
@@ -20,7 +21,7 @@ export function PageHeader({ title, description, actions, back }: { title: strin
             </span>
           </Link>
         )}
-        <h2 className="truncate text-2xl font-semibold tracking-tight">{title}</h2>
+        <h2 className="truncate text-2xl font-semibold tracking-tight"><Term icon>{title}</Term></h2>
         {description && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>}
       </div>
       {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
@@ -34,7 +35,7 @@ export function Panel({ title, description, actions, children, className, flush 
       {(title || actions) && (
         <header className="flex items-start justify-between gap-3 border-b px-4 py-3">
           <div className="min-w-0">
-            {title && <h3 className="text-sm font-semibold">{title}</h3>}
+            {title && <h3 className="text-sm font-semibold">{typeof title === "string" ? <Term icon>{title}</Term> : title}</h3>}
             {description && <p className="mt-0.5 text-xs text-muted-foreground">{description}</p>}
           </div>
           {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
@@ -46,7 +47,7 @@ export function Panel({ title, description, actions, children, className, flush 
 }
 
 export function StatusBadge({ status, label, tone }: { status: string | null | undefined; label?: string; tone?: Tone }) {
-  return <span className={cn("inline-flex items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium", TONE_CLASS[tone ?? toneOf(status)])}>{label ?? labelOf(status)}</span>;
+  return <span className={cn("inline-flex items-center whitespace-nowrap rounded-md border px-2 py-0.5 text-xs font-medium", TONE_CLASS[tone ?? toneOf(status)])}><Term term={status ?? undefined}>{label ?? labelOf(status)}</Term></span>;
 }
 
 export function Tag({ children }: { children: ReactNode }) {
@@ -56,7 +57,7 @@ export function Tag({ children }: { children: ReactNode }) {
 export function KpiCard({ label, value, hint, href, tone, unavailable, loading }: { label: string; value: ReactNode; hint?: ReactNode; href?: string; tone?: Tone; unavailable?: string; loading?: boolean }) {
   const body = (
     <div className={cn("h-full rounded-xl border bg-card p-4 transition-colors", href && "cursor-pointer hover:border-primary/50")}>
-      <p className="text-xs font-medium text-muted-foreground">{label}</p>
+      <p className="text-xs font-medium text-muted-foreground"><Term icon>{label}</Term></p>
       {loading ? (
         <div className="mt-2 h-7 w-24 animate-pulse rounded bg-secondary" />
       ) : unavailable ? (
@@ -135,7 +136,7 @@ export function TabBar<K extends string>({ tabs, value, onChange }: { tabs: { ke
           onClick={() => onChange(t.key)}
           className={cn("whitespace-nowrap border-b-2 px-3 py-2 text-sm transition-colors", value === t.key ? "border-primary font-medium text-foreground" : "border-transparent text-muted-foreground hover:text-foreground")}
         >
-          {t.label}
+          <Term>{t.label}</Term>
           {t.count !== undefined && <span className="ml-1.5 rounded-full bg-secondary px-1.5 text-[11px]">{t.count}</span>}
         </button>
       ))}
@@ -263,10 +264,10 @@ export function ConfirmModal({ open, onClose, onConfirm, title, message, confirm
 // ───────── form controls (native, accessible) ─────────
 const controlCls = "w-full rounded-md border bg-background px-3 py-2 text-sm outline-none transition-colors placeholder:text-muted-foreground focus:border-primary focus:ring-1 focus:ring-primary disabled:opacity-60";
 
-export function Field({ label, error, hint, required, children, className }: { label?: string; error?: string; hint?: ReactNode; required?: boolean; children: ReactNode; className?: string }) {
+export function Field({ label, error, hint, required, children, className, explain }: { label?: string; error?: string; hint?: ReactNode; required?: boolean; children: ReactNode; className?: string; explain?: ReactNode }) {
   return (
     <label className={cn("mb-3 block", className)}>
-      {label && <span className="mb-1 block text-xs font-medium text-muted-foreground">{label}{required && <span className="text-rose-500"> *</span>}</span>}
+      {label && <span className="mb-1 block text-xs font-medium text-muted-foreground">{label}{required && <span className="text-rose-500"> *</span>}<Hint term={label} text={explain} /></span>}
       {children}
       {hint && !error && <span className="mt-1 block text-[11px] text-muted-foreground">{hint}</span>}
       {error && <span role="alert" className="mt-1 block text-[11px] text-rose-500">{error}</span>}
@@ -367,11 +368,11 @@ export function DataTable<R>({ columns, rows, rowKey, onRowClick, sort, onSort, 
               <th key={c.key} scope="col" aria-sort={c.sort && activeKey === c.sort ? (desc ? "descending" : "ascending") : undefined} className={cn("whitespace-nowrap px-4 py-2 font-medium", c.align === "right" && "text-right", c.hideOnMobile && "hidden md:table-cell")}>
                 {c.sort && onSort ? (
                   <button className="inline-flex items-center gap-1 hover:text-foreground" onClick={() => onSort(activeKey === c.sort && !desc ? `-${c.sort}` : c.sort!)}>
-                    {c.header}
+                    <Term>{c.header}</Term>
                     {activeKey === c.sort && <span aria-hidden="true">{desc ? "↓" : "↑"}</span>}
                   </button>
                 ) : (
-                  c.header
+                  <Term>{c.header}</Term>
                 )}
               </th>
             ))}

@@ -97,7 +97,7 @@ export default function LeadsPage() {
       </Panel>
 
       <FormModal
-        open={creating} onClose={() => setCreating(false)} title="New lead" size="lg" fields={LEAD_FIELDS} initial={{ source: "manual", priority: "medium" }} submitLabel="Create lead" success="Lead created" invalidate={["/leads", "/dashboard"]}
+        open={creating} onClose={() => setCreating(false)} title="New lead" size="lg" autofill="lead" fields={LEAD_FIELDS} initial={{ source: "manual", priority: "medium" }} submitLabel="Create lead" success="Lead created" invalidate={["/leads", "/dashboard"]}
         submit={(b) => sales.post("/leads", b, { idempotent: true })} onDone={(r) => nav(`/sales/leads/${(r as { id: number }).id}`)}
         errorExtra={(err, retry) => err.code === "possible_duplicate" ? (
           <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm">

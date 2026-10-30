@@ -30,7 +30,7 @@ const FIELDS: FieldDef[] = [
 export function ContactFormModal({ open, onClose, contact, accountId, accountName }: { open: boolean; onClose: () => void; contact?: ContactRow; accountId?: number; accountName?: string }) {
   const [acc, setAcc] = useState<{ id: string; name: string }>({ id: contact?.account_id ? String(contact.account_id) : accountId ? String(accountId) : "", name: contact?.account_name ?? accountName ?? "" });
   return (
-    <FormModal open={open} onClose={onClose} title={contact ? "Edit contact" : "New contact"} fields={FIELDS} initial={contact ?? { role: "contact" }} nullEmpty={!!contact} size="lg"
+    <FormModal open={open} onClose={onClose} title={contact ? "Edit contact" : "New contact"} fields={FIELDS} initial={contact ?? { role: "contact" }} nullEmpty={!!contact} size="lg" autofill="contact"
       success={contact ? "Contact updated" : "Contact created"} invalidate={["/contacts", "/accounts"]}
       extra={accountId ? null : <Field label="Account"><AccountPicker value={acc.id} initialName={acc.name} onChange={(id, name) => setAcc({ id, name })} /></Field>}
       submit={(b) => contact ? sales.patch(`/contacts/${contact.id}`, { ...b, account_id: acc.id ? Number(acc.id) : null }) : sales.post("/contacts", { ...b, ...(acc.id ? { account_id: Number(acc.id) } : {}) }, { idempotent: true })} />

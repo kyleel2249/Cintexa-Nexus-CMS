@@ -114,7 +114,7 @@ export default function AccountDetailPage({ id }: { id: string }) {
             {can("accounts:delete") && <div className="mt-8"><Button variant="ghost" size="sm" className="text-rose-500" onClick={() => setDlg("delete")}>Archive account…</Button></div>}
 
             <div className="mt-6"><RecordAssistant type="account" id={Number(id)} /></div>
-            <FormModal open={dlg === "edit"} onClose={() => setDlg(null)} title="Edit account" size="lg" fields={ACCOUNT_FIELDS} initial={a} nullEmpty submit={(b) => sales.patch(`/accounts/${id}`, b)} success="Account updated" invalidate={inv} />
+            <FormModal open={dlg === "edit"} onClose={() => setDlg(null)} title="Edit account" size="lg" autofill="account" entityId={Number(id)} fields={ACCOUNT_FIELDS} initial={a} nullEmpty submit={(b) => sales.patch(`/accounts/${id}`, b)} success="Account updated" invalidate={inv} />
             {dlg === "contact" && <ContactFormModal open onClose={() => setDlg(null)} accountId={Number(id)} accountName={a.name} />}
             <ActivityFormModal open={dlg === "activity"} onClose={() => setDlg(null)} link={{ account_id: Number(id) }} />
             {dlg === "opportunity" && <OpportunityFormModal open onClose={() => setDlg(null)} accountId={Number(id)} accountName={a.name} />}

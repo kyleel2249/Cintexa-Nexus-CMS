@@ -7,6 +7,7 @@
  * rules with partial unique indexes. Records are archived (archived_at) rather than deleted.
  */
 import { SALES_AGENT_SCHEMA_STATEMENTS } from "./sales-agents-schema";
+import { SALES_RESEARCH_SCHEMA_STATEMENTS } from "./sales-research-schema";
 
 const T = (name: string, body: string) => `CREATE TABLE IF NOT EXISTS ${name} (\n${body}\n)`;
 const IX = (sql: string) => `CREATE INDEX IF NOT EXISTS ${sql}`;
@@ -1006,4 +1007,5 @@ BEGIN NEW.search_text := to_tsvector('simple', coalesce(NEW.title,'') || ' ' || 
 EXCEPTION WHEN duplicate_object THEN NULL; END $$`,
   // ───────────────────────── AI agent network ─────────────────────────
   ...SALES_AGENT_SCHEMA_STATEMENTS,
+  ...SALES_RESEARCH_SCHEMA_STATEMENTS,
 ];

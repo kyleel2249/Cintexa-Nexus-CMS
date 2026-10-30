@@ -1,5 +1,7 @@
 import { pool, createSalesDb } from "@workspace/db";
 import { buildRouter } from "./modules";
+// Server-only: web research uses Node networking (DNS/TCP, SSRF guard) and must never be bundled into the on-device (browser) Sales runtime.
+import { researchRoutes } from "./research/routes";
 import { dispatch, type Deps } from "./core/router";
 import { handleEvents } from "./modules/automation";
 import { runSalesJobs } from "./jobs";
@@ -27,6 +29,7 @@ export const integrations: Integrations = {
 };
 
 const router = buildRouter();
+router.add(...researchRoutes);
 const db = createSalesDb(pool);
 const deps: Deps = {
   now: () => new Date(),

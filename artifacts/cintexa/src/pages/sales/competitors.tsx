@@ -37,7 +37,7 @@ export default function CompetitorsPage() {
               { key: "i", header: "Intel items", align: "right", render: (c: Competitor) => num(c.intel_count) }, { key: "o", header: "Seen in deals", align: "right", hideOnMobile: true, render: (c: Competitor) => num(c.opportunities) }]} />
         )}
       </Panel>
-      <FormModal open={creating} onClose={() => setCreating(false)} title="New competitor" size="lg" success="Competitor added" invalidate={["/competitors"]} fields={FIELDS} submit={(b) => sales.post("/competitors", b, { idempotent: true })} />
+      <FormModal open={creating} onClose={() => setCreating(false)} title="New competitor" size="lg" autofill="competitor" success="Competitor added" invalidate={["/competitors"]} fields={FIELDS} submit={(b) => sales.post("/competitors", b, { idempotent: true })} />
       {openId && <CompetitorDrawer id={Number(openId)} onClose={() => setParams({ id: null }, { push: true })} />}
     </>
   );
@@ -82,7 +82,7 @@ function CompetitorDrawer({ id, onClose }: { id: number; onClose: () => void }) 
           </Panel>
         </div>
       )}
-      {editing && c && <FormModal open size="lg" onClose={() => setEditing(false)} title="Edit competitor" initial={c} nullEmpty success="Saved" invalidate={["/competitors"]} fields={FIELDS} submit={(b) => sales.patch(`/competitors/${id}`, b)} />}
+      {editing && c && <FormModal open size="lg" onClose={() => setEditing(false)} title="Edit competitor" autofill="competitor" initial={c} nullEmpty success="Saved" invalidate={["/competitors"]} fields={FIELDS} submit={(b) => sales.patch(`/competitors/${id}`, b)} />}
       <FormModal open={adding} onClose={() => setAdding(false)} size="lg" title="Add intelligence" description="Record where it came from. It stays unverified until a different person confirms it." success="Intel recorded (unverified)" invalidate={["/competitors"]} initial={{ kind: "pricing", confidence: "low" }}
         fields={[{ name: "kind", label: "Kind", type: "select", options: KINDS, required: true }, { name: "confidence", label: "Confidence", type: "select", options: CONF, required: true }, { name: "title", label: "Title", required: true, wide: true }, { name: "content", label: "Details", type: "textarea", required: true, wide: true }, { name: "source", label: "Source", required: true, hint: "e.g. Customer call, public pricing page" }, { name: "source_url", label: "Source URL", type: "url" }, { name: "observed_on", label: "Observed on", type: "date", required: true }]}
         submit={(b) => sales.post(`/competitors/${id}/intel`, b, { idempotent: true })} />

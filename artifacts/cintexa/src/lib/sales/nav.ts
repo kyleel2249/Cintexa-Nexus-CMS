@@ -37,6 +37,8 @@ export const SALES_NAV: SalesNavItem[] = [
 /** The AI agent network lives inside Sales Overview but gets its own pinned sidebar entry so it is always discoverable. It is not one of the 22 sections. */
 export const SALES_AI_NAV: SalesNavItem = { key: "command-centre", label: "Sales AI Command Centre", href: "/sales/command-centre", perm: "agents:read", icon: "Bot" };
 
+export const SALES_GLOSSARY_NAV = { key: "glossary", label: "Glossary & Help", href: "/sales/glossary" } as const;
+
 export function showAiNav(perms: ReadonlySet<string>): boolean {
   return perms.has(SALES_AI_NAV.perm);
 }
@@ -47,6 +49,7 @@ export function navFor(perms: ReadonlySet<string>): SalesNavItem[] {
 
 /** Longest-prefix match so /sales/leads/12 highlights "Leads" and /sales highlights only the overview. */
 export function activeNavKey(pathname: string): string | null {
+  if (pathname.startsWith("/sales/glossary")) return "glossary";
   if (pathname.startsWith("/sales/command-centre") || pathname.startsWith("/sales/approvals")) return SALES_AI_NAV.key;
   let best: SalesNavItem | null = null;
   for (const i of SALES_NAV) {

@@ -74,7 +74,7 @@ export default function AccountsPage() {
             <Pagination page={q.data.page} pageSize={q.data.pageSize} total={q.data.total} onPage={st.setPage} /></>
         )}
       </Panel>
-      <FormModal open={creating} onClose={() => setCreating(false)} title="New account" size="lg" fields={ACCOUNT_FIELDS} initial={{ kind: "company", status: "prospect", currency: me?.business.currency ?? "USD", payment_terms_days: 30 }}
+      <FormModal open={creating} onClose={() => setCreating(false)} title="New account" size="lg" autofill="account" fields={ACCOUNT_FIELDS} initial={{ kind: "company", status: "prospect", currency: me?.business.currency ?? "USD", payment_terms_days: 30 }}
         submitLabel="Create account" success="Account created" invalidate={["/accounts", "/dashboard"]} submit={(b) => sales.post("/accounts", b, { idempotent: true })} onDone={(r) => nav(`/sales/accounts/${(r as { id: number }).id}`)}
         errorExtra={(err, retry) => err.code === "possible_duplicate" || err.code === "possible_duplicate_account" ? (
           <div className="mb-3 rounded-md border border-amber-500/30 bg-amber-500/10 p-3 text-sm">
