@@ -25,6 +25,7 @@ Added on top of the existing 24-agent network. Nothing was replaced.
 | REST routes (`/api/sales/research/*`, all need `ai:use`) | `research/routes.ts`, registered in `services/sales/index.ts` (server only) |
 | UI | `components/sales/AiAutofillPanel.tsx`, `lib/sales/research-api.ts`, `Hint.tsx`, `pages/sales/glossary.tsx` |
 
+Bulk routes: `POST /research/bulk`, `GET /research/jobs/:id/plan`, `POST /research/jobs/:id/apply`. A finished result for the same website is reused as a *copy owned by the requester* (age preserved), never handed to someone else.
 Routes: `GET /research/status`, `POST /research/company`, `GET /research/jobs`, `GET /research/jobs/:id`, `POST /research/jobs/:id/cancel`, `POST /research/jobs/:id/decisions`.
 Job states: queued -> researching -> extracting -> validating -> awaiting_review -> completed (or partial / failed / cancelled). A job interrupted by a restart is marked failed ("interrupted") on next read; nothing is silently lost.
 
@@ -56,7 +57,8 @@ Job states: queued -> researching -> extracting -> validating -> awaiting_review
 | CINTEXA service-fit hypotheses from observed findings | **Done** (SEO, AEO, website development) |
 | Durable jobs, progress, cancel, retry-safe, cache | **Done** (in-process worker over durable rows; no separate queue service) |
 | Pluggable AI provider abstraction for *research* | **Not needed for extraction** (deterministic). Existing OpenRouter layer unchanged |
-| Bulk enrichment of many records, scheduled refresh, import-mapping AI | **Not done** |
+| Bulk enrichment of many records | **Done for Leads and Accounts** (Sales -> Bulk Enrichment): up to 25 per run, queued, review per record, apply fills EMPTY fields only (confidence >= 55%, validated, no conflicts, never names), audited, repeat-safe, scope-checked |
+| Scheduled refresh, import-mapping AI, bulk enrichment of contacts/competitors | **Not done** |
 | Admin view of research | **Done (read-only)**: Settings -> AI tab shows providers, limits and every recent job incl. failures. Changing limits/keys is by server environment variables, deliberately, so keys never reach the browser |
 | Clues/explanations for every term | **Done for all sections, fields, columns, tabs, KPIs, statuses (~67% of all strings; remainder are actions/messages)** |
 

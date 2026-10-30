@@ -3,14 +3,14 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Sparkles,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
 import { CintexaLogo } from "@/components/SplashScreen";
 import { useSalesOptional } from "@/context/SalesContext";
-import { SALES_NAV, SALES_AI_NAV, SALES_GLOSSARY_NAV, showAiNav } from "@/lib/sales/nav";
+import { SALES_NAV, SALES_AI_NAV, SALES_GLOSSARY_NAV, SALES_ENRICH_NAV, showAiNav } from "@/lib/sales/nav";
 import { lookupTerm } from "@/lib/sales/glossary";
 import { useSalesQuery } from "@/lib/sales/hooks";
 import { activeNavKey } from "@/lib/sales/nav";
@@ -88,6 +88,7 @@ function SalesGroup({ location, onNavigate }: { location: string; onNavigate?: (
           {items.map((i) => <NavLink key={i.key} clue={lookupTerm(i.label)?.short} href={i.href} label={i.label} Icon={NAV_ICONS[i.icon]} active={activeKey === i.key} onNavigate={onNavigate} />)}
           {showAi && (
             <div className="mt-2 border-t border-border/50 pt-2">
+              <NavLink href={SALES_ENRICH_NAV.href} label={SALES_ENRICH_NAV.label} Icon={Sparkles} active={activeKey === SALES_ENRICH_NAV.key} onNavigate={onNavigate} clue="Research many leads or accounts at once and fill their empty fields" />
               <NavLink href={SALES_GLOSSARY_NAV.href} label={SALES_GLOSSARY_NAV.label} Icon={BookOpen} active={activeKey === SALES_GLOSSARY_NAV.key} onNavigate={onNavigate} clue="What every term and label in Sales Management means" />
               <NavLink clue={lookupTerm(SALES_AI_NAV.label)?.short} href={SALES_AI_NAV.href} label={SALES_AI_NAV.label} Icon={AiIcon} active={activeKey === SALES_AI_NAV.key} onNavigate={onNavigate}
                 extra={pending.data && pending.data.total > 0 ? <span className="ml-auto rounded-full bg-amber-500/20 px-1.5 text-[10px] font-semibold text-amber-500" title="Approvals waiting for a decision">{pending.data.total}</span> : <span className="ml-auto rounded bg-violet-500/15 px-1 text-[9px] font-semibold uppercase text-violet-500">AI</span>} />

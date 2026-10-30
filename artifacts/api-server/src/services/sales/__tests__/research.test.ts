@@ -129,7 +129,9 @@ test("job lifecycle: enqueue is idempotent, runs to awaiting_review, evidence pe
   assert.ok(ev.length > 8 && ev.every((e: any) => e.source_url && e.verification));
   assert.equal(ev.filter((e: any) => e.field === "company_name").length, 1, "second run did not duplicate evidence");
   const c = await enqueue(d, { input: { website: "acme-corp.test" }, memberId: 2, label: "u", now: new Date() });
-  assert.ok(c.cached && c.id === a.id, "fresh result is reused");
+  assert.ok(c.cached && c.id !== a.id, "fresh result is reused as a copy owned by the requester");
+  assert.equal((await d.query<any>("SELECT created_by_member m FROM sales_research_jobs WHERE id = $1", [c.id])).rows[0].m, 2);
+  assert.equal((await d.query<any>("SELECT count(*)::int n FROM sales_research_evidence WHERE job_id = $1", [c.id])).rows[0].n, (await d.query<any>("SELECT count(*)::int n FROM sales_research_evidence WHERE job_id = $1", [a.id])).rows[0].n);
   const f = await enqueue(d, { input: { website: "acme-corp.test" }, memberId: 2, label: "u", now: new Date(), force: true });
   assert.ok(f.created && f.id !== a.id, "refresh creates a new job");
   await d.query("UPDATE sales_research_jobs SET status = 'researching', started_at = now() - interval '30 minutes' WHERE id = $1", [f.id]);
@@ -194,4 +196,66 @@ test("routes: hourly research limit is enforced and status never reveals keys", 
     process.env.SALES_RESEARCH_ENABLED = "false";
     await assert.rejects(() => route("POST", "/research/company").handler(ctx(d, actor(78), { body: { website: "acme-corp.test" } })), (e: any) => e.status === 503);
   } finally { delete process.env.SALES_RESEARCH_MAX_PER_HOUR; delete process.env.BRAVE_SEARCH_API_KEY; delete process.env.SALES_RESEARCH_ENABLED; }
+});
+
+// ───────── bulk enrichment: fill plan, safe apply, scope
+import { DEFAULT_SETTINGS } from "../core/settings";
+import { buildPlan } from "../research/apply";
+
+test("fill plan: only empty, confident, validated, non-hypothesis values", () => {
+  const ev = [
+    { field: "email", value: "info@acme-corp.test", kind: "fact", confidence: 0.9, verification: "verified", source_url: "u" },
+    { field: "phone", value: "123", kind: "fact", confidence: 0.9, verification: "verified", source_url: "u" },
+    { field: "industry", value: "Software & IT services", kind: "estimate", confidence: 0.35, verification: "unverified", source_url: "u" },
+    { field: "city", value: "Accra", kind: "fact", confidence: 0.85, verification: "verified", source_url: "u" },
+    { field: "country", value: "Ghana", kind: "fact", confidence: 0.85, verification: "conflicting", source_url: "u" },
+    { field: "description", value: "Hypothetical", kind: "hypothesis", confidence: 0.9, verification: "unverified", source_url: "u" },
+  ];
+  const plan = buildPlan("account", { email: "", phone: null, industry: null, city: "Kumasi", country: null, notes: null }, ev);
+  assert.deepEqual(plan.fills.map((f) => f.field), ["email"]);
+  const why = Object.fromEntries(plan.skipped.map((s) => [s.field, s.reason]));
+  assert.match(why.phone!, /valid phone/); assert.match(why.industry!, /below 55%/); assert.match(why.city!, /already/); assert.match(why.country!, /conflict/); assert.match(why.description!, /hypothesis/);
+});
+
+test("bulk apply fills only empty columns, never names, respects scope, audits and is repeatable", async (t) => {
+  if (skip) return t.skip(skip);
+  const d = db!;
+  const mk = async (name: string, owner: number, extra = "") => (await d.query<any>(`INSERT INTO sales_accounts (number, name, website, owner_id${extra ? ", email" : ""}) VALUES ($1,$2,'https://acme-corp.test',$3${extra ? ",$4" : ""}) RETURNING id`, extra ? [`ACC-${name}`, name, owner, extra] : [`ACC-${name}`, name, owner])).rows[0].id as number;
+  await d.query("INSERT INTO sales_members (id, user_sub, email, display_name, role) VALUES (21,'u21','u21@x.test','U21','sales_rep'),(22,'u22','u22@x.test','U22','sales_rep') ON CONFLICT DO NOTHING");
+  const mine = await mk("Mine", 21), keep = await mk("HasEmail", 21, "existing@own.test"), theirs = await mk("Theirs", 22);
+  const ctxFor = (a: any, extra: any = {}) => ctx(d, a, { settings: DEFAULT_SETTINGS, ...extra });
+  const a21 = actor(21);
+  const bulk: any = await route("POST", "/research/bulk").handler(ctxFor(a21, { body: { entity_type: "account", ids: [mine, keep, theirs, 9999] } }));
+  const byId = Object.fromEntries(bulk.body ? bulk.body.items.map((i: any) => [i.entityId, i]) : bulk.items.map((i: any) => [i.entityId, i]));
+  assert.equal(byId[mine].state, "queued"); assert.equal(byId[theirs].state, "skipped"); assert.match(byId[theirs].reason, /not found or not yours/); assert.equal(byId[9999].state, "skipped");
+  // the queued jobs were started in the background with the real network; run them here deterministically instead
+  await d.query("UPDATE sales_research_jobs SET status = 'queued', started_at = NULL WHERE id = ANY($1::int[]) AND status IN ('failed','researching')", [[byId[mine].jobId, byId[keep].jobId]]);
+  for (const k of [mine, keep]) await runJob(d, byId[k].jobId, { fetchFn: fakeFetch as any, resolve, providers: [] });
+  const plan: any = await route("GET", "/research/jobs/:id/plan").handler(ctxFor(a21, { params: { id: String(byId[mine].jobId) } }));
+  assert.ok(plan.plan.fills.some((f: any) => f.field === "email" && f.value === "info@acme-corp.test"));
+  await assert.rejects(() => route("GET", "/research/jobs/:id/plan").handler(ctxFor(actor(22), { params: { id: String(byId[mine].jobId) } })), /not found/i);
+  const apply = route("POST", "/research/jobs/:id/apply");
+  const r1: any = await apply.handler(ctxFor(a21, { params: { id: String(byId[mine].jobId) }, body: {} }));
+  assert.ok(r1.applied.length >= 3);
+  const row = (await d.query<any>("SELECT name, email, phone, city, country FROM sales_accounts WHERE id = $1", [mine])).rows[0];
+  assert.equal(row.name, "Mine"); assert.equal(row.email, "info@acme-corp.test"); assert.equal(row.city, "Accra"); assert.equal(row.country, "Ghana");
+  const r2: any = await apply.handler(ctxFor(a21, { params: { id: String(byId[mine].jobId) }, body: {} }));
+  assert.equal(r2.applied.length, 0, "second apply changes nothing");
+  await apply.handler(ctxFor(a21, { params: { id: String(byId[keep].jobId) }, body: { fields: ["email", "city"] } }));
+  const kept = (await d.query<any>("SELECT email, city FROM sales_accounts WHERE id = $1", [keep])).rows[0];
+  assert.equal(kept.email, "existing@own.test", "an existing email is never replaced"); assert.equal(kept.city, "Accra");
+  await assert.rejects(() => apply.handler(ctxFor(actor(22), { params: { id: String(byId[mine].jobId) }, body: {} })), /not found/i);
+  const aud = (await d.query<any>("SELECT count(*)::int n FROM sales_audit_events WHERE action = 'research.apply' AND entity_id = $1", [String(mine)])).rows[0].n;
+  assert.equal(aud, 1);
+});
+
+test("bulk: records without a name or website are skipped with a reason; empty selection is rejected", async (t) => {
+  if (skip) return t.skip(skip);
+  const d = db!;
+  await d.query("INSERT INTO sales_members (id, user_sub, email, display_name, role) VALUES (31,'u31','u31@x.test','U31','sales_rep') ON CONFLICT DO NOTHING");
+  const lead = (await d.query<any>("INSERT INTO sales_leads (number, first_name, email, owner_id) VALUES ('LD-X1','Ama','ama@x.test',31) RETURNING id")).rows[0].id;
+  const r: any = await route("POST", "/research/bulk").handler(ctx(d, actor(31), { settings: DEFAULT_SETTINGS, body: { entity_type: "lead", ids: [lead] } }));
+  const items = r.body?.items ?? r.items;
+  assert.equal(items[0].state, "skipped"); assert.match(items[0].reason, /no company name or website/);
+  await assert.rejects(() => route("POST", "/research/bulk").handler(ctx(d, actor(31), { settings: DEFAULT_SETTINGS, body: { entity_type: "lead", ids: [] } })), /at least one/);
 });

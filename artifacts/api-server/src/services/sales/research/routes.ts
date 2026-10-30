@@ -6,6 +6,9 @@ import { can } from "../core/rbac";
 import { enqueue, startInBackground, recoverStale, LIMITS } from "./jobs";
 import { configuredProviders } from "./search";
 import { normaliseWebsite } from "./engine";
+import { buildPlan, applyPlan, type EntityKind } from "./apply";
+import { loadLead, rescore } from "../modules/leads";
+import { visibleAccount } from "../modules/accounts";
 
 const ENTITIES = ["lead", "account", "contact", "opportunity"] as const;
 const WRITE_PERM: Record<(typeof ENTITIES)[number], string> = { lead: "leads:write", account: "accounts:write", contact: "contacts:write", opportunity: "opportunities:write" };
@@ -103,6 +106,74 @@ export const researchRoutes: Route[] = [
       if (applied && j.status === "awaiting_review") await q.query("UPDATE sales_research_jobs SET status = 'completed', stage_detail = 'Reviewed' WHERE id = $1", [id]);
       await audit(q, actor, { action: "research.decision", entityType: j.entity_type ?? "research", entityId: j.entity_id ?? id, summary: `${applied} researched value(s) applied, ${b.decisions.length - applied} not applied`, after: { jobId: id, decisions: b.decisions.map((d) => ({ field: d.field, action: d.action })) } });
       return { ok: true, applied };
+    },
+  },
+  {
+    // Bulk enrichment: one job per selected record (max 25). Jobs queue in the database and run a few at a time.
+    method: "POST", path: "/research/bulk", permission: "ai:use", tx: false,
+    async handler({ q, db, actor, body, now }) {
+      const L = LIMITS();
+      if (!L.enabled) throw new HttpError(503, "research_disabled", "Web research is switched off by an administrator.");
+      const b = parse(v.object({ entity_type: v.enumOf(["lead", "account"] as const), ids: v.array(v.id(), { max: 25 }), refresh: v.optional(v.boolean()) }), body);
+      if (!b.ids.length) throw badRequest("Select at least one record.");
+      if (!can(actor, WRITE_PERM[b.entity_type] as any)) throw forbidden("You can only enrich records you are allowed to edit.");
+      const used = (await q.query<{ n: number }>("SELECT count(*)::int n FROM sales_research_jobs WHERE created_by_member = $1 AND created_at > now() - interval '1 hour'", [actor.memberId || -1])).rows[0]!.n;
+      let budget = Math.max(0, L.perMemberPerHour - used);
+      const items: { entityId: number; label: string; jobId: number | null; cached?: boolean; state: "queued" | "skipped"; reason?: string }[] = [];
+      const toStart: number[] = [];
+      for (const id of [...new Set(b.ids)]) {
+        let rec: any;
+        try { rec = b.entity_type === "lead" ? await loadLead(q, actor, id) : await visibleAccount(q, actor, id); } catch { items.push({ entityId: id, label: `#${id}`, jobId: null, state: "skipped", reason: "not found or not yours" }); continue; }
+        const label = b.entity_type === "lead" ? (rec.company || `${rec.first_name} ${rec.last_name ?? ""}`.trim()) : rec.name;
+        if (b.entity_type === "lead" && rec.status === "converted") { items.push({ entityId: id, label, jobId: null, state: "skipped", reason: "converted leads are read-only" }); continue; }
+        const input = { companyName: clean(b.entity_type === "lead" ? rec.company : rec.name), website: clean(rec.website) };
+        if (!input.companyName && !input.website) { items.push({ entityId: id, label, jobId: null, state: "skipped", reason: "no company name or website to research" }); continue; }
+        if (input.website && !normaliseWebsite(input)) input.website = "";
+        if (budget <= 0) { items.push({ entityId: id, label, jobId: null, state: "skipped", reason: `hourly limit of ${L.perMemberPerHour} reached` }); continue; }
+        const j = await db.tx(async (t) => {
+          const r = await enqueue(t, { input, entityType: b.entity_type, entityId: id, memberId: actor.memberId, label: actor.label, now, force: b.refresh === true });
+          return r;
+        });
+        if (!j.cached) budget--;
+        if (j.created) toStart.push(j.id);
+        items.push({ entityId: id, label, jobId: j.id, cached: j.cached, state: "queued" });
+      }
+      await audit(q, actor, { action: "research.bulk", entityType: b.entity_type, entityId: null, summary: `Queued web research for ${items.filter((i) => i.state === "queued").length} ${b.entity_type}(s)`, after: { ids: b.ids } });
+      for (const id of toStart) startInBackground(db, id);
+      return created({ items });
+    },
+  },
+  {
+    // What WOULD be filled for the record linked to this job: empty columns only, confident, validated values.
+    method: "GET", path: "/research/jobs/:id/plan", permission: "ai:use", tx: false,
+    async handler({ q, actor, params }) {
+      const id = parse(v.id(), params.id);
+      const job = (await q.query<any>("SELECT created_by_member, entity_type, entity_id, status, progress, stage_detail, error FROM sales_research_jobs WHERE id = $1", [id])).rows[0];
+      if (!job || (job.created_by_member !== actor.memberId && !can(actor, "agents:run")) || !["lead", "account"].includes(job.entity_type ?? "")) throw notFound("Research job");
+      if (!["awaiting_review", "completed", "partial"].includes(job.status)) return { status: job.status, progress: job.progress, stage: job.stage_detail, error: job.error, plan: null };
+      const kind = job.entity_type as EntityKind;
+      const rec = kind === "lead" ? await loadLead(q, actor, job.entity_id) : await visibleAccount(q, actor, job.entity_id);
+      const ev = (await q.query<any>("SELECT field, value, kind, confidence, verification, source_url FROM sales_research_evidence WHERE job_id = $1", [id])).rows;
+      return { status: job.status, plan: buildPlan(kind, rec, ev) };
+    },
+  },
+  {
+    method: "POST", path: "/research/jobs/:id/apply", permission: "ai:use",
+    async handler({ q, actor, params, body, now, settings }) {
+      const id = parse(v.id(), params.id);
+      const b = parse(v.object({ fields: v.optional(v.array(v.string({ max: 40 }), { max: 20 })) }), body);
+      const job = (await q.query<any>("SELECT created_by_member, entity_type, entity_id, status FROM sales_research_jobs WHERE id = $1 FOR UPDATE", [id])).rows[0];
+      if (!job || (job.created_by_member !== actor.memberId && !can(actor, "agents:manage")) || !["lead", "account"].includes(job.entity_type ?? "")) throw notFound("Research job");
+      const kind = job.entity_type as EntityKind;
+      if (!can(actor, WRITE_PERM[kind] as any)) throw forbidden();
+      if (!["awaiting_review", "completed", "partial"].includes(job.status)) throw badRequest("This research is not finished yet.");
+      const rec = kind === "lead" ? await loadLead(q, actor, job.entity_id, true) : await visibleAccount(q, actor, job.entity_id);
+      if (kind === "lead" && rec.status === "converted") throw badRequest("A converted lead is read-only; edit the account or contact instead.");
+      const ev = (await q.query<any>("SELECT field, value, kind, confidence, verification, source_url FROM sales_research_evidence WHERE job_id = $1", [id])).rows;
+      const plan = buildPlan(kind, rec, ev);
+      const out = await applyPlan(q, actor, kind, job.entity_id, plan, b.fields, id, kind === "lead" ? async () => { await rescore(q, job.entity_id, settings, now); } : undefined);
+      if (out.applied.length) await q.query("UPDATE sales_research_jobs SET status = 'completed', stage_detail = 'Reviewed' WHERE id = $1 AND status = 'awaiting_review'", [id]);
+      return { applied: out.applied.map((a) => ({ field: a.field, column: a.column, value: a.value })), skipped: plan.skipped };
     },
   },
 ];

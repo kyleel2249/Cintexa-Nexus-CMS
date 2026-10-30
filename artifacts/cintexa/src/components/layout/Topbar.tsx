@@ -32,7 +32,7 @@ export function Topbar({ onMenu }: { onMenu?: () => void }) {
 
   const paths = location.split("/").filter(Boolean);
   const salesKey = paths[0] === "sales" ? activeNavKey(location) : null;
-  const salesLabel = salesKey ? (salesKey === "glossary" ? "Glossary & Help" : [...SALES_NAV, SALES_AI_NAV].find((i) => i.key === salesKey)?.label) : undefined;
+  const salesLabel = salesKey ? (salesKey === "glossary" ? "Glossary & Help" : salesKey === "enrichment" ? "Bulk Enrichment" : [...SALES_NAV, SALES_AI_NAV].find((i) => i.key === salesKey)?.label) : undefined;
   const breadcrumb = paths.length === 0 ? "Dashboard" : paths[0] === "sales" ? (salesLabel ?? "Sales") : paths[0] === "sentinel-key" ? "Sentinel Key" : paths[0].charAt(0).toUpperCase() + paths[0].slice(1);
 
   return (

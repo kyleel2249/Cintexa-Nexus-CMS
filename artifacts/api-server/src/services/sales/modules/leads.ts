@@ -148,7 +148,7 @@ export async function createLead(q: Queryable, actor: Actor, c: Ctx, input: Lead
   return { id, number, ownerId, score };
 }
 
-async function rescore(q: Queryable, id: number, settings: SalesSettings, now: Date): Promise<number> {
+export async function rescore(q: Queryable, id: number, settings: SalesSettings, now: Date): Promise<number> {
   const l = (await q.query<any>("SELECT * FROM sales_leads WHERE id = $1", [id])).rows[0];
   const { score, breakdown } = scoreLead(l, settings.leads.scoring, now);
   await q.query("UPDATE sales_leads SET score = $2, score_breakdown = $3::text::jsonb WHERE id = $1", [id, score, JSON.stringify(breakdown)]);
@@ -557,7 +557,7 @@ function allowedNext(status: string): string[] {
   return [...((LEAD_TRANSITIONS_REF as Record<string, readonly string[]>)[status] ?? [])];
 }
 
-async function loadLead(q: Queryable, actor: Actor, id: number, forUpdate = false): Promise<any> {
+export async function loadLead(q: Queryable, actor: Actor, id: number, forUpdate = false): Promise<any> {
   const r = await q.query<any>(`SELECT * FROM sales_leads WHERE id = $1 AND archived_at IS NULL ${forUpdate ? "FOR UPDATE" : ""}`, [id]);
   const row = r.rows[0];
   if (!row) throw notFound("Lead");

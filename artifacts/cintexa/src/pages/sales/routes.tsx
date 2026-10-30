@@ -33,6 +33,7 @@ const Documents = lazy(() => import("./documents"));
 const SalesSettings = lazy(() => import("./settings"));
 const CommandCentre = lazy(() => import("./command-centre"));
 const Glossary = lazy(() => import("./glossary"));
+const Enrichment = lazy(() => import("./enrichment"));
 
 const R = (path: string, component: React.ComponentType<any>, perm?: string, anyPerm?: string[]) => (
   <Route path={path} key={path}>{(params: Record<string, string>) => <SalesRoute perm={perm} anyPerm={anyPerm} component={component} params={params} />}</Route>
@@ -58,6 +59,7 @@ export function SalesRoutes() {
           {R("/sales", Overview, "dashboard:read")}
           {R("/sales/command-centre", CommandCentre, "agents:read")}
           {R("/sales/glossary", Glossary)}
+          {R("/sales/enrichment", Enrichment, "ai:use")}
           {R("/sales/approvals", ApprovalsRedirect, "agents:read")}
           {R("/sales/leads", Leads, "leads:read")}
           {R("/sales/leads/:id", LeadDetail, "leads:read")}

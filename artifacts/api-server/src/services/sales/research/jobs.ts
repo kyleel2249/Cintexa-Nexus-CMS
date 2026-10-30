@@ -25,7 +25,17 @@ export async function enqueue(q: Queryable, p: { input: ResearchInput; kind?: st
   const cacheKey = cacheKeyOf(p.input);
   if (!p.force && L.cacheHours > 0) {
     const hit = (await q.query<{ id: number }>("SELECT id FROM sales_research_jobs WHERE cache_key = $1 AND status IN ('awaiting_review','completed') AND finished_at > $2::timestamptz - ($3 || ' hours')::interval ORDER BY finished_at DESC LIMIT 1", [cacheKey, p.now.toISOString(), String(L.cacheHours)])).rows[0];
-    if (hit) return { id: hit.id, cached: true, created: false };
+    if (hit) {
+      // Never hand out someone else's job: copy the finished result (and its evidence) into a job owned by the requester and linked to THEIR record. The original finish time is kept so its age stays honest.
+      const idemC = `${p.memberId}:${cacheKey}:c${hit.id}:${p.entityType ?? ""}:${p.entityId ?? ""}`;
+      const ins = await q.query<{ id: number }>("INSERT INTO sales_research_jobs (kind, entity_type, entity_id, input, status, stage_detail, progress, result, pages_fetched, idempotency_key, cache_key, created_by, created_by_member, started_at, finished_at) SELECT kind, $2, $3, $4::text::jsonb, 'awaiting_review', 'Reused a recent result', 100, result, pages_fetched, $5, cache_key, $6, $7, started_at, finished_at FROM sales_research_jobs WHERE id = $1 ON CONFLICT (idempotency_key) DO NOTHING RETURNING id", [hit.id, p.entityType ?? null, p.entityId ?? null, JSON.stringify(p.input), idemC, p.label, p.memberId || null]);
+      if (ins.rows[0]) {
+        await q.query("INSERT INTO sales_research_evidence (job_id, field, value, kind, source_url, source_title, source_domain, excerpt, retrieved_at, confidence, confidence_basis, verification, conflict) SELECT $2, field, value, kind, source_url, source_title, source_domain, excerpt, retrieved_at, confidence, confidence_basis, verification, conflict FROM sales_research_evidence WHERE job_id = $1", [hit.id, ins.rows[0].id]);
+        return { id: ins.rows[0].id, cached: true, created: false };
+      }
+      const ex = (await q.query<{ id: number }>("SELECT id FROM sales_research_jobs WHERE idempotency_key = $1", [idemC])).rows[0]!;
+      return { id: ex.id, cached: true, created: false };
+    }
   }
   const idem = `${p.memberId}:${cacheKey}:${Math.floor(p.now.getTime() / 60_000)}${p.force ? ":f" : ""}`;
   const ins = await q.query<{ id: number }>("INSERT INTO sales_research_jobs (kind, entity_type, entity_id, input, idempotency_key, cache_key, created_by, created_by_member) VALUES ($1,$2,$3,$4::text::jsonb,$5,$6,$7,$8) ON CONFLICT (idempotency_key) DO NOTHING RETURNING id", [p.kind ?? "company", p.entityType ?? null, p.entityId ?? null, JSON.stringify(p.input), idem, cacheKey, p.label, p.memberId || null]);
@@ -62,7 +72,15 @@ export async function runJob(db: Db, id: number, rt: Runtime = {}): Promise<void
 }
 
 /** Fire-and-forget start used by the API; concurrency is capped by the database state, not by memory. */
-export function startInBackground(db: Db, id: number, rt?: Runtime): void { setImmediate(() => { runJob(db, id, rt).catch(() => undefined); }); }
+const waiting: Array<() => void> = []; let active = 0;
+/** In-process limiter: at most SALES_RESEARCH_MAX_CONCURRENT researches run at once in this server; the rest wait their turn (their rows stay 'queued' in the database). */
+function limiter<T>(fn: () => Promise<T>): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const go = () => { active++; fn().then(resolve, reject).finally(() => { active--; waiting.shift()?.(); }); };
+    active < LIMITS().concurrent ? go() : waiting.push(go);
+  });
+}
+export function startInBackground(db: Db, id: number, rt?: Runtime): void { setImmediate(() => { limiter(() => runJob(db, id, rt)).catch(() => undefined); }); }
 
 /** Jobs stuck mid-run (process restart) are marked failed with a clear message so the person can re-run; nothing is silently lost. */
 export async function recoverStale(q: Queryable): Promise<number> {

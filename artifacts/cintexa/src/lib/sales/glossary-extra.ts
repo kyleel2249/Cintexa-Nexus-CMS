@@ -3,6 +3,8 @@ const E = (category: Category, term: string, short: string, more?: string, alias
 
 /** Second block: settings, report columns, scoring rules and other terms found on the Sales screens. */
 export const GLOSSARY_EXTRA: GlossaryEntry[] = [
+  E("Sections", "Bulk Enrichment", "Research up to 25 leads or accounts at once from their public websites, review what would be filled, then apply. Only empty fields are filled.", undefined, ["bulk enrich", "enrichment"]),
+  E("Research & evidence", "Research selected", "Starts public-web research for every ticked record. Jobs queue and run a few at a time."), E("Research & evidence", "Nothing safe to fill", "Research found nothing that is empty on the record, confident enough (55%+), valid and free of conflicts."),
   // Leads & scoring
   E("Leads & contacts", "Leads & scoring", "Rules that turn recorded facts about a lead into a score, and how duplicates are detected."),
   E("Leads & contacts", "Source points", "Extra score points for leads from a source that tends to convert well (for example referrals)."),
