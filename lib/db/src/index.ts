@@ -18,3 +18,4 @@ export { ensureSchema, SCHEMA_STATEMENTS } from "./bootstrap";
 export { SALES_SCHEMA_STATEMENTS } from "./sales-schema";
 export { createSalesDb, type SalesDb, type SalesQueryable } from "./sales-adapter";
 export { SENTINEL_SCHEMA_STATEMENTS } from "./sentinel-schema";
+export { FINANCE_SCHEMA_STATEMENTS } from "./finance-schema";

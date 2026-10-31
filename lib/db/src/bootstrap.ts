@@ -2,6 +2,7 @@ import type pg from "pg";
 import { WI_SCHEMA_STATEMENTS } from "./wi-schema";
 import { SALES_SCHEMA_STATEMENTS } from "./sales-schema";
 import { SENTINEL_SCHEMA_STATEMENTS } from "./sentinel-schema";
+import { FINANCE_SCHEMA_STATEMENTS } from "./finance-schema";
 
 /**
  * Idempotent schema bootstrap.
@@ -474,6 +475,7 @@ END $$`,
   ...WI_SCHEMA_STATEMENTS,
   ...SALES_SCHEMA_STATEMENTS,
   ...SENTINEL_SCHEMA_STATEMENTS,
+  ...FINANCE_SCHEMA_STATEMENTS,
 ];
 
 let running: Promise<void> | null = null;
