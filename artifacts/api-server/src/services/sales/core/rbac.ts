@@ -32,7 +32,7 @@ export const PERMISSIONS = [
   "automation:read", "automation:write", "automation:activate", "automation:run",
   "playbook:read", "playbook:write", "playbook:publish",
   "documents:read", "documents:write", "documents:restricted",
-  "settings:read", "settings:write",
+  "settings:read", "settings:write", "fx:write",
   "audit:read",
   "ai:use",
   "agents:read", "agents:run", "agents:manage", "approvals:read", "approvals:decide",
@@ -58,7 +58,7 @@ const MANAGERS = new Set<Permission>([
   "leads:assign", "leads:merge", "leads:import", "accounts:assign", "accounts:export", "opportunities:assign", "opportunities:override_close",
   "targets:write", "quotations:approve", "orders:approve", "orders:cancel", "orders:fulfil", "forecast:override", "reports:export", "reports:schedule",
   "automation:read", "campaigns:write", "playbook:write", "retention:write", "cost:read", "members:read", "teams:write", "documents:restricted",
-  "agents:run", "approvals:read", "approvals:decide",
+  "agents:run", "approvals:read", "approvals:decide", "fx:write",
 ]);
 
 export const ROLE_PERMISSIONS: Record<SalesRole, Set<Permission>> = {

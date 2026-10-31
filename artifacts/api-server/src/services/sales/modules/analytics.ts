@@ -20,7 +20,7 @@ const periodOf = (query: Record<string, string | string[] | undefined>, def: Per
   if (!(PERIODS as readonly string[]).includes(p)) throw badRequest(`period must be one of: ${PERIODS.join(", ")}`);
   return p as Period;
 };
-function resolveRange(query: Record<string, string | string[] | undefined>, now: Date, s: SalesSettings, def: Period = "month"): Range {
+export function resolveRange(query: Record<string, string | string[] | undefined>, now: Date, s: SalesSettings, def: Period = "month"): Range {
   if (str(query, "from") && str(query, "to")) {
     const f = parse(v.date(), str(query, "from"));
     const t = parse(v.date(), str(query, "to"));
@@ -32,7 +32,7 @@ function resolveRange(query: Record<string, string | string[] | undefined>, now:
 }
 
 /** owner filter honouring role scope plus optional narrowing to a member/team the actor is allowed to see */
-function ownerFilter(actor: Actor, col: string, query: Record<string, string | string[] | undefined>): string {
+export function ownerFilter(actor: Actor, col: string, query: Record<string, string | string[] | undefined>): string {
   let sql = ownerScopeSql(actor, col);
   const mid = str(query, "owner_id");
   if (mid) sql += ` AND ${col} = ${Number(parse(v.id(), mid))}`;

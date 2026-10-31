@@ -26,6 +26,8 @@ const createBody = v.object({
   account_id: v.id(), contact_id: v.optional(v.id()), opportunity_id: v.optional(v.id()), currency: v.optional(v.string({ min: 3, max: 3, upper: true, pattern: /^[A-Z]{3}$/ })), channel: v.withDefault(v.string({ min: 2, max: 30 }), "direct"),
   campaign_id: v.optional(v.id()), payment_terms_days: v.optional(v.int({ min: 0, max: 365 })), requested_delivery_on: v.optional(v.date()), billing_address: v.optional(v.string({ max: 500 })), shipping_address: v.optional(v.string({ max: 500 })),
   notes: v.optional(v.string({ max: 4000, raw: true })), client_request_id: v.optional(v.string({ min: 8, max: 80, pattern: /^[A-Za-z0-9_\-.:]+$/ })), lines: v.array(lineIn, { min: 1, max: 200 }),
+  /** when the sale actually happened (past or future); created_at always keeps the real entry time */
+  transaction_date: v.optional(v.date()),
 });
 const convertBody = v.object({ requested_delivery_on: v.optional(v.date()), billing_address: v.optional(v.string({ max: 500 })), shipping_address: v.optional(v.string({ max: 500 })), notes: v.optional(v.string({ max: 4000, raw: true })), client_request_id: v.optional(v.string({ min: 8, max: 80 })) });
 const patchBody = v.object({
@@ -89,12 +91,16 @@ async function confirmOrApprove(q: Queryable, actor: Actor, c: { now: Date; sett
 
 async function bookOrder(q: Queryable, actor: Actor, c: { now: Date; settings: SalesSettings; requestId: string; events: DomainEvent[] }, o: any, approvedBy: string | null): Promise<void> {
   const terms = o.payment_terms_days ?? 30;
-  const due = d10(new Date(c.now.getTime() + terms * 86_400_000));
+  // Transaction date vs entry date: a person may record a sale that happened earlier. The order is booked ON that date (so every report places it in the right period); created_at keeps the real entry time.
+  const txn: string | null = d10(o.transaction_date);
+  if (txn && txn > businessDate(c.now, c.settings.business.timezone)) throw conflict("This order is dated in the future, so it cannot be booked as a sale yet. Confirm it on or after its transaction date, or clear the date.", "future_transaction_date");
+  const bookedAt = txn ? new Date(`${txn}T12:00:00.000Z`) : c.now;
+  const due = new Date(bookedAt.getTime() + terms * 86_400_000).toISOString().slice(0, 10);
   const stockLines = (await q.query<{ n: number }>("SELECT count(*)::int n FROM sales_order_lines l JOIN sales_products p ON p.id = l.product_id WHERE l.order_id = $1 AND p.track_stock", [o.id])).rows[0]!.n;
   const invCfg = c.settings.integrations.inventory;
   const invStatus = stockLines === 0 ? "not_requested" : invCfg.enabled && invCfg.provider !== "none" ? "pending" : "unavailable";
   await q.query(`UPDATE sales_orders SET status = 'confirmed', booked_at = $2, confirmed_at = $2, approved_by = COALESCE($3, approved_by), approved_at = CASE WHEN $3 IS NULL THEN approved_at ELSE $2::timestamptz END,
-    requires_approval = requires_approval OR $3 IS NOT NULL, invoice_due_on = $4, inventory_status = $5, updated_at = now() WHERE id = $1`, [o.id, c.now.toISOString(), approvedBy, due, invStatus]);
+    requires_approval = requires_approval OR $3 IS NOT NULL, invoice_due_on = $4, inventory_status = $5, updated_at = now() WHERE id = $1`, [o.id, bookedAt.toISOString(), approvedBy, due, invStatus]);
   const fresh = (await q.query<any>("SELECT * FROM sales_orders WHERE id = $1", [o.id])).rows[0];
   if (stockLines > 0) await enqueue(q, { kind: "inventory.reserve", entityType: "order", entityId: o.id, idempotencyKey: `order-reserve:${o.id}`, payload: { order: await payloadOf(q, fresh) } });
   await q.query("UPDATE sales_accounts SET last_purchase_at = $2, status = CASE WHEN status IN ('prospect','inactive') THEN 'active' ELSE status END, expected_reorder_on = CASE WHEN reorder_interval_days IS NOT NULL THEN ($2::timestamptz + (reorder_interval_days || ' days')::interval)::date ELSE expected_reorder_on END, updated_at = now() WHERE id = $1", [o.account_id, c.now.toISOString()]);
@@ -138,9 +144,9 @@ export const orderRoutes: Route[] = [
       const number = await nextNumber(q, "order", now, { yearly: settings.numbering.yearly, prefix: settings.numbering.orderPrefix });
       const team = actor.memberId ? (await q.query<{ team_id: number | null }>("SELECT team_id FROM sales_members WHERE id = $1", [actor.memberId])).rows[0]?.team_id ?? null : null;
       const r = await q.query<{ id: number }>(
-        `INSERT INTO sales_orders (number, account_id, contact_id, opportunity_id, owner_id, team_id, territory_id, campaign_id, channel, currency, payment_terms_days, requested_delivery_on, billing_address, shipping_address, notes, client_request_id, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING id`,
-        [number, b.account_id, b.contact_id ?? null, b.opportunity_id ?? null, actor.memberId || account.owner_id || null, team, account.territory_id ?? null, b.campaign_id ?? null, b.channel, currency, b.payment_terms_days ?? account.payment_terms_days ?? 30, b.requested_delivery_on ?? null, b.billing_address ?? null, b.shipping_address ?? null, b.notes ?? null, b.client_request_id ?? null, actor.label],
+        `INSERT INTO sales_orders (number, account_id, contact_id, opportunity_id, owner_id, team_id, territory_id, campaign_id, channel, currency, payment_terms_days, requested_delivery_on, billing_address, shipping_address, notes, client_request_id, created_by, transaction_date)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING id`,
+        [number, b.account_id, b.contact_id ?? null, b.opportunity_id ?? null, actor.memberId || account.owner_id || null, team, account.territory_id ?? null, b.campaign_id ?? null, b.channel, currency, b.payment_terms_days ?? account.payment_terms_days ?? 30, b.requested_delivery_on ?? null, b.billing_address ?? null, b.shipping_address ?? null, b.notes ?? null, b.client_request_id ?? null, actor.label, b.transaction_date ?? null],
       );
       const id = r.rows[0]!.id;
       await writeOrderLines(q, id, built.lines);
@@ -393,6 +399,30 @@ export const orderRoutes: Route[] = [
       await audit(q, actor, { action: "order.cancel", entityType: "order", entityId: id, summary: `Cancelled ${o.number}: ${b.reason}` }, requestId);
       events.push({ type: "order.cancelled", entityType: "order", entityId: id } as DomainEvent);
       return { ok: true };
+    },
+  },
+  {
+    // Set or clear the date the sale actually happened (can be past or future). Before booking it simply stores the date; after booking, only people who can approve orders may correct it (the booking date, due date and reports move with it; created_at never changes).
+    method: "PATCH", path: "/orders/:id/transaction-date", permission: "orders:write",
+    async handler({ q, actor, params, body, now, requestId, settings }) {
+      const id = parse(v.id(), params.id);
+      const b = parse(v.object({ transaction_date: v.nullable(v.date()), reason: v.optional(v.string({ max: 300 })) }), body);
+      const o = await loadOrder(q, actor, id, true);
+      if (o.status === "cancelled") throw conflict("A cancelled order cannot be re-dated", "invalid_state");
+      const booked = o.booked_at !== null && o.booked_at !== undefined;
+      if (booked && !can(actor, "orders:approve")) throw forbidden("Only a person who can approve orders may change the date of a booked order");
+      const txn = b.transaction_date ?? null;
+      if (booked) {
+        if (!txn) throw badRequest("A booked order needs a transaction date; pick one");
+        if (txn > businessDate(now, settings.business.timezone)) throw conflict("A booked order cannot be dated in the future", "future_transaction_date");
+        const bookedAt = new Date(`${txn}T12:00:00.000Z`);
+        const due = new Date(bookedAt.getTime() + (o.payment_terms_days ?? 30) * 86_400_000).toISOString().slice(0, 10);
+        await q.query("UPDATE sales_orders SET transaction_date = $2, booked_at = $3, invoice_due_on = CASE WHEN invoice_status = 'issued' THEN invoice_due_on ELSE $4 END, updated_at = now() WHERE id = $1", [id, txn, bookedAt.toISOString(), due]);
+      } else {
+        await q.query("UPDATE sales_orders SET transaction_date = $2, updated_at = now() WHERE id = $1", [id, txn]);
+      }
+      await audit(q, actor, { action: "order.transaction_date", entityType: "order", entityId: id, summary: `Transaction date of ${o.number} set to ${txn ?? "none"}`, before: { transaction_date: o.transaction_date ?? null, booked_at: o.booked_at ?? null }, after: { transaction_date: txn, reason: b.reason ?? null } }, requestId);
+      return { ok: true, transaction_date: txn };
     },
   },
 ];

@@ -61,4 +61,26 @@ export const SALES_RESEARCH_SCHEMA_STATEMENTS: string[] = [
   decided_by TEXT,
   decided_at ${TS} NOT NULL DEFAULT now()`),
   IX("sales_autofill_decisions_job ON sales_autofill_decisions(job_id)"),
+  // ── one-time markers (so a data migration never re-runs after an administrator changes a setting on purpose)
+  T("sales_schema_markers", `  id TEXT PRIMARY KEY,
+  applied_at ${TS} NOT NULL DEFAULT now()`),
+  // AI assist used to default to OFF/blocked. Installs still on that untouched default pair are switched on once; any other stored choice is left alone.
+  `WITH m AS (INSERT INTO sales_schema_markers (id) VALUES ('ai_default_on_2026_10') ON CONFLICT DO NOTHING RETURNING id)
+   UPDATE sales_settings SET value = jsonb_set(value, '{ai}', '{"enabled": true, "allowExternalProvider": true}'::jsonb), version = version + 1, updated_by = 'system: AI assist on by default', updated_at = now()
+   WHERE key = 'integrations' AND EXISTS (SELECT 1 FROM m) AND COALESCE((value->'ai'->>'enabled')::boolean, false) = false AND COALESCE((value->'ai'->>'allowExternalProvider')::boolean, false) = false`,
+  // ── exchange rates (manual entry or provider import); history is kept, rows are never overwritten
+  T("sales_exchange_rates", `  id BIGSERIAL PRIMARY KEY,
+  base TEXT NOT NULL CHECK (base ~ '^[A-Z]{3}$'),
+  quote TEXT NOT NULL CHECK (quote ~ '^[A-Z]{3}$' AND quote <> base),
+  rate NUMERIC(24,10) NOT NULL CHECK (rate > 0),
+  effective_on DATE NOT NULL,
+  source TEXT NOT NULL DEFAULT 'manual',
+  entered_by TEXT,
+  note TEXT,
+  created_at ${TS} NOT NULL DEFAULT now()`),
+  UX("sales_exchange_rates_uniq ON sales_exchange_rates(base, quote, effective_on, source)"),
+  IX("sales_exchange_rates_lookup ON sales_exchange_rates(base, quote, effective_on DESC)"),
+  // ── transaction date: when the sale actually happened (may differ from created_at, the entry time)
+  "ALTER TABLE sales_orders ADD COLUMN IF NOT EXISTS transaction_date DATE",
+  IX("sales_orders_txn_date ON sales_orders(transaction_date)"),
 ];

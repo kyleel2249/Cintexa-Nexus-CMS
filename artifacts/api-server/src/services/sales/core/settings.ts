@@ -75,7 +75,8 @@ export const DEFAULT_SETTINGS: SalesSettings = {
     whatsapp: { enabled: false, provider: "none" },
     calendar: { enabled: false, provider: "none" },
     esignature: { enabled: false, provider: "none" },
-    ai: { enabled: false, allowExternalProvider: false },
+    // AI assist is ON by default but only becomes AVAILABLE when a provider key exists on the server (see GET /ai/status); an admin can switch it off in Settings.
+    ai: { enabled: true, allowExternalProvider: true },
   },
   archival: { archiveClosedAfterDays: 730, purgeOutboxAfterDays: 90 },
 };

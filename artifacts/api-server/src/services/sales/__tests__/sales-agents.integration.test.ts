@@ -377,16 +377,21 @@ async function setAi(enabled: boolean, external: boolean) {
 }
 const lastExec = async (key: string) => (await db.query<any>("SELECT * FROM sales_agent_executions WHERE agent_key = $1 AND status = 'success' ORDER BY id DESC LIMIT 1", [key])).rows[0];
 
-test("AI is off by default: the provider is never called and agents run deterministically", { skip }, async () => {
+test("AI is on by default; once an administrator switches it off the provider is never called and agents run deterministically", { skip }, async () => {
   ai = client(db, ident("boss@example.com", "admin"), { integrations: { ai: stub as any } });
   repAi = client(db, ident("rep1@example.com"), { integrations: { ai: stub as any } });
   calls.length = 0;
   const o2 = await rep1("POST", "/opportunities", { name: "Quiet renewal deal", account_id: acctId, amount: "90000.00", expected_close_date: "2031-09-30" });
   assert.equal(o2.status, 201, JSON.stringify(o2.json)); aiOppId = o2.json.id;
   await db.query("UPDATE sales_opportunities SET last_activity_at = now() - interval '50 days', stage_entered_at = now() - interval '50 days' WHERE id = $1", [aiOppId]);
+  mode = "ok";
+  const d = await ai("POST", "/agents/sales_operations/run", { mode: "analysis" });
+  assert.equal(d.json.ai.status, "ok", "default settings: AI assist is ON and a provider is installed"); assert.equal(calls.length, 1);
+  calls.length = 0;
+  await setAi(false, false);
   const r = await ai("POST", "/agents/sales_operations/run", { mode: "analysis" });
   assert.equal(r.status, 200); assert.equal(r.json.status, "completed"); assert.equal(r.json.ai.status, "unavailable");
-  assert.equal(calls.length, 0, "no data left the system");
+  assert.equal(calls.length, 0, "switched off: no data left the system");
   await setAi(true, false);
   const r2 = await ai("POST", "/agents/sales_operations/run", { mode: "analysis" });
   assert.equal(r2.json.ai.status, "refused"); assert.equal(calls.length, 0, "enabled but external provider not allowed: still nothing sent");
@@ -405,7 +410,7 @@ test("when permitted, AI adds only a sanitised narrative; usage, tokens and cost
   assert.equal((await db.query<any>("SELECT count(*)::int n FROM sales_agent_recommendations")).rows[0].n, before, "AI created no findings and changed no numbers");
   const e = await lastExec("sales_operations");
   assert.equal(e.ai_status, "ok"); assert.equal(e.prompt_tokens, 10); assert.equal(e.completion_tokens, 5); assert.equal(Number(e.cost_usd), 0.0001);
-  assert.equal((await db.query<any>("SELECT count(*)::int n FROM sales_ai_usage WHERE feature = 'agent:sales_operations' AND status = 'ok'")).rows[0].n, 1);
+  assert.equal((await db.query<any>("SELECT count(*)::int n FROM sales_ai_usage WHERE feature = 'agent:sales_operations' AND status = 'ok'")).rows[0].n, 2, "one usage row for the default-on run above and one for this run");
   const cc = (await admin("GET", "/agents/command-centre")).json;
   assert.equal(cc.ai.mode, "deterministic_only", "no installed provider on the admin client => shown honestly");
   const cc2 = (await ai("GET", "/agents/command-centre")).json;
