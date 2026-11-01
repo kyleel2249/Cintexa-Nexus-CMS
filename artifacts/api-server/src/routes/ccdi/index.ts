@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–9 API routes.
+ * CINTEXA CCDI — Phase 2–10 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -15,6 +15,7 @@ import intelligenceRouter from "./intelligence";
 import reportingRouter from "./reporting";
 import workersRouter from "./workers";
 import rbacRouter from "./rbac";
+import phase10Router from "./phase10";
 
 const router = Router();
 
@@ -25,26 +26,26 @@ function actor(req: Request): string {
 // ── Health / readiness ─────────────────────────────────────────────────────
 router.get("/health", async (_req: Request, res: Response) => {
   const kill = await orch.isKillSwitchActive().catch(() => false);
-  // Best-effort RBAC seed on health checks (idempotent)
   await rbac.seedCcdiRbac().catch(() => undefined);
   res.json({
     module: "ccdi",
-    phase: 9,
-    status: kill ? "emergency_stop" : "production_hardening",
+    phase: 10,
+    status: kill ? "emergency_stop" : "deployment_hardening",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Phase 9 (RBAC, navigation, production readiness) is active. Live scanners still require dedicated workers.",
+      : "CCDI Phase 10 (connector health, report export, deployment readiness) is active. Live scanning remains disabled.",
   });
 });
 
-// Mount Phase 4–9 routers
+// Mount Phase 4–10 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);
 router.use(reportingRouter);
 router.use(workersRouter);
 router.use(rbacRouter);
+router.use(phase10Router);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -495,7 +496,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 9,
+        phase: 10,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
