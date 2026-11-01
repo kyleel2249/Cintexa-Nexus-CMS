@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–7 API routes.
+ * CINTEXA CCDI — Phase 2–8 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -12,6 +12,7 @@ import findingsRouter from "./findings";
 import advancedRouter from "./advanced";
 import intelligenceRouter from "./intelligence";
 import reportingRouter from "./reporting";
+import workersRouter from "./workers";
 
 const router = Router();
 
@@ -24,20 +25,21 @@ router.get("/health", async (_req: Request, res: Response) => {
   const kill = await orch.isKillSwitchActive().catch(() => false);
   res.json({
     module: "ccdi",
-    phase: 7,
-    status: kill ? "emergency_stop" : "reporting_ready",
+    phase: 8,
+    status: kill ? "emergency_stop" : "workers_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Reporting, Compliance & Executive Dashboards (Phase 7) are active. All metrics are evidence-backed.",
+      : "CCDI Worker Foundations & UI (Phase 8) are active. Isolated workers may claim approved queued jobs; no live scanners are invoked by the control plane.",
   });
 });
 
-// Mount Phase 4–7 routers
+// Mount Phase 4–8 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);
 router.use(reportingRouter);
+router.use(workersRouter);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -342,7 +344,7 @@ router.get("/connectors", requireAuth, async (req: Request, res: Response) => {
     );
     res.json({
       connectors: rows,
-      note: "Connectors are registered. Actual tool execution requires later worker phases and verified credentials.",
+      note: "Connectors are registered. Actual tool execution requires configured workers and verified credentials.",
     });
   } catch (err) {
     logger.error({ err }, "ccdi.connectors.list failed");
@@ -488,7 +490,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 7,
+        phase: 8,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
