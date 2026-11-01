@@ -3,6 +3,7 @@ import { WI_SCHEMA_STATEMENTS } from "./wi-schema";
 import { SALES_SCHEMA_STATEMENTS } from "./sales-schema";
 import { SENTINEL_SCHEMA_STATEMENTS } from "./sentinel-schema";
 import { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS } from "./finance-schema";
+import { CCDI_SCHEMA_STATEMENTS } from "./ccdi-schema";
 
 /**
  * Idempotent schema bootstrap.
@@ -12,6 +13,9 @@ import { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS } from "./finance-
  * means a fresh database works immediately - no "relation ... does not exist"
  * errors in Sites, Pages, Posts, Media, Categories, Menus, Forms, SEO, Settings or
  * the Diagnostics intake share links - without needing a manual `drizzle-kit push`.
+ *
+ * CCDI (CINTEXA Advanced Cyber Defense & Security Intelligence) tables are included
+ * from Phase 2 foundation onward.
  */
 export const SCHEMA_STATEMENTS: string[] = [
   `CREATE TABLE IF NOT EXISTS "sites" (
@@ -368,7 +372,7 @@ export const SCHEMA_STATEMENTS: string[] = [
 	"session_id" integer NOT NULL,
 	"category" text NOT NULL,
 	"claim" text NOT NULL,
-	"evidence_type" text NOT NULL,
+	"evidence_type" text,
 	"source_name" text,
 	"source_url" text,
 	"source_date" timestamp,
@@ -477,6 +481,7 @@ END $$`,
   ...SENTINEL_SCHEMA_STATEMENTS,
   ...FINANCE_SCHEMA_STATEMENTS,
   ...FINANCE_PHASE4_STATEMENTS,
+  ...CCDI_SCHEMA_STATEMENTS,
 ];
 
 let running: Promise<void> | null = null;
