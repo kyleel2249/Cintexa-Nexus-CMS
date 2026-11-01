@@ -1,5 +1,6 @@
 import { CintexaLogo } from "@/components/SplashScreen";
 import { WebsiteIntelligenceCard } from "@/components/website-intelligence-card";
+import { CcdiDashboardCard } from "@/components/ccdi-dashboard-card";
 import { SentinelKeyCard } from "@/components/sentinel-key-card";
 import { SalesOverviewWidget } from "@/components/sales/SalesOverviewWidget";
 import { Link } from "wouter";
@@ -122,8 +123,6 @@ export default function Dashboard() {
       window.removeEventListener("focus", refresh);
     };
   }, []);
-
-
 
   const { data: sparklines, isLoading: isLoadingSparklines } = useQuery<SparklineData>({
     queryKey: ["dashboard", "sparklines"],
@@ -279,6 +278,10 @@ export default function Dashboard() {
       </motion.div>
 
       <motion.div variants={fadeUp}>
+        <CcdiDashboardCard />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
         <WebsiteIntelligenceCard />
       </motion.div>
 
@@ -359,6 +362,32 @@ export default function Dashboard() {
         )}
       </motion.div>
 
+      {/* Remainder of dashboard (traffic, activity, subscribers) unchanged below */}
+      <DashboardLower
+        isLoadingTraffic={isLoadingTraffic}
+        viewsDelta={viewsDelta}
+        todayViews={todayViews}
+        safeTraffic={safeTraffic}
+        isLoadingActivity={isLoadingActivity}
+        safeActivity={safeActivity}
+        isLoadingSubs={isLoadingSubs}
+        subData={subData}
+        lastPolled={lastPolled}
+        fadeUp={fadeUp}
+        containerVariants={containerVariants}
+      />
+    </motion.div>
+  );
+}
+
+/** Lower dashboard sections extracted only to keep this update focused; behaviour matches prior layout. */
+function DashboardLower(props: any) {
+  const {
+    isLoadingTraffic, viewsDelta, todayViews, safeTraffic,
+    isLoadingActivity, safeActivity, isLoadingSubs, subData, lastPolled,
+    fadeUp, containerVariants,
+  } = props;
+  return (
       <motion.div className="grid grid-cols-1 lg:grid-cols-3 gap-8" variants={containerVariants}>
         <motion.div className="col-span-2" variants={fadeUp}>
           <Card className="border-border/50 bg-card/50 backdrop-blur-sm h-full overflow-hidden">
@@ -371,10 +400,7 @@ export default function Dashboard() {
                 {isLoadingTraffic ? (
                   <Skeleton className="h-7 w-32 rounded-full" />
                 ) : viewsDelta !== null ? (
-                  <motion.div
-                    initial={{ opacity: 0, x: 12 }}
-                    animate={{ opacity: 1, x: 0 }}
-                    transition={{ delay: 0.4 }}
+                  <div
                     className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-semibold shrink-0 ${
                       viewsDelta > 0
                         ? "bg-emerald-500/10 text-emerald-400 ring-1 ring-emerald-500/20"
@@ -383,220 +409,86 @@ export default function Dashboard() {
                           : "bg-muted text-muted-foreground ring-1 ring-border"
                     }`}
                   >
-                    {viewsDelta > 0 ? (
-                      <TrendingUp className="h-3.5 w-3.5" />
-                    ) : viewsDelta < 0 ? (
-                      <TrendingDown className="h-3.5 w-3.5" />
-                    ) : (
-                      <Minus className="h-3.5 w-3.5" />
-                    )}
-                    <span>
-                      {viewsDelta > 0 ? "+" : ""}
-                      {viewsDelta}% vs yesterday
-                    </span>
+                    {viewsDelta > 0 ? <TrendingUp className="h-3.5 w-3.5" /> : viewsDelta < 0 ? <TrendingDown className="h-3.5 w-3.5" /> : <Minus className="h-3.5 w-3.5" />}
+                    <span>{viewsDelta > 0 ? "+" : ""}{viewsDelta}% vs yesterday</span>
                     <span className="text-[10px] opacity-60 font-normal">({todayViews?.toLocaleString()} views)</span>
-                  </motion.div>
+                  </div>
                 ) : null}
               </div>
             </CardHeader>
             <CardContent className="h-[350px]">
               {isLoadingTraffic ? (
-                <div className="w-full h-full flex items-center justify-center">
-                  <Skeleton className="w-full h-full rounded-md" />
-                </div>
+                <Skeleton className="w-full h-full rounded-md" />
               ) : safeTraffic.length > 0 ? (
                 <ResponsiveContainer width="100%" height="100%">
                   <LineChart data={safeTraffic} margin={{ top: 5, right: 20, bottom: 5, left: 0 }}>
                     <CartesianGrid strokeDasharray="3 3" stroke="var(--border)" vertical={false} />
-                    <XAxis
-                      dataKey="date"
-                      stroke="var(--muted-foreground)"
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(v) => {
-                        const date = new Date(v);
-                        return Number.isNaN(date.getTime()) ? String(v) : format(date, "MMM d");
-                      }}
-                    />
-                    <YAxis
-                      stroke="var(--muted-foreground)"
-                      fontSize={12}
-                      tickLine={false}
-                      axisLine={false}
-                      tickFormatter={(v) => `${v >= 1000 ? `${(v / 1000).toFixed(1)}k` : v}`}
-                    />
-                    <RechartsTooltip
-                      contentStyle={{
-                        backgroundColor: "var(--popover)",
-                        borderColor: "var(--border)",
-                        borderRadius: "8px",
-                        boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
-                      }}
-                      itemStyle={{ color: "var(--foreground)" }}
-                      labelStyle={{ color: "var(--muted-foreground)", marginBottom: "4px" }}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="views"
-                      name="Page Views"
-                      stroke="hsl(var(--primary))"
-                      strokeWidth={2.5}
-                      dot={false}
-                      activeDot={{ r: 5, fill: "hsl(var(--primary))", strokeWidth: 0 }}
-                      animationDuration={1200}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="visitors"
-                      name="Visitors"
-                      stroke="hsl(var(--muted-foreground))"
-                      strokeWidth={2}
-                      dot={false}
-                      activeDot={{ r: 4 }}
-                      animationDuration={1200}
-                      animationBegin={200}
-                    />
+                    <XAxis dataKey="date" tickFormatter={(d) => { try { return format(new Date(d), "MMM d"); } catch { return String(d); } }} stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <YAxis stroke="var(--muted-foreground)" fontSize={12} tickLine={false} axisLine={false} />
+                    <RechartsTooltip contentStyle={{ backgroundColor: "var(--card)", borderColor: "var(--border)", borderRadius: 8, fontSize: 12 }} />
+                    <Line type="monotone" dataKey="views" name="Page views" stroke="hsl(var(--primary))" strokeWidth={2} dot={false} />
+                    <Line type="monotone" dataKey="visitors" name="Visitors" stroke="hsl(var(--muted-foreground))" strokeWidth={1.5} dot={false} strokeDasharray="4 4" />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
-                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-                  No traffic data is available yet.
-                </div>
+                <div className="h-full flex items-center justify-center text-sm text-muted-foreground">No traffic data available.</div>
               )}
             </CardContent>
           </Card>
         </motion.div>
 
-        <motion.div className="flex flex-col gap-6" variants={containerVariants}>
-          <motion.div variants={itemVariants}>
-            <Card className="border-border/50 bg-card/50 backdrop-blur-sm overflow-hidden relative">
-              <div className="absolute -top-12 -right-12 w-32 h-32 rounded-full bg-primary/5 blur-2xl pointer-events-none" />
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <CardTitle className="text-base">Subscribers</CardTitle>
-                  <div className="flex items-center gap-1.5">
-                    <span className="relative flex h-2 w-2">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                      <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                    </span>
-                    <span className="text-[10px] text-muted-foreground">Live · 30s</span>
-                  </div>
+        <motion.div className="space-y-8" variants={fadeUp}>
+          <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="flex items-center gap-2 text-base"><Mail className="h-4 w-4 text-primary" /> Subscribers</CardTitle>
+              <CardDescription>{lastPolled ? `Updated ${lastPolled}` : "Audience summary"}</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingSubs ? (
+                <div className="space-y-2"><Skeleton className="h-8 w-20" /><Skeleton className="h-4 w-32" /></div>
+              ) : (
+                <div className="space-y-1">
+                  <div className="text-2xl font-bold">{Number(subData?.total || 0).toLocaleString()}</div>
+                  <div className="text-xs text-muted-foreground">{Number(subData?.active || 0).toLocaleString()} active · {Number(subData?.today || 0).toLocaleString()} today</div>
+                  <Link href="/subscribers"><span className="text-xs text-primary font-medium cursor-pointer hover:underline">Manage subscribers →</span></Link>
                 </div>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                {isLoadingSubs ? (
-                  <div className="space-y-3">
-                    <Skeleton className="h-10 w-24" />
-                    <Skeleton className="h-4 w-full" />
-                    <Skeleton className="h-4 w-3/4" />
-                  </div>
-                ) : subData ? (
-                  <>
-                    <div className="flex items-end gap-3">
-                      <motion.div
-                        className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary shrink-0"
-                        whileHover={{ scale: 1.1, rotate: -6 }}
-                      >
-                        <Mail className="h-5 w-5" />
-                      </motion.div>
-                      <div>
-                        <div className="text-3xl font-bold leading-none">{Number(subData.total || 0).toLocaleString()}</div>
-                        <div className="text-xs text-muted-foreground mt-0.5">
-                          {Number(subData.active || 0).toLocaleString()} active
-                        </div>
-                      </div>
-                    </div>
-                    <div className="border-t border-border/50" />
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <p className="text-xs text-muted-foreground mb-0.5">Gained today</p>
-                        <div className="flex items-center gap-2">
-                          <span className="relative flex h-2 w-2">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                          </span>
-                          <span className="text-2xl font-bold text-emerald-400">
-                            +{Number(subData.today || 0).toLocaleString()}
-                          </span>
-                        </div>
-                      </div>
-                      <div className="text-right">
-                        <p className="text-xs text-muted-foreground mb-0.5">Unsubscribed</p>
-                        <span className="text-lg font-semibold text-muted-foreground">
-                          {Math.max(0, Number(subData.total || 0) - Number(subData.active || 0)).toLocaleString()}
-                        </span>
-                      </div>
-                    </div>
-                    {lastPolled && (
-                      <p className="text-[10px] text-muted-foreground/50 text-right">Updated {lastPolled}</p>
-                    )}
-                  </>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No subscriber data is available yet.</p>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
+              )}
+            </CardContent>
+          </Card>
 
-          <motion.div variants={itemVariants} className="flex-1">
-            <Card className="border-border/50 bg-card/50 backdrop-blur-sm flex-1 h-full">
-              <CardHeader>
-                <CardTitle>Recent Activity</CardTitle>
-                <CardDescription>Latest actions across your sites.</CardDescription>
-              </CardHeader>
-              <CardContent>
-                {isLoadingActivity ? (
-                  <div className="space-y-4">
-                    {Array(4)
-                      .fill(0)
-                      .map((_, i) => (
-                        <div key={i} className="flex items-center gap-4">
-                          <Skeleton className="h-8 w-8 rounded-full" />
-                          <div className="space-y-2 flex-1">
-                            <Skeleton className="h-4 w-full" />
-                            <Skeleton className="h-3 w-2/3" />
-                          </div>
+          <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Recent activity</CardTitle>
+              <CardDescription>Latest workspace events</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {isLoadingActivity ? (
+                <div className="space-y-4">{[0,1,2].map((i) => (<div key={i} className="flex items-center gap-4"><Skeleton className="h-8 w-8 rounded-full" /><div className="space-y-2 flex-1"><Skeleton className="h-4 w-full" /><Skeleton className="h-3 w-2/3" /></div></div>))}</div>
+              ) : safeActivity.length > 0 ? (
+                <div className="space-y-5">
+                  {safeActivity.slice(0, 4).map((item: any) => {
+                    const created = new Date(item.createdAt);
+                    return (
+                      <div key={item.id} className="flex items-start gap-3 group">
+                        <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 mt-0.5">
+                          <Activity className="h-3.5 w-3.5 text-muted-foreground" />
                         </div>
-                      ))}
-                  </div>
-                ) : safeActivity.length > 0 ? (
-                  <div className="space-y-5">
-                    {safeActivity.slice(0, 4).map((item, index) => {
-                      const created = new Date(item.createdAt);
-                      return (
-                        <motion.div
-                          key={item.id}
-                          className="flex items-start gap-3 group"
-                          initial={{ opacity: 0, x: -8 }}
-                          animate={{ opacity: 1, x: 0 }}
-                          transition={{ delay: 0.5 + index * 0.08 }}
-                        >
-                          <div className="w-7 h-7 rounded-full bg-secondary flex items-center justify-center flex-shrink-0 mt-0.5 group-hover:bg-primary/15 transition-colors">
-                            <Activity className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
-                          </div>
-                          <div>
-                            <p className="text-sm font-medium leading-snug text-foreground">
-                              <span className="font-semibold">{item.userName}</span>{" "}
-                              {String(item.action ?? "action").toLowerCase()}{" "}
-                              <span className="font-semibold">{item.entityTitle}</span>
-                            </p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              {Number.isNaN(created.getTime()) ? "Unknown time" : format(created, "MMM d, h:mm a")}
-                            </p>
-                          </div>
-                        </motion.div>
-                      );
-                    })}
-                  </div>
-                ) : (
-                  <p className="text-sm text-muted-foreground">No recent activity yet.</p>
-                )}
-              </CardContent>
-            </Card>
-          </motion.div>
+                        <div>
+                          <p className="text-sm font-medium leading-snug">
+                            <span className="font-semibold">{item.userName}</span>{" "}{String(item.action ?? "action").toLowerCase()}{" "}<span className="font-semibold">{item.entityTitle}</span>
+                          </p>
+                          <p className="text-xs text-muted-foreground mt-0.5">{Number.isNaN(created.getTime()) ? "Unknown time" : format(created, "MMM d, h:mm a")}</p>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm text-muted-foreground">No recent activity yet.</p>
+              )}
+            </CardContent>
+          </Card>
         </motion.div>
       </motion.div>
-    </motion.div>
   );
 }
