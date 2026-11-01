@@ -9,6 +9,8 @@ const isDate = (s?: string) => !!s && /^\d{4}-\d{2}-\d{2}$/.test(s) && !Number.i
 const csvCell = (v: unknown) => { const s = String(v ?? ""); return /^[=+\-@\t\r]/.test(s) ? `'${s}`.replace(/"/g, '""').replace(/^(.*)$/, '"$1"') : /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s; };
 const toCsv = (head: string[], rows: unknown[][]) => [head, ...rows].map((r) => r.map(csvCell).join(",")).join("\n");
 
+/** percentage with 2 decimals, rounded half away from zero, using integer arithmetic only */
+const pct = (n: bigint, d: bigint): string => { const x = (n * 10000n * 2n + (n < 0n ? -d : d)) / (d * 2n); const neg = x < 0n; const a = neg ? -x : x; return `${neg ? "-" : ""}${a / 100n}.${String(a % 100n).padStart(2, "0")}`; };
 const ADJUSTING = ["adjustment", "accrual", "prepayment", "reclassification"];
 
 export async function trialBalance(c: Ctx, asOf: string, basis: string, from?: string) {
@@ -85,6 +87,50 @@ const overview = route("GET", "/overview", { perm: "finance:read" }, async (c) =
   return ok({ organisation: org, role: c.org.role, current_period: period, journals: Object.fromEntries(counts.map((r: any) => [r.status, r.n])), trial_balance: { balanced: t.balanced, total_debit: t.total_debit, total_credit: t.total_credit, accounts_with_activity: t.rows.length } });
 });
 
+
+/** Executive dashboard: every figure is a deterministic SQL aggregate over POSTED ledger entries, with its formula stated. */
+const dashboard = route("GET", "/dashboard", { perm: "ledger:read" }, async (c) => {
+  const org = (await c.q.query<any>("SELECT timezone, functional_currency FROM finance_organisations WHERE id = $1", [c.org.orgId])).rows[0];
+  const today = todayIn(org.timezone, c.now);
+  const fy = (await c.q.query<any>("SELECT id, name, start_date, end_date FROM finance_fiscal_years WHERE org_id = $1 AND $2::date BETWEEN start_date AND end_date", [c.org.orgId, today])).rows[0];
+  const from = fy ? ymd(fy.start_date) : today;
+  const ytd = (await c.q.query<any>(
+    `SELECT a.type, a.category, COALESCE(SUM(e.debit),0) AS d, COALESCE(SUM(e.credit),0) AS c FROM finance_ledger_entries e JOIN finance_accounts a ON a.id = e.account_id AND a.org_id = e.org_id
+      WHERE e.org_id = $1 AND e.entry_date BETWEEN $2::date AND $3::date AND e.journal_type <> 'closing' AND a.type IN ('revenue','expense') GROUP BY a.type, a.category`, [c.org.orgId, from, today])).rows;
+  const credit = (t: string, cat?: string): bigint => ytd.filter((r: any) => r.type === t && (!cat || r.category === cat)).reduce<bigint>((x, r: any) => x + fromDb(r.c) - fromDb(r.d), 0n);
+  const debit = (t: string, cat?: string): bigint => ytd.filter((r: any) => r.type === t && (!cat || r.category === cat)).reduce<bigint>((x, r: any) => x + fromDb(r.d) - fromDb(r.c), 0n);
+  const revenue = credit("revenue"); const cogs = debit("expense", "cost_of_goods_sold"); const expenses = debit("expense");
+  const bal = (await c.q.query<any>(
+    `SELECT a.subtype, a.normal_balance, COALESCE(SUM(e.debit),0) AS d, COALESCE(SUM(e.credit),0) AS c FROM finance_accounts a
+       LEFT JOIN finance_ledger_entries e ON e.account_id = a.id AND e.org_id = a.org_id AND e.entry_date <= $2::date WHERE a.org_id = $1 AND a.subtype IS NOT NULL GROUP BY a.subtype, a.normal_balance`, [c.org.orgId, today])).rows;
+  const sub = (subs: string[], side: "debit" | "credit"): bigint => bal.filter((r: any) => subs.includes(r.subtype)).reduce<bigint>((x, r: any) => x + (side === "debit" ? fromDb(r.d) - fromDb(r.c) : fromDb(r.c) - fromDb(r.d)), 0n);
+  const cash = sub(["cash", "bank", "mobile_money"], "debit"); const ar = sub(["accounts_receivable", "contra_receivable"], "debit"); const ap = sub(["accounts_payable"], "credit");
+  const taxLiab = sub(["vat_payable", "nhil_payable", "getfund_payable", "wht_payable", "paye_payable", "cit_payable"], "credit");
+  const monthly = (await c.q.query<any>(
+    `SELECT p.id, p.name, p.start_date, COALESCE(SUM(e.credit - e.debit) FILTER (WHERE a.type = 'revenue'),0) AS rev, COALESCE(SUM(e.debit - e.credit) FILTER (WHERE a.type = 'expense'),0) AS exp
+       FROM finance_periods p LEFT JOIN finance_ledger_entries e ON e.period_id = p.id AND e.org_id = p.org_id AND e.journal_type <> 'closing' LEFT JOIN finance_accounts a ON a.id = e.account_id AND a.org_id = e.org_id
+      WHERE p.org_id = $1 AND p.fiscal_year_id = $2 GROUP BY p.id, p.name, p.start_date ORDER BY p.start_date`, [c.org.orgId, fy?.id ?? 0])).rows;
+  const posted = Number((await c.q.query<any>("SELECT count(*)::int AS n FROM finance_ledger_entries WHERE org_id = $1", [c.org.orgId])).rows[0].n);
+  const m = formatMoney;
+  return ok({
+    currency: org.functional_currency, as_of: today, fiscal_year: fy ? { id: fy.id, name: fy.name, from } : null, has_postings: posted > 0,
+    kpis: {
+      revenue: { value: m(revenue), formula: "Revenue accounts: credits - debits, fiscal year to date" },
+      cost_of_sales: { value: m(cogs), formula: "Cost of goods sold accounts: debits - credits, fiscal year to date" },
+      gross_profit: { value: m(revenue - cogs), formula: "Revenue - Cost of goods sold" },
+      expenses: { value: m(expenses), formula: "All expense accounts (incl. cost of sales): debits - credits, fiscal year to date" },
+      net_profit: { value: m(revenue - expenses), formula: "Revenue - All expenses" },
+      cash_and_bank: { value: m(cash), formula: "Cash, bank and mobile-money accounts: debits - credits, all time to today" },
+      receivables: { value: m(ar), formula: "Accounts receivable (net of allowance): debits - credits" },
+      payables: { value: m(ap), formula: "Accounts payable: credits - debits" },
+      tax_liabilities: { value: m(taxLiab), formula: "VAT, NHIL, GETFund, WHT, PAYE and CIT payable accounts: credits - debits" },
+      gross_margin_pct: revenue > 0n ? { value: pct(revenue - cogs, revenue), formula: "(Revenue - Cost of goods sold) / Revenue x 100" } : null,
+      net_margin_pct: revenue > 0n ? { value: pct(revenue - expenses, revenue), formula: "Net profit / Revenue x 100" } : null,
+    },
+    monthly: monthly.map((r: any) => ({ period_id: r.id, period: r.name, revenue: m(fromDb(r.rev)), expenses: m(fromDb(r.exp)), net: m(fromDb(r.rev) - fromDb(r.exp)) })),
+  });
+});
+
 const auditList = route("GET", "/audit", { perm: "audit:read" }, async (c) => {
   const limit = Math.min(200, Math.max(1, Number(qstr(c.query.limit)) || 50)); const offset = Math.max(0, Number(qstr(c.query.offset)) || 0);
   const entity = qstr(c.query.entity_type); const p: unknown[] = [c.org.orgId]; let w = "org_id = $1"; if (entity) { p.push(entity); w += ` AND entity_type = $${p.length}`; }
@@ -94,4 +140,4 @@ const auditList = route("GET", "/audit", { perm: "audit:read" }, async (c) => {
 });
 const auditVerify = route("GET", "/audit/verify", { perm: "audit:read" }, async (c) => ok(await verifyAuditChain(c.q, c.org.orgId)));
 
-export const reportRoutes: Route[] = [tb, ledger, overview, auditList, auditVerify];
+export const reportRoutes: Route[] = [tb, ledger, overview, dashboard, auditList, auditVerify];

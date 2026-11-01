@@ -10,6 +10,15 @@
   ledger, trial balance (unadjusted/adjusted/post-closing, comparative, CSV), overview, audit + chain verification.
 - Tests: `services/finance/__tests__/finance.pglite.test.ts` (11 tests, in-memory PostgreSQL via PGlite).
 
+## Finance UI + dashboard - 2026-10-31
+- API: `GET /api/finance/dashboard` (KPIs from posted ledger entries only, each with its formula; integer-only margin maths).
+- Frontend: `/finance/*` (lazy route, own organisation context + server-only API client with Idempotency-Key on every POST).
+  Screens: Finance Dashboard, Chart of Accounts, Journal Entries (live balance editor, approve/reject/post/reverse drawer),
+  General Ledger, Trial Balance (3 bases, movement, comparative, CSV), Accounting Periods (soft/hard close, year-end close),
+  Approval Centre, Audit Trail (+ chain verification), Company Settings (details, approval policy, people & roles, role matrix).
+  Sidebar group "Cintexa Finance" lists only finished modules.
+- Verified: repo-wide `npm run typecheck` clean, `vite build` succeeds, 12 backend tests pass. Screens have NOT yet been exercised in a browser.
+
 ## Not yet built (later phases)
-Frontend screens, sales/purchases/AR/AP, banking, payroll, inventory, assets, tax, budgets, statements, intelligence agents,
+Sales/purchases/AR/AP, banking, payroll, inventory, assets, tax, budgets, statements, intelligence agents,
 approvals engine, integrations, SaaS plans, Sales Management adapter, multi-currency revaluation, PDF/Excel export.

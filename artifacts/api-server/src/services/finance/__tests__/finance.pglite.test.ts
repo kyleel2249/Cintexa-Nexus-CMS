@@ -183,6 +183,18 @@ t("year-end closing transfers profit to retained earnings and locks the year", a
   assert.equal((await o("POST", `/fiscal-years/${fy.id}/close`)).json.code, "fiscal_year_closed");
 });
 
+t("dashboard KPIs are computed from posted ledger entries only", async () => {
+  const org = (await owner("POST", "/organisations", { legal_name: "Dash Co" }, { org: null })).json.organisation.id; const o = client("boss@example.com", "admin", Number(org));
+  await o("PATCH", "/organisation", { settings: { allow_self_approval: true } });
+  const empty = await o("GET", "/dashboard"); assert.equal(empty.json.has_postings, false); assert.equal(empty.json.kpis.revenue.value, "0.00");
+  const today = "2026-03-15"; // matches the pinned test clock
+  const mk = async (lines: Array<[string, string, string]>, post = true) => { const j = await o("POST", "/journals", J(lines, { entry_date: today })); assert.equal(j.status, 201, JSON.stringify(j.json)); if (post) { await o("POST", `/journals/${j.json.journal.id}/approve`); assert.equal((await o("POST", `/journals/${j.json.journal.id}/post`)).status, 200); } };
+  await mk([["1020", "1000.10", "0"], ["4000", "0", "1000.10"]]); await mk([["5000", "300.05", "0"], ["1020", "0", "300.05"]]); await mk([["6100", "100.00", "0"], ["1020", "0", "100.00"]]);
+  await mk([["1020", "9999.00", "0"], ["4000", "0", "9999.00"]], false); // draft: must not count
+  const d = (await o("GET", "/dashboard")).json.kpis;
+  assert.equal(d.revenue.value, "1000.10"); assert.equal(d.gross_profit.value, "700.05"); assert.equal(d.net_profit.value, "600.05"); assert.equal(d.cash_and_bank.value, "600.05"); assert.equal(d.gross_margin_pct.value, "70.00");
+});
+
 t("audit trail is hash-chained, append-only and verifiable; tampering is detected", async () => {
   const v = await owner("GET", "/audit/verify"); assert.equal(v.json.ok, true); assert.ok(v.json.checked > 10);
   const list = await owner("GET", "/audit", undefined, { query: { entity_type: "journal" } }); assert.ok(list.json.items.some((e: any) => e.action === "journal.post"));

@@ -53,6 +53,7 @@ const IntelligenceCentre = lazyWithRecovery(() => import("@/pages/intelligence")
 const WebsiteIntelligence = lazyWithRecovery(() => import("@/pages/website-intelligence"));
 const WebsiteIntelligenceShared = lazyWithRecovery(() => import("@/pages/website-intelligence/shared"));
 const SalesRoutes = lazyWithRecovery(() => import("@/pages/sales/routes").then((m) => ({ default: m.SalesRoutes })));
+const FinanceRoutes = lazyWithRecovery(() => import("@/pages/finance/routes").then((m) => ({ default: m.FinanceRoutes })));
 const PublicQuotation = lazyWithRecovery(() => import("@/pages/sales/public-quotation"));
 const PublicLeadForm = lazyWithRecovery(() => import("@/pages/sales/public-lead-form"));
 
@@ -130,6 +131,7 @@ function AppRoutes() {
             <Route path="/sentinel-key/:section?" component={SentinelKey} />
             <Route path="/subscribers" component={Subscribers} />
             <Route path="/sales/*?" component={SalesRoutes} />
+            <Route path="/finance/*?" component={FinanceRoutes} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>
