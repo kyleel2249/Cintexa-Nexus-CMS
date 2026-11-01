@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–4 API routes.
+ * CINTEXA CCDI — Phase 2–5 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -9,6 +9,7 @@ import { logger } from "../../lib/logger";
 import * as orch from "../../services/ccdi-orchestration";
 import * as engines from "../../services/ccdi-engines";
 import findingsRouter from "./findings";
+import advancedRouter from "./advanced";
 
 const router = Router();
 
@@ -21,17 +22,18 @@ router.get("/health", async (_req: Request, res: Response) => {
   const kill = await orch.isKillSwitchActive().catch(() => false);
   res.json({
     module: "ccdi",
-    phase: 4,
-    status: kill ? "emergency_stop" : "core_engines_ready",
+    phase: 5,
+    status: kill ? "emergency_stop" : "advanced_engines_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Core Security Engines (Phase 4) are active. Assessment jobs still require approved scopes and human approval.",
+      : "CCDI Advanced Security Engines (Phase 5) are active. Cloud, server, container, mobile, database and IoT assessments require approved scopes and human approval.",
   });
 });
 
-// Mount Phase 4 findings / attack-surface / assessment routes
+// Mount Phase 4 + Phase 5 routers
 router.use(findingsRouter);
+router.use(advancedRouter);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -482,7 +484,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 4,
+        phase: 5,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
