@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Sparkles, Landmark,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Sparkles, Landmark, Shield,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -22,6 +22,7 @@ const navGroups = [
   { title: "Intelligence", items: [
     { name: "AI Agents", href: "/agents", icon: Bot },
     { name: "Command Centre", href: "/intelligence", icon: BrainCircuit },
+    { name: "Cyber Defense (CCDI)", href: "/ccdi", icon: Shield },
     { name: "Business Diagnostic", href: "/diagnostics", icon: Activity },
     { name: "Diagnostic History", href: "/diagnostics?history=1", icon: History },
     { name: "Website Intelligence", href: "/website-intelligence", icon: Radar },
