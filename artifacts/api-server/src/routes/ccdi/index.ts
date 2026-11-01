@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–22 API routes.
+ * CINTEXA CCDI — Phase 2–23 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -27,6 +27,7 @@ import phase19Router from "./phase19";
 import phase20Router from "./phase20";
 import phase21Router from "./phase21";
 import phase22Router from "./phase22";
+import phase23Router from "./phase23";
 
 const router = Router();
 
@@ -40,16 +41,16 @@ router.get("/health", async (_req: Request, res: Response) => {
   await rbac.seedCcdiRbac().catch(() => undefined);
   res.json({
     module: "ccdi",
-    phase: 22,
-    status: kill ? "emergency_stop" : "retention_rate_limit_ready",
+    phase: 23,
+    status: kill ? "emergency_stop" : "production_readiness_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Phase 22 (data retention policies + API rate limiting) is active.",
+      : "CCDI Phase 23 (production readiness assessment) is active.",
   });
 });
 
-// Mount Phase 4–22 routers
+// Mount Phase 4–23 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);
@@ -67,6 +68,7 @@ router.use(phase19Router);
 router.use(phase20Router);
 router.use(phase21Router);
 router.use(phase22Router);
+router.use(phase23Router);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -537,7 +539,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 22,
+        phase: 23,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
