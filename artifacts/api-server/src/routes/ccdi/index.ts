@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–10 API routes.
+ * CINTEXA CCDI — Phase 2–11 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -9,6 +9,7 @@ import { logger } from "../../lib/logger";
 import * as orch from "../../services/ccdi-orchestration";
 import * as engines from "../../services/ccdi-engines";
 import * as rbac from "../../services/ccdi-rbac";
+import { requireCcdiPermission } from "../../services/ccdi-rbac";
 import findingsRouter from "./findings";
 import advancedRouter from "./advanced";
 import intelligenceRouter from "./intelligence";
@@ -16,6 +17,7 @@ import reportingRouter from "./reporting";
 import workersRouter from "./workers";
 import rbacRouter from "./rbac";
 import phase10Router from "./phase10";
+import webhooksRouter from "./webhooks";
 
 const router = Router();
 
@@ -29,16 +31,16 @@ router.get("/health", async (_req: Request, res: Response) => {
   await rbac.seedCcdiRbac().catch(() => undefined);
   res.json({
     module: "ccdi",
-    phase: 10,
-    status: kill ? "emergency_stop" : "deployment_hardening",
+    phase: 11,
+    status: kill ? "emergency_stop" : "integrations_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Phase 10 (connector health, report export, deployment readiness) is active. Live scanning remains disabled.",
+      : "CCDI Phase 11 (webhooks, SIEM export, stricter RBAC) is active. Live scanning remains disabled.",
   });
 });
 
-// Mount Phase 4–10 routers
+// Mount Phase 4–11 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);
@@ -46,6 +48,7 @@ router.use(reportingRouter);
 router.use(workersRouter);
 router.use(rbacRouter);
 router.use(phase10Router);
+router.use(webhooksRouter);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -227,7 +230,7 @@ router.post("/scopes/:id/submit", requireAuth, async (req: Request, res: Respons
   res.json(result);
 });
 
-router.post("/scopes/:id/decide", requireAuth, async (req: Request, res: Response) => {
+router.post("/scopes/:id/decide", requireAuth, requireCcdiPermission("ccdi.scope.approve"), async (req: Request, res: Response) => {
   const { organizationId, decision, note, expiresAt } = req.body ?? {};
   if (!organizationId || !["approved", "rejected"].includes(decision)) {
     res.status(400).json({ error: "organizationId and decision (approved|rejected) are required" });
@@ -304,7 +307,7 @@ router.post("/jobs/:id/submit", requireAuth, async (req: Request, res: Response)
   res.json(result);
 });
 
-router.post("/jobs/:id/decide", requireAuth, async (req: Request, res: Response) => {
+router.post("/jobs/:id/decide", requireAuth, requireCcdiPermission("ccdi.job.approve"), async (req: Request, res: Response) => {
   const { organizationId, decision, note } = req.body ?? {};
   if (!organizationId || !["approved", "rejected"].includes(decision)) {
     res.status(400).json({ error: "organizationId and decision (approved|rejected) are required" });
@@ -415,7 +418,7 @@ router.get("/kill-switch", requireAuth, async (_req: Request, res: Response) => 
   }
 });
 
-router.post("/kill-switch", requireAuth, async (req: Request, res: Response) => {
+router.post("/kill-switch", requireAuth, requireCcdiPermission("ccdi.platform.admin"), async (req: Request, res: Response) => {
   try {
     const { active, reason } = req.body ?? {};
     if (typeof active !== "boolean") {
@@ -496,7 +499,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 10,
+        phase: 11,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
