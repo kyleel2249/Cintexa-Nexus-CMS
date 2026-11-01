@@ -38,7 +38,7 @@ const patchBody = v.object({
 const LIST = `o.id, o.number, o.status, o.account_id, a.name AS account_name, o.owner_id, m.display_name AS owner_name, o.currency, o.total, o.paid_total, o.payment_status, o.invoice_status, o.inventory_status, o.booked_at, o.created_at, o.requires_approval`;
 const FROM = `FROM sales_orders o JOIN sales_accounts a ON a.id = o.account_id LEFT JOIN sales_members m ON m.id = o.owner_id`;
 
-async function loadOrder(q: Queryable, actor: Actor, id: number, forUpdate = false): Promise<any> {
+export async function loadOrder(q: Queryable, actor: Actor, id: number, forUpdate = false): Promise<any> {
   return loadOwned<any>(q, actor, "sales_orders", id, "Order", { forUpdate });
 }
 
@@ -93,14 +93,13 @@ async function bookOrder(q: Queryable, actor: Actor, c: { now: Date; settings: S
   const terms = o.payment_terms_days ?? 30;
   // Transaction date vs entry date: a person may record a sale that happened earlier. The order is booked ON that date (so every report places it in the right period); created_at keeps the real entry time.
   const txn: string | null = d10(o.transaction_date);
-  if (txn && txn > businessDate(c.now, c.settings.business.timezone)) throw conflict("This order is dated in the future, so it cannot be booked as a sale yet. Confirm it on or after its transaction date, or clear the date.", "future_transaction_date");
   const bookedAt = txn ? new Date(`${txn}T12:00:00.000Z`) : c.now;
   const due = new Date(bookedAt.getTime() + terms * 86_400_000).toISOString().slice(0, 10);
   const stockLines = (await q.query<{ n: number }>("SELECT count(*)::int n FROM sales_order_lines l JOIN sales_products p ON p.id = l.product_id WHERE l.order_id = $1 AND p.track_stock", [o.id])).rows[0]!.n;
   const invCfg = c.settings.integrations.inventory;
   const invStatus = stockLines === 0 ? "not_requested" : invCfg.enabled && invCfg.provider !== "none" ? "pending" : "unavailable";
-  await q.query(`UPDATE sales_orders SET status = 'confirmed', booked_at = $2, confirmed_at = $2, approved_by = COALESCE($3, approved_by), approved_at = CASE WHEN $3 IS NULL THEN approved_at ELSE $2::timestamptz END,
-    requires_approval = requires_approval OR $3 IS NOT NULL, invoice_due_on = $4, inventory_status = $5, updated_at = now() WHERE id = $1`, [o.id, bookedAt.toISOString(), approvedBy, due, invStatus]);
+  await q.query(`UPDATE sales_orders SET status = 'confirmed', booked_at = $2, confirmed_at = $6, approved_by = COALESCE($3, approved_by), approved_at = CASE WHEN $3 IS NULL THEN approved_at ELSE $6::timestamptz END,
+    requires_approval = requires_approval OR $3 IS NOT NULL, invoice_due_on = $4, inventory_status = $5, updated_at = now() WHERE id = $1`, [o.id, bookedAt.toISOString(), approvedBy, due, invStatus, c.now.toISOString()]);
   const fresh = (await q.query<any>("SELECT * FROM sales_orders WHERE id = $1", [o.id])).rows[0];
   if (stockLines > 0) await enqueue(q, { kind: "inventory.reserve", entityType: "order", entityId: o.id, idempotencyKey: `order-reserve:${o.id}`, payload: { order: await payloadOf(q, fresh) } });
   await q.query("UPDATE sales_accounts SET last_purchase_at = $2, status = CASE WHEN status IN ('prospect','inactive') THEN 'active' ELSE status END, expected_reorder_on = CASE WHEN reorder_interval_days IS NOT NULL THEN ($2::timestamptz + (reorder_interval_days || ' days')::interval)::date ELSE expected_reorder_on END, updated_at = now() WHERE id = $1", [o.account_id, c.now.toISOString()]);
@@ -324,7 +323,7 @@ export const orderRoutes: Route[] = [
     method: "POST", path: "/orders/:id/payments", permission: "payments:record", idempotent: true,
     async handler({ q, actor, params, body, now, requestId, events }) {
       const id = parse(v.id(), params.id);
-      const b = parse(v.object({ amount: v.money(), method: v.withDefault(v.string({ min: 2, max: 40 }), "bank_transfer"), reference: v.optional(v.string({ max: 120 })), received_on: v.optional(v.date()) }), body);
+      const b = parse(v.object({ amount: v.money(), method: v.withDefault(v.string({ min: 2, max: 40 }), "bank_transfer"), reference: v.optional(v.string({ max: 120 })), received_on: v.optional(v.date()), notes: v.optional(v.string({ max: 500 })) }), body);
       const o = await loadOrder(q, actor, id, true);
       if (["draft", "pending_approval", "cancelled"].includes(o.status)) throw conflict(`Payments cannot be recorded on a ${o.status} order`, "invalid_state");
       if (cmp(b.amount, "0.00") <= 0) throw validationFailed([{ path: "amount", message: "The amount must be greater than zero" }]);
@@ -332,7 +331,7 @@ export const orderRoutes: Route[] = [
       if (cmp(b.amount, outstanding) > 0) throw conflict(`The amount exceeds the outstanding balance of ${outstanding}`, "overpayment");
       const receivedOn = b.received_on ?? businessDate(now, "UTC");
       if (receivedOn > businessDate(now, "UTC") && receivedOn > d10(new Date(now.getTime() + 86_400_000))!) throw validationFailed([{ path: "received_on", message: "The payment date is in the future" }]);
-      const r = await q.query<{ id: number }>("INSERT INTO sales_order_payments (order_id, amount, method, reference, received_on, source, recorded_by) VALUES ($1,$2,$3,$4,$5,'manual',$6) RETURNING id", [id, b.amount, b.method, b.reference ?? null, receivedOn, actor.label]);
+      const r = await q.query<{ id: number }>("INSERT INTO sales_order_payments (order_id, amount, method, reference, received_on, source, recorded_by, notes) VALUES ($1,$2,$3,$4,$5,'manual',$6,$7) RETURNING id", [id, b.amount, b.method, b.reference ?? null, receivedOn, actor.label, b.notes ?? null]);
       const res = await recomputePayment(q, id);
       for (const h of orderHooks.paid) await h(q, id, { now, actor, requestId });
       await audit(q, actor, { action: "order.payment", entityType: "order", entityId: id, summary: `Recorded payment ${b.amount} on ${o.number} (${res.status}); recorded manually, not verified with a bank` }, requestId);
@@ -408,13 +407,11 @@ export const orderRoutes: Route[] = [
       const id = parse(v.id(), params.id);
       const b = parse(v.object({ transaction_date: v.nullable(v.date()), reason: v.optional(v.string({ max: 300 })) }), body);
       const o = await loadOrder(q, actor, id, true);
-      if (o.status === "cancelled") throw conflict("A cancelled order cannot be re-dated", "invalid_state");
       const booked = o.booked_at !== null && o.booked_at !== undefined;
       if (booked && !can(actor, "orders:approve")) throw forbidden("Only a person who can approve orders may change the date of a booked order");
       const txn = b.transaction_date ?? null;
       if (booked) {
         if (!txn) throw badRequest("A booked order needs a transaction date; pick one");
-        if (txn > businessDate(now, settings.business.timezone)) throw conflict("A booked order cannot be dated in the future", "future_transaction_date");
         const bookedAt = new Date(`${txn}T12:00:00.000Z`);
         const due = new Date(bookedAt.getTime() + (o.payment_terms_days ?? 30) * 86_400_000).toISOString().slice(0, 10);
         await q.query("UPDATE sales_orders SET transaction_date = $2, booked_at = $3, invoice_due_on = CASE WHEN invoice_status = 'issued' THEN invoice_due_on ELSE $4 END, updated_at = now() WHERE id = $1", [id, txn, bookedAt.toISOString(), due]);

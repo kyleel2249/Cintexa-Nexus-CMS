@@ -88,18 +88,19 @@ test("four currencies coexist on one account; each keeps its own currency and am
   for (const r of rows) { assert.equal(new Date(r.booked_at).toISOString().slice(0, 10), "2026-09-15"); assert.ok(new Date(r.created_at).getTime() > new Date("2026-10-01").getTime() || true); assert.notEqual(new Date(r.created_at).toISOString().slice(0, 10), "2026-09-15"); assert.equal(String(r.transaction_date instanceof Date ? r.transaction_date.toISOString() : r.transaction_date).slice(0, 10), "2026-09-15"); }
 });
 
-test("a future-dated order cannot be booked as a sale yet; re-dating is audited and permission-checked", async (t) => {
+test("orders may be dated in the past, today or the future at any stage; re-dating is audited, permission-checked and never touches actual event times", async (t) => {
   if (skip) return t.skip(skip);
   const ra = (await rep("POST", "/accounts", { name: "Rep Owned Ltd" })).json.id;
   const mk = await rep("POST", "/orders", { account_id: ra, currency: "USD", transaction_date: "2031-01-01", lines: [{ product_id: prod.USD!, quantity: 1, unit_price: "100.00" }] });
   assert.equal(mk.status, 201, JSON.stringify(mk.json)); const id = mk.json.id;
-  const c = await rep("POST", `/orders/${id}/confirm`); assert.equal(c.status, 409); assert.match(JSON.stringify(c.json), /future/i);
   assert.equal((await rep("PATCH", `/orders/${id}/transaction-date`, { transaction_date: "2026-09-10" })).status, 200, "before booking the owner may set the date");
   assert.equal((await rep("POST", `/orders/${id}/confirm`)).status, 200);
   assert.equal((await rep("PATCH", `/orders/${id}/transaction-date`, { transaction_date: "2026-09-11" })).status, 403, "re-dating a booked order needs approval rights");
   const re = await admin("PATCH", `/orders/${id}/transaction-date`, { transaction_date: "2026-09-11" }); assert.equal(re.status, 200, JSON.stringify(re.json));
   assert.equal(new Date((await db.query<any>("SELECT booked_at FROM sales_orders WHERE id = $1", [id])).rows[0].booked_at).toISOString().slice(0, 10), "2026-09-11");
-  assert.equal((await admin("PATCH", `/orders/${id}/transaction-date`, { transaction_date: "2031-01-01" })).status, 409, "booked orders cannot move into the future");
+  assert.equal((await admin("PATCH", `/orders/${id}/transaction-date`, { transaction_date: "2031-01-01" })).status, 200, "a booked order may be given a future booking date");
+  const row = (await db.query<any>("SELECT booked_at, confirmed_at, created_at FROM sales_orders WHERE id = $1", [id])).rows[0];
+  assert.equal(new Date(row.booked_at).toISOString().slice(0, 10), "2031-01-01"); assert.notEqual(new Date(row.confirmed_at).toISOString().slice(0, 10), "2031-01-01", "the real confirmation time is never rewritten");
   assert.ok((await db.query<any>("SELECT 1 FROM sales_audit_events WHERE action = 'order.transaction_date' AND entity_id = $1", [String(id)])).rows.length >= 2);
   await db.query("UPDATE sales_orders SET status = 'cancelled', cancelled_at = now() WHERE id = $1", [id]);
   void mgr;

@@ -19,6 +19,7 @@ export const SALES_NAV: SalesNavItem[] = [
   { key: "targets", label: "Sales Targets & Quotas", href: "/sales/targets", perm: "targets:read", icon: "Goal" },
   { key: "products", label: "Products & Price Books", href: "/sales/products", perm: "products:read", icon: "Tag" },
   { key: "quotations", label: "Quotations & Proposals", href: "/sales/quotations", perm: "quotations:read", icon: "FileText" },
+  { key: "packages", label: "Website Packages", href: "/sales/website-packages", perm: "orders:read", icon: "Tag" },
   { key: "orders", label: "Sales Orders", href: "/sales/orders", perm: "orders:read", icon: "ListChecks" },
   { key: "forecasting", label: "Sales Forecasting", href: "/sales/forecasting", perm: "forecast:read", icon: "TrendingUp" },
   { key: "performance", label: "Sales Performance", href: "/sales/performance", perm: "performance:read", anyPerm: ["performance:read", "leaderboard:read"], icon: "BarChart3" },

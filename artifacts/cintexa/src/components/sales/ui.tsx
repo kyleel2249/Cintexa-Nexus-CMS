@@ -8,6 +8,7 @@ import type { QueryState } from "@/lib/sales/hooks";
 import type { SalesApiError } from "@/lib/sales/api";
 import { useDebounced } from "@/lib/sales/hooks";
 import { Term, Hint } from "./Hint";
+import { exportPagePdf } from "@/lib/sales/page-pdf";
 
 // ───────── layout ─────────
 export function PageHeader({ title, description, actions, back }: { title: string; description?: ReactNode; actions?: ReactNode; back?: { href: string; label: string } }) {
@@ -24,7 +25,7 @@ export function PageHeader({ title, description, actions, back }: { title: strin
         <h2 className="truncate text-2xl font-semibold tracking-tight"><Term icon>{title}</Term></h2>
         {description && <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{description}</p>}
       </div>
-      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
+      <div className="flex flex-wrap items-center gap-2">{actions}<button type="button" onClick={() => exportPagePdf(title)} className="inline-flex h-8 items-center gap-1 rounded-md border px-2.5 text-xs font-medium hover:bg-secondary" title="Download what this page is showing (with its current filters) as a PDF" aria-label={`Download ${title} as PDF`}>PDF</button></div>
     </div>
   );
 }

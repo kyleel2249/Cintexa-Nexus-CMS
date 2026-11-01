@@ -20,10 +20,11 @@ import { searchRoutes, assistRoutes } from "./assist";
 import { agentRoutes } from "./agents";
 import { contextAssistRoutes } from "../agents/context";
 import { fxRoutes } from "../fx/routes";
+import { packageRoutes } from "./website-packages";
 
 /** Assemble every sales route into one table. Add new module route arrays here. */
 export function buildRouter(): Router {
   const r = new Router();
-  r.add(...memberRoutes, ...accountRoutes, ...leadRoutes, ...pipelineRoutes, ...activityRoutes, ...catalogRoutes, ...targetRoutes, ...quotationRoutes, ...orderRoutes, ...commissionRoutes, ...analyticsRoutes, ...retentionRoutes, ...campaignRoutes, ...competitorRoutes, ...automationRoutes, ...enablementRoutes, ...adminRoutes, ...searchRoutes, ...assistRoutes, ...agentRoutes, ...contextAssistRoutes, ...fxRoutes);
+  r.add(...memberRoutes, ...accountRoutes, ...leadRoutes, ...pipelineRoutes, ...activityRoutes, ...catalogRoutes, ...targetRoutes, ...quotationRoutes, ...orderRoutes, ...commissionRoutes, ...analyticsRoutes, ...retentionRoutes, ...campaignRoutes, ...competitorRoutes, ...automationRoutes, ...enablementRoutes, ...adminRoutes, ...searchRoutes, ...assistRoutes, ...agentRoutes, ...contextAssistRoutes, ...fxRoutes, ...packageRoutes);
   return r;
 }

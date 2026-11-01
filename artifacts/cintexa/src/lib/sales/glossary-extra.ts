@@ -5,6 +5,12 @@ const E = (category: Category, term: string, short: string, more?: string, alias
 export const GLOSSARY_EXTRA: GlossaryEntry[] = [
   E("Sections", "Bulk Enrichment", "Research up to 25 leads or accounts at once from their public websites, review what would be filled, then apply. Only empty fields are filled.", undefined, ["bulk enrich", "enrichment"]),
   E("Research & evidence", "Research selected", "Starts public-web research for every ticked record. Jobs queue and run a few at a time."), E("Research & evidence", "Nothing safe to fill", "Research found nothing that is empty on the record, confident enough (55%+), valid and free of conflicts."),
+  E("Sections", "Website Packages", "The four standard website packages (Basic, SEO Growth, SEO + AI Assistant + Customer Support, Premium Full Stack) with their features and 50% upfront + monthly instalment plans. Picking one on an order freezes its terms on that order.", undefined, ["website package"]),
+  E("Quotes & orders", "Booking date", "The date the sale is recorded against in reports. It can be past, today or future and can be changed later. It never changes when the order was entered, confirmed or paid.", undefined, ["transaction date"]),
+  E("Quotes & orders", "Upfront", "The first payment, normally 50%, paid before work starts.", undefined, ["upfront payment", "upfront received", "upfront expected"]),
+  E("Quotes & orders", "Instalment", "One of the equal payments (usually monthly) that settle the balance after the upfront payment. The last one absorbs rounding.", undefined, ["instalments", "monthly instalment"]),
+  E("Quotes & orders", "Payment plan", "The schedule of what the customer will pay and when. Recorded payments are separate and are applied to it in order.", undefined, ["payment plan & tracking", "change plan"]),
+  E("Quotes & orders", "Delete order", "Permanently removes an order. A deletion record (who, when, why, and what had been paid) is kept. Deleting does NOT refund any money received.", undefined, ["deleted orders", "deleted orders (audit)"]),
   // Leads & scoring
   E("Leads & contacts", "Leads & scoring", "Rules that turn recorded facts about a lead into a score, and how duplicates are detected."),
   E("Leads & contacts", "Source points", "Extra score points for leads from a source that tends to convert well (for example referrals)."),

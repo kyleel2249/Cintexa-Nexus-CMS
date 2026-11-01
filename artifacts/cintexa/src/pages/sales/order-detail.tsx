@@ -8,6 +8,9 @@ import { PAYMENT_METHODS } from "@/lib/sales/enums";
 import { dateOnly, dateTime, money } from "@/lib/sales/format";
 import { PageHeader, Panel, StatusBadge, QueryBoundary, DefinitionList, ConfirmModal, Modal, Field, Input, Select, MoneyInput, DataTable, Tag, EmptyState } from "@/components/sales/ui";
 import { FormModal } from "@/components/sales/forms";
+import { BookingDate, AgreementPanel, PaymentPlanPanel, DocumentsMenu, DeleteOrderDialog } from "@/components/sales/PackageOrder";
+import type { Agreement } from "@/lib/sales/order-docs";
+import { useLocation } from "wouter";
 import { todayIso } from "@/lib/sales/format";
 
 interface Line { id: number; description: string; sku?: string; quantity: string; fulfilled_quantity: string; returned_quantity: string; unit_price: string; total: string; discount_percent: string }
@@ -18,11 +21,13 @@ interface Detail {
   integrations: { kind: string; status: string; attempts: number; last_error: string | null; created_at: string }[];
   account: { id: number; name: string; number: string }; outstanding: string; statusNotes: { inventory?: string; invoice?: string };
 }
-type Dlg = null | "confirm" | "approve" | "reject" | "invoice" | "fulfil" | "complete" | "payment" | "return" | "cancel" | { reverse: string };
+type Dlg = null | "delete" | "confirm" | "approve" | "reject" | "invoice" | "fulfil" | "complete" | "payment" | "return" | "cancel" | { reverse: string };
 
 export default function OrderDetailPage({ id }: { id: string }) {
   const { can } = useSales();
   const q = useSalesQuery<Detail>(`/orders/${id}`);
+  const ag = useSalesQuery<Agreement>(`/orders/${id}/agreement`);
+  const [, nav] = useLocation();
   const [dlg, setDlg] = useState<Dlg>(null);
   const inv = ["/orders", "/dashboard", "/commissions", "/accounts"];
   const simple = (path: string, success: string, body?: unknown) => useSalesMutation(() => sales.post(`/orders/${id}/${path}`, body ?? {}), { invalidate: inv, success, onSuccess: () => setDlg(null) });
@@ -45,6 +50,8 @@ export default function OrderDetailPage({ id }: { id: string }) {
             <PageHeader back={{ href: "/sales/orders", label: "Orders" }} title={o.number}
               description={<span className="flex flex-wrap items-center gap-2"><StatusBadge status={st} /><StatusBadge status={o.payment_status} label={`Payment: ${o.payment_status}`} /><Link className="text-primary hover:underline" href={`/sales/accounts/${d.account.id}`}>{d.account.name}</Link></span>}
               actions={<>
+                {ag.data && <DocumentsMenu a={ag.data} />}
+                <BookingDate id={Number(id)} current={ag.data?.order.booking_date ?? null} locked={st === "cancelled" && !can("orders:approve")} />
                 {can("orders:write") && st === "draft" && <Button size="sm" disabled={confirm.pending} onClick={() => void confirm.run()}>Confirm order</Button>}
                 {can("orders:approve") && st === "pending_approval" && <><Button size="sm" disabled={approve.pending} onClick={() => void approve.run()}>Approve</Button><Button size="sm" variant="outline" onClick={() => setDlg("reject")}>Reject</Button></>}
                 {can("orders:fulfil") && live && o.invoice_status !== "issued" && <Button size="sm" variant="outline" disabled={invoice.pending} onClick={() => void invoice.run()}>Request invoice</Button>}
@@ -52,6 +59,7 @@ export default function OrderDetailPage({ id }: { id: string }) {
                 {can("orders:fulfil") && ["fulfilled", "partially_fulfilled", "confirmed", "processing"].includes(st) && <Button size="sm" variant="outline" disabled={complete.pending} onClick={() => void complete.run()}>Complete</Button>}
                 {can("payments:record") && live && <Button size="sm" onClick={() => setDlg("payment")}>Record payment</Button>}
                 {can("orders:fulfil") && live && <Button size="sm" variant="outline" onClick={() => setDlg("return")}>Record return</Button>}
+                {can("orders:delete") && <Button size="sm" variant="ghost" className="text-rose-500" onClick={() => setDlg("delete")}>Delete order</Button>}
                 {can("orders:cancel") && !["cancelled", "completed"].includes(st) && <Button size="sm" variant="ghost" className="text-rose-500" onClick={() => setDlg("cancel")}>Cancel order</Button>}
               </>} />
             {(confirm.error || approve.error || invoice.error || complete.error) && <p role="alert" className="mb-4 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm">{(confirm.error ?? approve.error ?? invoice.error ?? complete.error)!.message}</p>}
@@ -59,6 +67,8 @@ export default function OrderDetailPage({ id }: { id: string }) {
             {(d.statusNotes.inventory || d.statusNotes.invoice) && <p className="mb-4 rounded-md border bg-secondary/40 px-3 py-2 text-sm text-muted-foreground">{[d.statusNotes.inventory, d.statusNotes.invoice].filter(Boolean).join(" ")}</p>}
             <div className="grid gap-6 lg:grid-cols-3">
               <div className="space-y-6 lg:col-span-2">
+                {ag.data && ag.data.summary.schedule.length > 0 && <PaymentPlanPanel a={ag.data} onChanged={() => { void ag.refetch(); void q.refetch(); }} />}
+                {ag.data?.package && <AgreementPanel a={ag.data} />}
                 <Panel title="Lines" flush>
                   <DataTable caption="Order lines" rows={d.lines} rowKey={(l) => l.id} columns={[
                     { key: "d", header: "Item", render: (l) => <div><p>{l.description}</p>{l.sku && <p className="text-xs text-muted-foreground">{l.sku}</p>}</div> },
@@ -95,11 +105,12 @@ export default function OrderDetailPage({ id }: { id: string }) {
                 )}
               </div>
               <div className="space-y-6">
-                <Panel title="Details"><DefinitionList items={[{ label: "Booked", value: o.booked_at ? dateTime(o.booked_at) : "Not yet confirmed" }, { label: "Invoice", value: `${o.invoice_status}${o.invoice_ref ? ` (${o.invoice_ref})` : ""}` }, { label: "Invoice due", value: o.invoice_due_on ? dateOnly(o.invoice_due_on) : null }, { label: "Stock", value: o.inventory_status }, { label: "Requested delivery", value: o.requested_delivery_on ? dateOnly(o.requested_delivery_on) : null }, { label: "Payment terms", value: `${o.payment_terms_days} days` }, { label: "Shipping", value: o.shipping_address }, { label: "Billing", value: o.billing_address }, { label: "Notes", value: o.notes }, { label: "Cancelled", value: o.cancelled_at ? `${dateTime(o.cancelled_at)} — ${o.cancel_reason ?? ""}` : null }]} /></Panel>
+                <Panel title="Details"><DefinitionList items={[{ label: "Booking date", value: ag.data?.order.booking_date ? dateOnly(ag.data.order.booking_date) : "Not set" }, { label: "Entered", value: dateTime(o.created_at) }, { label: "Confirmed", value: o.confirmed_at ? dateTime(o.confirmed_at) : "Not yet confirmed" }, { label: "Invoice", value: `${o.invoice_status}${o.invoice_ref ? ` (${o.invoice_ref})` : ""}` }, { label: "Invoice due", value: o.invoice_due_on ? dateOnly(o.invoice_due_on) : null }, { label: "Stock", value: o.inventory_status }, { label: "Requested delivery", value: o.requested_delivery_on ? dateOnly(o.requested_delivery_on) : null }, { label: "Payment terms", value: `${o.payment_terms_days} days` }, { label: "Shipping", value: o.shipping_address }, { label: "Billing", value: o.billing_address }, { label: "Notes", value: o.notes }, { label: "Cancelled", value: o.cancelled_at ? `${dateTime(o.cancelled_at)} — ${o.cancel_reason ?? ""}` : null }]} /></Panel>
                 {d.integrations.length > 0 && <Panel title="Integration queue"><ul className="space-y-1 text-xs">{d.integrations.map((i, n) => <li key={n}><StatusBadge status={i.status} /> {i.kind}{i.last_error ? ` — ${i.last_error}` : ""}</li>)}</ul></Panel>}
               </div>
             </div>
 
+            <DeleteOrderDialog id={Number(id)} open={dlg === "delete"} onClose={() => setDlg(null)} onDeleted={() => nav("/sales/orders")} />
             <PaymentModal open={dlg === "payment"} onClose={() => setDlg(null)} id={id} outstanding={d.outstanding} />
             {dlg === "fulfil" && <LineQtyModal id={id} lines={d.lines.map((l) => ({ ...l, room: String(Number(l.quantity) - Number(l.fulfilled_quantity)) }))} kind="fulfil" onClose={() => setDlg(null)} />}
             <FormModal open={dlg === "return"} onClose={() => setDlg(null)} title="Record return" description="Credits the returned value against the order and reduces revenue and commission." submitLabel="Record return" success="Return recorded" invalidate={inv}
@@ -120,13 +131,15 @@ function PaymentModal({ open, onClose, id, outstanding }: { open: boolean; onClo
   const [method, setMethod] = useState("bank_transfer");
   const [reference, setReference] = useState("");
   const [on, setOn] = useState(todayIso());
-  const m = useSalesMutation(() => sales.post(`/orders/${id}/payments`, { amount, method, ...(reference ? { reference } : {}), received_on: on }, { idempotent: true }), { invalidate: ["/orders", "/dashboard", "/commissions"], success: "Payment recorded", onSuccess: () => { setAmount(""); setReference(""); onClose(); } });
+  const [notes, setNotes] = useState("");
+  const m = useSalesMutation(() => sales.post(`/orders/${id}/payments`, { amount, method, ...(reference ? { reference } : {}), ...(notes ? { notes } : {}), received_on: on }, { idempotent: true }), { invalidate: ["/orders", "/dashboard", "/commissions", "/fx"], success: "Payment recorded", onSuccess: () => { setAmount(""); setReference(""); onClose(); } });
   return (
     <Modal open={open} onClose={onClose} title="Record payment" size="sm" description={`Outstanding: ${money(outstanding)}. This records what you were told or saw — it is not verified with a bank.`} footer={<><Button variant="outline" onClick={onClose}>Cancel</Button><Button disabled={!amount || Number(amount) <= 0 || m.pending} onClick={() => void m.run()}>Record</Button></>}>
       <Field label="Amount" required><MoneyInput value={amount} onChange={setAmount} /></Field>
       <Field label="Method"><Select value={method} onChange={(e) => setMethod(e.target.value)}>{PAYMENT_METHODS.map((p) => <option key={p.value} value={p.value}>{p.label}</option>)}</Select></Field>
       <Field label="Reference"><Input value={reference} onChange={(e) => setReference(e.target.value)} /></Field>
-      <Field label="Received on"><Input type="date" value={on} onChange={(e) => setOn(e.target.value)} /></Field>
+      <Field label="Received on" explain="The day the money actually arrived. Changing the order's booking date never changes this."><Input type="date" value={on} onChange={(e) => setOn(e.target.value)} /></Field>
+      <Field label="Notes"><Input value={notes} onChange={(e) => setNotes(e.target.value)} placeholder="e.g. upfront, early settlement" /></Field>
       {m.error && <p role="alert" className="text-sm text-rose-500">{m.error.message}</p>}
     </Modal>
   );

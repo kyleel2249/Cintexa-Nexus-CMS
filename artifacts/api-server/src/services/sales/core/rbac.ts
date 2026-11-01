@@ -20,7 +20,7 @@ export const PERMISSIONS = [
   "targets:read", "targets:write", "targets:approve",
   "products:read", "products:write", "pricebooks:write", "cost:read",
   "quotations:read", "quotations:write", "quotations:approve", "quotations:send",
-  "orders:read", "orders:write", "orders:approve", "orders:cancel", "orders:fulfil", "payments:record",
+  "orders:read", "orders:write", "orders:approve", "orders:delete", "orders:cancel", "orders:fulfil", "payments:record",
   "forecast:read", "forecast:override",
   "performance:read", "leaderboard:read",
   "teams:read", "teams:write",
@@ -63,7 +63,7 @@ const MANAGERS = new Set<Permission>([
 
 export const ROLE_PERMISSIONS: Record<SalesRole, Set<Permission>> = {
   sales_admin: ALL,
-  sales_director: without(ALL, "settings:write", "members:write"),
+  sales_director: without(ALL, "settings:write", "members:write", "orders:delete"),
   sales_manager: MANAGERS,
   sales_rep: REPS,
   sales_analyst: new Set<Permission>([
