@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–8 API routes.
+ * CINTEXA CCDI — Phase 2–9 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -8,11 +8,13 @@ import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as orch from "../../services/ccdi-orchestration";
 import * as engines from "../../services/ccdi-engines";
+import * as rbac from "../../services/ccdi-rbac";
 import findingsRouter from "./findings";
 import advancedRouter from "./advanced";
 import intelligenceRouter from "./intelligence";
 import reportingRouter from "./reporting";
 import workersRouter from "./workers";
+import rbacRouter from "./rbac";
 
 const router = Router();
 
@@ -23,23 +25,26 @@ function actor(req: Request): string {
 // ── Health / readiness ─────────────────────────────────────────────────────
 router.get("/health", async (_req: Request, res: Response) => {
   const kill = await orch.isKillSwitchActive().catch(() => false);
+  // Best-effort RBAC seed on health checks (idempotent)
+  await rbac.seedCcdiRbac().catch(() => undefined);
   res.json({
     module: "ccdi",
-    phase: 8,
-    status: kill ? "emergency_stop" : "workers_ready",
+    phase: 9,
+    status: kill ? "emergency_stop" : "production_hardening",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Worker Foundations & UI (Phase 8) are active. Isolated workers may claim approved queued jobs; no live scanners are invoked by the control plane.",
+      : "CCDI Phase 9 (RBAC, navigation, production readiness) is active. Live scanners still require dedicated workers.",
   });
 });
 
-// Mount Phase 4–8 routers
+// Mount Phase 4–9 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);
 router.use(reportingRouter);
 router.use(workersRouter);
+router.use(rbacRouter);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -490,7 +495,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 8,
+        phase: 9,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
