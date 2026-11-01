@@ -5,10 +5,11 @@ import { FINANCE_ROLES, ROLE_PERMISSIONS, hasPermission } from "../core/rbac";
 import { conflict, notFound, forbidden } from "../core/errors";
 import { GHANA_SME_COA } from "./coa-template";
 import { createFiscalYear } from "./periods";
+import { seedGhanaTax } from "./tax";
 import type { Q } from "../core/types";
 
 const ORG_COLS = "id, legal_name, trading_name, registration_number, tax_id, country, functional_currency, timezone, fiscal_year_start_month, accounting_method, accounting_framework, address, contact, branding, settings, created_at, updated_at";
-export const DEFAULT_SETTINGS = { journal_approval_required: true, allow_self_approval: false };
+export const DEFAULT_SETTINGS = { journal_approval_required: true, document_approval_required: true, allow_self_approval: false };
 
 export async function seedChart(q: Q, orgId: number): Promise<number> {
   const ids = new Map<string, number>();
@@ -49,6 +50,7 @@ const create = route("POST", "/organisations", { needsOrg: false, platformAdmin:
   const orgId = Number(org.id);
   await c.q.query("INSERT INTO finance_members (org_id, user_sub, email, display_name, role) VALUES ($1,$2,$3,$4,'organisation_owner')", [orgId, c.actor.sub, c.actor.email || `${c.actor.sub}@unknown.invalid`, c.actor.label]);
   const accounts = template === "ghana_sme" ? await seedChart(c.q, orgId) : 0;
+  if (template === "ghana_sme") await seedGhanaTax(c.q, orgId);
   const today = todayIn(tz, c.now);
   const y = firstYear ?? Number(today.slice(0, 4));
   const startYear = startMonth > Number(today.slice(5, 7)) && !firstYear ? y - 1 : y;
@@ -84,8 +86,8 @@ const patch = route("PATCH", "/organisation", { perm: "finance:admin" }, async (
   let settings = before.settings ?? {};
   if (b.settings !== undefined) {
     const s = asObject(b.settings); const sv = new V(s, "settings.");
-    const a = sv.bool("journal_approval_required"); const self = sv.bool("allow_self_approval"); sv.done();
-    settings = { ...settings, ...(a !== undefined ? { journal_approval_required: a } : {}), ...(self !== undefined ? { allow_self_approval: self } : {}) };
+    const a = sv.bool("journal_approval_required"); const self = sv.bool("allow_self_approval"); const doc = sv.bool("document_approval_required"); sv.done();
+    settings = { ...settings, ...(a !== undefined ? { journal_approval_required: a } : {}), ...(self !== undefined ? { allow_self_approval: self } : {}), ...(doc !== undefined ? { document_approval_required: doc } : {}) };
   }
   const after = (await c.q.query<any>(
     `UPDATE finance_organisations SET legal_name = COALESCE($2, legal_name), trading_name = COALESCE($3, trading_name), registration_number = COALESCE($4, registration_number), tax_id = COALESCE($5, tax_id),

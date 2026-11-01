@@ -10,7 +10,7 @@ import { accountRoutes } from "../modules/accounts";
 import { periodRoutes } from "../modules/periods";
 import { journalRoutes } from "../modules/journals";
 import { reportRoutes } from "../modules/reports";
-import { FINANCE_SCHEMA_STATEMENTS } from "../../../../../../lib/db/src/finance-schema";
+import { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS } from "../../../../../../lib/db/src/finance-schema";
 import { verifyAuditChain } from "../core/audit";
 import type { Db, Queryable } from "../core/types";
 
@@ -39,8 +39,8 @@ before(async () => {
     const mod = process.env.FINANCE_TEST_DATABASE_URL ? null : await import("@electric-sql/pglite" as string);
     if (mod) {
       pg = new mod.PGlite(undefined, { parsers }); await pg.waitReady;
-      for (const s of FINANCE_SCHEMA_STATEMENTS) await pg.exec(`${s.trim().replace(/;$/, "")};`);
-      for (const s of FINANCE_SCHEMA_STATEMENTS) await pg.exec(`${s.trim().replace(/;$/, "")};`); // idempotent: second boot must be a no-op
+      for (const s of [...FINANCE_SCHEMA_STATEMENTS, ...FINANCE_PHASE4_STATEMENTS]) await pg.exec(`${s.trim().replace(/;$/, "")};`);
+      for (const s of [...FINANCE_SCHEMA_STATEMENTS, ...FINANCE_PHASE4_STATEMENTS]) await pg.exec(`${s.trim().replace(/;$/, "")};`); // idempotent: second boot must be a no-op
       const base = wrap(pg); db = { query: base.query, tx: (fn) => pg.transaction((t: any) => fn(wrap(t))) };
     } else throw new Error("Real-PostgreSQL mode is run through the Sales adapter in CI");
   } catch (e) { skip = `PGlite unavailable: ${e instanceof Error ? e.message : e}`; return; }

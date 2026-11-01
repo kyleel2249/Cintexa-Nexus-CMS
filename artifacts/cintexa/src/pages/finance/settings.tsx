@@ -20,10 +20,10 @@ export default function SettingsPage() {
 
 function Company() {
   const { can, reload } = useFinance();
-  const q = useFinanceQuery<{ organisation: Org & { settings: { journal_approval_required?: boolean; allow_self_approval?: boolean } } }>("/organisation");
+  const q = useFinanceQuery<{ organisation: Org & { settings: { journal_approval_required?: boolean; document_approval_required?: boolean; allow_self_approval?: boolean } } }>("/organisation");
   const admin = can("finance:admin");
-  const [v, setV] = useState<Partial<Org>>({}); const [policy, setPolicy] = useState({ journal_approval_required: true, allow_self_approval: false });
-  useEffect(() => { const o = q.data?.organisation; if (o) { setV(o); setPolicy({ journal_approval_required: o.settings?.journal_approval_required !== false, allow_self_approval: o.settings?.allow_self_approval === true }); } }, [q.data]);
+  const [v, setV] = useState<Partial<Org>>({}); const [policy, setPolicy] = useState({ journal_approval_required: true, document_approval_required: true, allow_self_approval: false });
+  useEffect(() => { const o = q.data?.organisation; if (o) { setV(o); setPolicy({ journal_approval_required: o.settings?.journal_approval_required !== false, document_approval_required: o.settings?.document_approval_required !== false, allow_self_approval: o.settings?.allow_self_approval === true }); } }, [q.data]);
   const save = useFinanceMutation(() => fin.patch("/organisation", { legal_name: v.legal_name, trading_name: v.trading_name || undefined, registration_number: v.registration_number || undefined, tax_id: v.tax_id || undefined, timezone: v.timezone, accounting_method: v.accounting_method, accounting_framework: v.accounting_framework, settings: policy }), { invalidate: ["/organisation", "/audit"], success: "Settings saved", onSuccess: () => reload() });
   const set = (k: keyof Org) => (e: { target: { value: string } }) => setV((p) => ({ ...p, [k]: e.target.value }));
   return (
@@ -39,6 +39,7 @@ function Company() {
         <Field label="Accounting framework"><Select disabled={!admin} value={v.accounting_framework ?? "ifrs_sme"} onChange={set("accounting_framework")}><option value="ifrs_sme">IFRS for SMEs</option><option value="ifrs">Full IFRS</option><option value="gaap_local">Local GAAP</option></Select></Field>
         <div className="sm:col-span-2"><p className="mb-2 text-sm font-medium">Journal approval policy</p>
           <Checkbox disabled={!admin} label="Journals must be approved before they can be posted" checked={policy.journal_approval_required} onChange={(e) => setPolicy({ ...policy, journal_approval_required: e.target.checked })} />
+          <Checkbox disabled={!admin} label="Invoices and supplier bills must be approved before they are issued or posted" checked={policy.document_approval_required} onChange={(e) => setPolicy({ ...policy, document_approval_required: e.target.checked })} />
           <Checkbox disabled={!admin || !policy.journal_approval_required} label="Allow a person to approve their own journal (weakens separation of duties - not recommended)" checked={policy.allow_self_approval} onChange={(e) => setPolicy({ ...policy, allow_self_approval: e.target.checked })} /></div>
         {admin && <div className="sm:col-span-2"><Button disabled={save.pending} onClick={() => void save.run()}>{save.pending ? "Saving…" : "Save changes"}</Button></div>}
       </div></Panel>)}</QueryBoundary>

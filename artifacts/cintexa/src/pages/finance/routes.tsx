@@ -15,6 +15,14 @@ const TrialBalance = lazy(() => import("./trial-balance"));
 const Periods = lazy(() => import("./periods"));
 const Approvals = lazy(() => import("./approvals"));
 const Audit = lazy(() => import("./audit"));
+const Customers = lazy(() => import("./customers"));
+const Suppliers = lazy(() => import("./suppliers"));
+const Invoices = lazy(() => import("./invoices"));
+const Bills = lazy(() => import("./bills"));
+const Receivables = lazy(() => import("./receivables"));
+const Payables = lazy(() => import("./payables"));
+const Payments = lazy(() => import("./payments"));
+const Tax = lazy(() => import("./tax"));
 const Settings = lazy(() => import("./settings"));
 
 const spinner = <div className="flex min-h-[300px] items-center justify-center"><Spinner className="h-6 w-6" /></div>;
@@ -86,6 +94,14 @@ export function FinanceRoutes() {
             {R("/finance/ledger", Ledger, "ledger:read")}
             {R("/finance/trial-balance", TrialBalance, "ledger:read")}
             {R("/finance/periods", Periods, "finance:read")}
+            {R("/finance/customers", Customers, "finance:read")}
+            {R("/finance/invoices", Invoices, "finance:read")}
+            {R("/finance/receivables", Receivables, "ledger:read")}
+            {R("/finance/suppliers", Suppliers, "finance:read")}
+            {R("/finance/bills", Bills, "finance:read")}
+            {R("/finance/payables", Payables, "ledger:read")}
+            {R("/finance/payments", Payments, "finance:read")}
+            {R("/finance/tax", Tax, "finance:read")}
             {R("/finance/approvals", Approvals, "finance:approve")}
             {R("/finance/audit", Audit, "audit:read")}
             {R("/finance/settings", Settings, "finance:read")}

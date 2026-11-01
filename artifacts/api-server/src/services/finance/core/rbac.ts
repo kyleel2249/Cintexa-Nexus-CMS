@@ -19,7 +19,7 @@ export const ROLE_PERMISSIONS: Record<FinanceRole, Permission[]> = {
   organisation_owner: ALL,
   finance_director: ALL,
   financial_controller: ALL.filter((p) => p !== "finance:admin"),
-  chief_accountant: [...READ, "finance:create", "finance:update", "finance:approve", "finance:post", "finance:reverse", "finance:export", "ledger:post", "reports:export", "audit:read", "invoices:manage", "tax:manage", "period:override"],
+  chief_accountant: [...READ, "finance:create", "finance:update", "finance:approve", "finance:post", "finance:reverse", "finance:export", "ledger:post", "reports:export", "audit:read", "invoices:manage", "tax:manage", "payments:approve", "period:override"],
   accountant: [...READ, "finance:create", "finance:update", "finance:export", "ledger:post", "reports:export", "invoices:manage"],
   ar_officer: [...READ, "finance:create", "finance:update", "invoices:manage"],
   ap_officer: [...READ, "finance:create", "finance:update"],

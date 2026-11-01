@@ -5,10 +5,15 @@ import { accountRoutes } from "./modules/accounts";
 import { periodRoutes } from "./modules/periods";
 import { journalRoutes } from "./modules/journals";
 import { reportRoutes } from "./modules/reports";
+import { taxRoutes } from "./modules/tax";
+import { partyRouteList } from "./modules/parties";
+import { invoiceRoutes } from "./modules/invoices";
+import { billRoutes } from "./modules/bills";
+import { ageingRoutes } from "./modules/ageing";
 import { logger } from "../../lib/logger";
 import type { Db, FinanceRequest, FinanceResponse } from "./core/types";
 
-export const financeRoutes = [...organisationRoutes, ...accountRoutes, ...periodRoutes, ...journalRoutes, ...reportRoutes];
+export const financeRoutes = [...organisationRoutes, ...accountRoutes, ...periodRoutes, ...journalRoutes, ...reportRoutes, ...taxRoutes, ...partyRouteList, ...invoiceRoutes, ...billRoutes, ...ageingRoutes];
 export const financeDeps: Deps = { now: () => new Date(), log: { error: (o, m) => logger.error(o as object, m) } };
 export { dispatch };
 
