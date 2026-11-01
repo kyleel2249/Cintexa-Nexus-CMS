@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–16 API routes.
+ * CINTEXA CCDI — Phase 2–17 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -21,6 +21,7 @@ import webhooksRouter from "./webhooks";
 import adaptersRouter from "./adapters";
 import phase15Router from "./phase15";
 import remediationRouter from "./remediation";
+import phase17Router from "./phase17";
 
 const router = Router();
 
@@ -34,16 +35,16 @@ router.get("/health", async (_req: Request, res: Response) => {
   await rbac.seedCcdiRbac().catch(() => undefined);
   res.json({
     module: "ccdi",
-    phase: 16,
-    status: kill ? "emergency_stop" : "remediation_ready",
+    phase: 17,
+    status: kill ? "emergency_stop" : "sla_metrics_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Phase 16 (remediation workflow + finding assignment) is active.",
+      : "CCDI Phase 17 (SLA policies + operational metrics) is active.",
   });
 });
 
-// Mount Phase 4–16 routers
+// Mount Phase 4–17 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);
@@ -55,6 +56,7 @@ router.use(webhooksRouter);
 router.use(adaptersRouter);
 router.use(phase15Router);
 router.use(remediationRouter);
+router.use(phase17Router);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -505,7 +507,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 16,
+        phase: 17,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
