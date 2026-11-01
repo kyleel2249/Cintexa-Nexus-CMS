@@ -1,16 +1,14 @@
 /**
- * CINTEXA CCDI — Phase 2 + Phase 3 API routes.
+ * CINTEXA CCDI — Phase 2–4 API routes.
  * Mounted at /api/ccdi
- *
- * Phase 3 adds: scopes, jobs, approvals, connectors, evidence, emergency stop.
- * No live scanner execution occurs here; the control plane is complete and ready
- * for isolated workers in subsequent phases.
  */
 import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
 import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as orch from "../../services/ccdi-orchestration";
+import * as engines from "../../services/ccdi-engines";
+import findingsRouter from "./findings";
 
 const router = Router();
 
@@ -23,14 +21,17 @@ router.get("/health", async (_req: Request, res: Response) => {
   const kill = await orch.isKillSwitchActive().catch(() => false);
   res.json({
     module: "ccdi",
-    phase: 3,
-    status: kill ? "emergency_stop" : "orchestration_ready",
+    phase: 4,
+    status: kill ? "emergency_stop" : "core_engines_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Secure Execution control plane is active. Isolated workers and live connectors arrive in later phases.",
+      : "CCDI Core Security Engines (Phase 4) are active. Assessment jobs still require approved scopes and human approval.",
   });
 });
+
+// Mount Phase 4 findings / attack-surface / assessment routes
+router.use(findingsRouter);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -67,7 +68,6 @@ router.post("/organizations", requireAuth, async (req: Request, res: Response) =
        VALUES ($1,$2,$3,'organization.create','organization',$4,$5)`,
       [rows[0].id, actor(req), req.auth?.email ?? null, rows[0].id, JSON.stringify({ name: rows[0].name })],
     );
-    // Register builtin connector templates for the new org
     await orch.ensureBuiltinConnectors(rows[0].id).catch(() => undefined);
     res.status(201).json({ organization: rows[0] });
   } catch (err: any) {
@@ -120,22 +120,21 @@ router.post("/assets", requireAuth, async (req: Request, res: Response) => {
       res.status(400).json({ error: "Invalid assetType" });
       return;
     }
-    const { rows } = await pool.query(
-      `INSERT INTO ccdi_assets (organization_id, name, asset_type, identifier, tags, metadata, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       RETURNING id, organization_id, name, asset_type, identifier, status, ownership_verified, risk_level, tags, created_at, updated_at`,
-      [
-        organizationId, String(name).trim(), assetType, String(identifier).trim(),
-        Array.isArray(tags) ? tags : [], metadata && typeof metadata === "object" ? metadata : {},
-        actor(req),
-      ],
-    );
+    const asset = await engines.discoverOrUpsertAsset({
+      organizationId,
+      name: String(name).trim(),
+      assetType,
+      identifier: String(identifier).trim(),
+      tags: Array.isArray(tags) ? tags : [],
+      metadata: metadata && typeof metadata === "object" ? metadata : {},
+      createdBy: actor(req),
+    });
     await pool.query(
       `INSERT INTO ccdi_audit_logs (organization_id, actor_ref, actor_email, action, entity_type, entity_id, meta)
        VALUES ($1,$2,$3,'asset.create','asset',$4,$5)`,
-      [organizationId, actor(req), req.auth?.email ?? null, rows[0].id, JSON.stringify({ name: rows[0].name, assetType })],
+      [organizationId, actor(req), req.auth?.email ?? null, asset.id, JSON.stringify({ name: asset.name, assetType })],
     );
-    res.status(201).json({ asset: rows[0] });
+    res.status(201).json({ asset });
   } catch (err: any) {
     if (err?.code === "23505") {
       res.status(409).json({ error: "Asset identifier already exists for this organisation" });
@@ -179,8 +178,7 @@ router.post("/scopes", requireAuth, async (req: Request, res: Response) => {
     const { rows } = await pool.query(
       `INSERT INTO ccdi_scopes
          (organization_id, name, description, asset_ids, allowed_categories, excluded_targets, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7)
-       RETURNING *`,
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
       [
         organizationId, String(name).trim(), description ?? null,
         Array.isArray(assetIds) ? assetIds : [],
@@ -320,7 +318,7 @@ router.post("/jobs/:id/cancel", requireAuth, async (req: Request, res: Response)
   res.json(result);
 });
 
-// ── Connectors ─────────────────────────────────────────────────────────────
+// ── Connectors / Evidence / Approvals / Kill-switch / Audit ────────────────
 router.get("/connectors", requireAuth, async (req: Request, res: Response) => {
   try {
     const orgId = typeof req.query.organizationId === "string" ? req.query.organizationId : null;
@@ -338,7 +336,7 @@ router.get("/connectors", requireAuth, async (req: Request, res: Response) => {
     );
     res.json({
       connectors: rows,
-      note: "Connectors are registered. 'configured' / 'healthy' status and actual tool execution require later phases and verified credentials.",
+      note: "Connectors are registered. Actual tool execution requires later worker phases and verified credentials.",
     });
   } catch (err) {
     logger.error({ err }, "ccdi.connectors.list failed");
@@ -346,7 +344,6 @@ router.get("/connectors", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// ── Evidence (metadata only) ───────────────────────────────────────────────
 router.get("/evidence", requireAuth, async (req: Request, res: Response) => {
   try {
     const orgId = typeof req.query.organizationId === "string" ? req.query.organizationId : null;
@@ -371,7 +368,6 @@ router.get("/evidence", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// ── Approvals inbox ────────────────────────────────────────────────────────
 router.get("/approvals", requireAuth, async (req: Request, res: Response) => {
   try {
     const orgId = typeof req.query.organizationId === "string" ? req.query.organizationId : null;
@@ -395,7 +391,6 @@ router.get("/approvals", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// ── Emergency stop ─────────────────────────────────────────────────────────
 router.get("/kill-switch", requireAuth, async (_req: Request, res: Response) => {
   try {
     const { rows } = await pool.query(`SELECT * FROM ccdi_kill_switch WHERE id = 1`);
@@ -421,7 +416,6 @@ router.post("/kill-switch", requireAuth, async (req: Request, res: Response) => 
   }
 });
 
-// ── Audit ──────────────────────────────────────────────────────────────────
 router.get("/audit", requireAuth, async (req: Request, res: Response) => {
   try {
     const orgId = typeof req.query.organizationId === "string" ? req.query.organizationId : null;
@@ -445,7 +439,7 @@ router.get("/audit", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// ── Command Centre ─────────────────────────────────────────────────────────
+// ── Command Centre (evidence-backed) ───────────────────────────────────────
 router.get("/command-centre", requireAuth, async (req: Request, res: Response) => {
   try {
     const orgId = typeof req.query.organizationId === "string" ? req.query.organizationId : null;
@@ -456,7 +450,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
       orgFilter = `AND organization_id = $1`;
     }
 
-    const [assetsRes, jobsRes, auditRes, killRes] = await Promise.all([
+    const [assetsRes, jobsRes, auditRes, killRes, findings] = await Promise.all([
       pool.query(
         `SELECT count(*)::int AS total,
                 count(*) FILTER (WHERE status = 'approved')::int AS approved,
@@ -478,15 +472,17 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         params,
       ),
       pool.query(`SELECT active FROM ccdi_kill_switch WHERE id = 1`),
+      engines.findingsSummary(orgId),
     ]);
 
     res.json({
       summary: {
         assets: assetsRes.rows[0] ?? { total: 0, approved: 0, high_risk: 0 },
         jobs: jobsRes.rows[0] ?? { total: 0, running: 0, queued: 0, pending_approval: 0 },
+        findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 3,
+        phase: 4,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
