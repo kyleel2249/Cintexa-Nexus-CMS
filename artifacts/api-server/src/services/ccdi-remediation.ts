@@ -1,9 +1,10 @@
 /**
- * CINTEXA CCDI — Phase 16 Remediation Workflow & Finding Assignment
+ * CINTEXA CCDI — Phase 16–17 Remediation Workflow & Finding Assignment
  */
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
 import * as webhooks from "./ccdi-webhooks";
+import * as sla from "./ccdi-sla";
 
 const TASK_STATUSES = ["open", "in_progress", "completed", "cancelled", "deferred"] as const;
 const PRIORITIES = ["low", "medium", "high", "critical"] as const;
@@ -21,12 +22,19 @@ export async function createRemediationTask(opts: {
   if (!opts.title?.trim()) return { error: "title is required", status: 400 as const };
   const priority = PRIORITIES.includes(opts.priority as any) ? opts.priority : "medium";
 
+  let severityForSla = priority;
   if (opts.findingId) {
     const { rows } = await pool.query(
-      `SELECT id FROM ccdi_findings WHERE id = $1 AND organization_id = $2`,
+      `SELECT id, severity FROM ccdi_findings WHERE id = $1 AND organization_id = $2`,
       [opts.findingId, opts.organizationId],
     );
     if (!rows[0]) return { error: "Finding not found in organisation", status: 404 as const };
+    severityForSla = rows[0].severity || priority;
+  }
+
+  let dueDate = opts.dueDate ?? null;
+  if (!dueDate) {
+    dueDate = await sla.computeDueDateForSeverity(opts.organizationId, String(severityForSla));
   }
 
   const { rows } = await pool.query(
@@ -41,7 +49,7 @@ export async function createRemediationTask(opts: {
       opts.description ?? null,
       priority,
       opts.assigneeRef ?? null,
-      opts.dueDate ?? null,
+      dueDate,
       opts.createdBy,
     ],
   );
@@ -63,7 +71,7 @@ export async function createRemediationTask(opts: {
       opts.organizationId,
       opts.createdBy,
       rows[0].id,
-      JSON.stringify({ findingId: opts.findingId, priority }),
+      JSON.stringify({ findingId: opts.findingId, priority, dueDate }),
     ],
   );
 
@@ -243,4 +251,4 @@ export async function remediationSummary(organizationId: string) {
   return rows[0] ?? { total: 0, open: 0, in_progress: 0, completed: 0, deferred: 0, overdue: 0 };
 }
 
-logger.info("CCDI Phase 16 remediation service loaded");
+logger.info("CCDI Phase 16–17 remediation service loaded");
