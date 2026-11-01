@@ -33,6 +33,19 @@
 - Verified: 20 backend tests (PGlite), repo typecheck clean, vite build succeeds. NOT yet exercised in a browser or on server PostgreSQL.
 - Limits: single functional currency only; no credit/debit notes, advances or purchase orders yet.
 
+## Phase 5 - banking, reconciliation, cashbook, transfers, expenses - 2026-11-01
+- Schema (`FINANCE_PHASE5_STATEMENTS`): bank accounts (on cash/bank/mobile-money GL accounts), statements (same file can't be imported twice), bank transactions
+  (de-duplicated by fingerprint; trigger forces exact signed-amount 1:1 matching to a ledger entry on the SAME account; locked once reconciled), reconciliations
+  (append-only, difference must be 0), expenses (frozen once posted).
+- Import: CSV with auto-detected columns (single amount or debit/credit), dry-run preview, DD/MM or MM/DD or ISO dates, 2 MB / 5000-row limits.
+- Matching: suggestions, manual match/unmatch, auto-match applies ONLY unambiguous exact pairs, "book it" turns a bank-only item (charges, interest) into a posted journal and matches it.
+- Reconciliation: statement balance vs books with deposits in transit, unpresented payments and bank-only items; completion refused unless difference is exactly nil and every
+  statement line is booked/matched - nothing is ever written off automatically. Completed lines are locked.
+- Cashbook (ledger-backed, with reconciliation status), bank transfers (one balanced journal, payments:approve), expenses (approve with separation of duties, post splits recoverable input tax) and spending-by-category.
+- UI: Bank Accounts (+ transfer), bank workspace (statement lines, import, reconcile, history), Cashbook, Expenses.
+- Verified: 29 backend tests (PGlite), repo typecheck clean, vite build ok. Not exercised in a browser or on server PostgreSQL.
+- Not included: receipt file uploads/OCR, employee claims, recurring expenses, spending limits, mobile-money/bank API feeds, credit/debit notes.
+
 ## Not yet built (later phases)
 Sales/purchases/AR/AP, banking, payroll, inventory, assets, tax, budgets, statements, intelligence agents,
 approvals engine, integrations, SaaS plans, Sales Management adapter, multi-currency revaluation, PDF/Excel export.

@@ -484,3 +484,120 @@ BEGIN RAISE EXCEPTION '% is append-only', TG_TABLE_NAME; END; $$ LANGUAGE plpgsq
   TRG("finance_payments_append_only", "finance_payments", "BEFORE UPDATE OR DELETE", "finance_append_only"),
   TRG("finance_allocations_append_only", "finance_payment_allocations", "BEFORE UPDATE OR DELETE", "finance_append_only"),
 ];
+
+/**
+ * Phase 5 - banking (accounts, statement import, matching, reconciliation) and expenses.
+ * A bank transaction is a statement line; a ledger entry is a book line. Reconciliation pairs them 1:1 (exact signed amount,
+ * enforced by a trigger) and a completed reconciliation can never be undone or edited.
+ */
+export const FINANCE_PHASE5_STATEMENTS: string[] = [
+  T("finance_bank_accounts", `  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES finance_organisations(id),
+  account_id BIGINT NOT NULL,
+  name TEXT NOT NULL,
+  bank_name TEXT,
+  account_ref TEXT,
+  currency CHAR(3) NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at ${TS} NOT NULL DEFAULT now(),
+  UNIQUE (org_id, id), UNIQUE (org_id, account_id),
+  FOREIGN KEY (org_id, account_id) REFERENCES finance_accounts (org_id, id)`),
+  T("finance_bank_statements", `  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES finance_organisations(id),
+  bank_account_id BIGINT NOT NULL,
+  filename TEXT,
+  file_hash TEXT NOT NULL,
+  row_count INTEGER NOT NULL,
+  imported_by TEXT NOT NULL,
+  imported_at ${TS} NOT NULL DEFAULT now(),
+  UNIQUE (org_id, id),
+  UNIQUE (org_id, bank_account_id, file_hash),
+  FOREIGN KEY (org_id, bank_account_id) REFERENCES finance_bank_accounts (org_id, id)`),
+  T("finance_reconciliations", `  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES finance_organisations(id),
+  bank_account_id BIGINT NOT NULL,
+  statement_date DATE NOT NULL,
+  statement_balance ${MONEY} NOT NULL,
+  book_balance ${MONEY} NOT NULL,
+  outstanding_deposits ${MONEY} NOT NULL,
+  unpresented_payments ${MONEY} NOT NULL,
+  difference ${MONEY} NOT NULL CHECK (difference = 0),
+  notes TEXT,
+  completed_by TEXT NOT NULL, completed_by_label TEXT,
+  completed_at ${TS} NOT NULL DEFAULT now(),
+  UNIQUE (org_id, id),
+  UNIQUE (org_id, bank_account_id, statement_date),
+  FOREIGN KEY (org_id, bank_account_id) REFERENCES finance_bank_accounts (org_id, id)`),
+  T("finance_bank_transactions", `  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES finance_organisations(id),
+  bank_account_id BIGINT NOT NULL,
+  statement_id BIGINT,
+  txn_date DATE NOT NULL,
+  description TEXT NOT NULL,
+  reference TEXT,
+  amount ${MONEY} NOT NULL CHECK (amount <> 0),
+  running_balance ${MONEY},
+  fingerprint TEXT NOT NULL,
+  source TEXT NOT NULL DEFAULT 'import' CHECK (source IN ('import','manual')),
+  matched_entry_id BIGINT REFERENCES finance_ledger_entries(id),
+  matched_by TEXT, matched_at ${TS},
+  reconciliation_id BIGINT,
+  created_by TEXT NOT NULL,
+  created_at ${TS} NOT NULL DEFAULT now(),
+  UNIQUE (org_id, id),
+  UNIQUE (org_id, bank_account_id, fingerprint),
+  FOREIGN KEY (org_id, bank_account_id) REFERENCES finance_bank_accounts (org_id, id),
+  FOREIGN KEY (org_id, statement_id) REFERENCES finance_bank_statements (org_id, id),
+  FOREIGN KEY (org_id, reconciliation_id) REFERENCES finance_reconciliations (org_id, id),
+  CHECK (reconciliation_id IS NULL OR matched_entry_id IS NOT NULL)`),
+  UX("finance_bank_txn_entry_uq ON finance_bank_transactions (matched_entry_id) WHERE matched_entry_id IS NOT NULL"),
+  IX("finance_bank_txn_acct_ix ON finance_bank_transactions (org_id, bank_account_id, txn_date)"),
+
+  `CREATE OR REPLACE FUNCTION finance_bank_txn_guard() RETURNS trigger AS $$
+DECLARE e RECORD; ba RECORD;
+BEGIN
+  IF TG_OP = 'DELETE' THEN RAISE EXCEPTION 'Bank transactions cannot be deleted'; END IF;
+  IF TG_OP = 'UPDATE' THEN
+    IF OLD.reconciliation_id IS NOT NULL THEN RAISE EXCEPTION 'A reconciled bank transaction is locked'; END IF;
+    IF NEW.org_id <> OLD.org_id OR NEW.bank_account_id <> OLD.bank_account_id OR NEW.txn_date <> OLD.txn_date OR NEW.amount <> OLD.amount OR NEW.fingerprint <> OLD.fingerprint THEN RAISE EXCEPTION 'Bank statement lines cannot be edited'; END IF;
+  END IF;
+  IF NEW.matched_entry_id IS NOT NULL THEN
+    SELECT * INTO e FROM finance_ledger_entries WHERE id = NEW.matched_entry_id;
+    SELECT * INTO ba FROM finance_bank_accounts WHERE id = NEW.bank_account_id AND org_id = NEW.org_id;
+    IF e.org_id <> NEW.org_id OR e.account_id <> ba.account_id THEN RAISE EXCEPTION 'The ledger entry is not on this bank account'; END IF;
+    IF (e.debit - e.credit) <> NEW.amount THEN RAISE EXCEPTION 'Matched amounts must be identical (ledger % vs statement %)', (e.debit - e.credit), NEW.amount; END IF;
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql`,
+  TRG("finance_bank_txn_guard_trg", "finance_bank_transactions", "BEFORE INSERT OR UPDATE OR DELETE", "finance_bank_txn_guard"),
+  TRG("finance_reconciliations_append_only", "finance_reconciliations", "BEFORE UPDATE OR DELETE", "finance_append_only"),
+  TRG("finance_bank_statements_append_only", "finance_bank_statements", "BEFORE UPDATE OR DELETE", "finance_append_only"),
+
+  T("finance_expenses", `  id BIGSERIAL PRIMARY KEY,
+  org_id BIGINT NOT NULL REFERENCES finance_organisations(id),
+  number TEXT,
+  expense_date DATE NOT NULL,
+  payee TEXT NOT NULL,
+  description TEXT NOT NULL,
+  reference TEXT,
+  account_id BIGINT NOT NULL,
+  paid_from_account_id BIGINT NOT NULL,
+  tax_code_id BIGINT,
+  status TEXT NOT NULL DEFAULT 'draft' CHECK (status IN ('draft','approved','posted','cancelled')),
+  net_amount ${MONEY} NOT NULL CHECK (net_amount > 0),
+  tax_amount ${MONEY} NOT NULL DEFAULT 0,
+  recoverable_tax ${MONEY} NOT NULL DEFAULT 0,
+  total ${MONEY} NOT NULL,
+  journal_id BIGINT,
+  created_by TEXT NOT NULL, created_by_label TEXT, approved_by TEXT, approved_by_label TEXT, approved_at ${TS},
+  posted_by TEXT, posted_at ${TS}, cancelled_by TEXT, cancelled_at ${TS}, cancel_reason TEXT,
+  created_at ${TS} NOT NULL DEFAULT now(), updated_at ${TS} NOT NULL DEFAULT now(),
+  CHECK (status <> 'posted' OR (number IS NOT NULL AND journal_id IS NOT NULL)),
+  UNIQUE (org_id, id), UNIQUE (org_id, number),
+  FOREIGN KEY (org_id, account_id) REFERENCES finance_accounts (org_id, id),
+  FOREIGN KEY (org_id, paid_from_account_id) REFERENCES finance_accounts (org_id, id),
+  FOREIGN KEY (org_id, tax_code_id) REFERENCES finance_tax_codes (org_id, id),
+  FOREIGN KEY (org_id, journal_id) REFERENCES finance_journals (org_id, id)`),
+  IX("finance_expenses_date_ix ON finance_expenses (org_id, expense_date DESC)"),
+  TRG("finance_expense_guard_trg", "finance_expenses", "BEFORE UPDATE OR DELETE", "finance_doc_guard"),
+];
