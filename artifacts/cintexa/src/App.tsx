@@ -56,6 +56,7 @@ const SalesRoutes = lazyWithRecovery(() => import("@/pages/sales/routes").then((
 const FinanceRoutes = lazyWithRecovery(() => import("@/pages/finance/routes").then((m) => ({ default: m.FinanceRoutes })));
 const PublicQuotation = lazyWithRecovery(() => import("@/pages/sales/public-quotation"));
 const PublicLeadForm = lazyWithRecovery(() => import("@/pages/sales/public-lead-form"));
+const CcdiCommandCentre = lazyWithRecovery(() => import("@/pages/ccdi"));
 
 const queryClient = new QueryClient();
 
@@ -110,6 +111,8 @@ function AppRoutes() {
             <Route path="/website-intelligence/audits/:auditId/recommendations" component={WebsiteIntelligence} />
             <Route path="/website-intelligence/audits/:auditId/report" component={WebsiteIntelligence} />
             <Route path="/website-intelligence/settings" component={WebsiteIntelligence} />
+            <Route path="/ccdi" component={CcdiCommandCentre} />
+            <Route path="/ccdi/*" component={CcdiCommandCentre} />
             <Route path="/sites" component={Sites} />
             <Route path="/pages" component={Pages} />
             <Route path="/pages/new" component={PageEditor} />
