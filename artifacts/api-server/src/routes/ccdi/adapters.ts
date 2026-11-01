@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 12 Adapter & operational routes
+ * CINTEXA CCDI — Phase 12–14 Adapter & operational routes
  */
 import { Router, type Request, type Response } from "express";
 import { pool } from "@workspace/db";
@@ -9,6 +9,7 @@ import * as adapters from "../../services/ccdi-adapters";
 import * as workers from "../../services/ccdi-workers";
 import * as orch from "../../services/ccdi-orchestration";
 import * as webhooks from "../../services/ccdi-webhooks";
+import * as ingest from "../../services/ccdi-findings-ingest";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
 
 const router = Router();
@@ -17,14 +18,12 @@ const router = Router();
 router.get("/adapters", requireAuth, async (_req: Request, res: Response) => {
   res.json({
     adapters: adapters.listAdapters(),
-    note: "Only demo.echo and passive.dns are built in. No vulnerability scanners ship with the control plane.",
+    note: "Built-in: demo.echo, passive.dns, passive.tls, passive.http, passive.dns_posture. No vulnerability scanners ship with the control plane.",
   });
 });
 
 /**
- * In-process worker helper for environments without a separate worker process.
- * Claims (or uses provided execution), runs the adapter, completes the job.
- * Still subject to kill-switch and queue state.
+ * In-process worker helper: claim → adapt → complete → ingest findings.
  */
 router.post(
   "/adapters/run-next",
@@ -71,12 +70,30 @@ router.post(
         evidence: result.evidence,
       });
 
-      // Best-effort webhook
+      const adapterKey = String(result.metrics?.adapter || job.job_type);
+      const ingested = await ingest
+        .ingestAdapterFindings({
+          organizationId: job.organization_id,
+          jobId: job.id,
+          executionId: claimed.execution.id,
+          sourceAdapter: adapterKey,
+          result,
+        })
+        .catch((err) => {
+          logger.warn({ err }, "ccdi.adapters.ingest_failed");
+          return { ingested: 0, findings: [] as unknown[] };
+        });
+
       await webhooks
         .emitCcdiEvent({
           organizationId: job.organization_id,
           eventType: result.success ? "job.completed" : "job.failed",
-          data: { jobId: job.id, adapter: result.metrics?.adapter, success: result.success },
+          data: {
+            jobId: job.id,
+            adapter: adapterKey,
+            success: result.success,
+            findingsIngested: ingested.ingested,
+          },
         })
         .catch(() => undefined);
 
@@ -85,6 +102,7 @@ router.post(
         executionId: claimed.execution.id,
         result,
         completion,
+        findingsIngested: ingested.ingested,
       });
     } catch (err) {
       logger.error({ err }, "ccdi.adapters.run-next failed");
@@ -106,7 +124,6 @@ router.post(
         return;
       }
 
-      // Ensure schema
       for (const stmt of webhooks.CCDI_PHASE11_SCHEMA) {
         await pool.query(stmt).catch(() => undefined);
       }
