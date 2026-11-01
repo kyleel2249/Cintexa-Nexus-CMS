@@ -1,17 +1,20 @@
 /**
- * CINTEXA CCDI — Command Centre (Phase 8 UI)
+ * CINTEXA CCDI — Command Centre (Phase 8–18 UI)
  * Displays only real data returned by the API. No fabricated statistics.
  */
+import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Shield,
   Server,
   Activity,
-  AlertTriangle,
   Building2,
   Bug,
   ListTodo,
   OctagonX,
+  Clock,
+  Gauge,
+  Wrench,
 } from "lucide-react";
 
 async function fetchJson<T>(path: string): Promise<T> {
@@ -36,6 +39,8 @@ type CommandSummary = {
 };
 
 export default function CcdiCommandCentre() {
+  const [orgId, setOrgId] = useState<string>("");
+
   const health = useQuery({
     queryKey: ["ccdi", "health"],
     queryFn: () =>
@@ -50,8 +55,11 @@ export default function CcdiCommandCentre() {
   });
 
   const summary = useQuery({
-    queryKey: ["ccdi", "command-centre"],
-    queryFn: () => fetchJson<CommandSummary>("/ccdi/command-centre"),
+    queryKey: ["ccdi", "command-centre", orgId],
+    queryFn: () =>
+      fetchJson<CommandSummary>(
+        `/ccdi/command-centre${orgId ? `?organizationId=${encodeURIComponent(orgId)}` : ""}`,
+      ),
     refetchInterval: 30_000,
   });
 
@@ -63,9 +71,52 @@ export default function CcdiCommandCentre() {
       ),
   });
 
+  // Auto-select first org when available
+  const effectiveOrgId = orgId || orgs.data?.organizations?.[0]?.id || "";
+
+  const remediation = useQuery({
+    queryKey: ["ccdi", "remediation-summary", effectiveOrgId],
+    enabled: Boolean(effectiveOrgId),
+    queryFn: () =>
+      fetchJson<{ summary: { total: number; open: number; in_progress: number; completed: number; overdue: number } }>(
+        `/ccdi/remediation/summary?organizationId=${encodeURIComponent(effectiveOrgId)}`,
+      ),
+    refetchInterval: 30_000,
+  });
+
+  const sla = useQuery({
+    queryKey: ["ccdi", "sla", effectiveOrgId],
+    enabled: Boolean(effectiveOrgId),
+    queryFn: () =>
+      fetchJson<{
+        policyDays: Record<string, number | null>;
+        breaches: {
+          criticalFindingsPastSla: number;
+          highFindingsPastSla: number;
+          remediationTasksOverdue: number;
+        };
+      }>(`/ccdi/sla?organizationId=${encodeURIComponent(effectiveOrgId)}`),
+    refetchInterval: 30_000,
+  });
+
+  const metrics = useQuery({
+    queryKey: ["ccdi", "metrics", effectiveOrgId],
+    enabled: Boolean(effectiveOrgId),
+    queryFn: () =>
+      fetchJson<{
+        webhooks?: { activeEndpoints: number; outboxPending: number; outboxDead: number };
+        evidenceTotal?: number;
+      }>(`/ccdi/metrics?organizationId=${encodeURIComponent(effectiveOrgId)}`),
+    refetchInterval: 30_000,
+  });
+
   const s = summary.data?.summary;
-  const phase = health.data?.phase ?? s?.phase ?? 8;
+  const phase = health.data?.phase ?? s?.phase ?? 18;
   const killActive = health.data?.killSwitchActive ?? s?.killSwitchActive ?? false;
+  const rs = remediation.data?.summary;
+  const breaches = sla.data?.breaches;
+
+  const orgOptions = useMemo(() => orgs.data?.organizations ?? [], [orgs.data]);
 
   return (
     <div className="flex-1 overflow-auto">
@@ -85,12 +136,27 @@ export default function CcdiCommandCentre() {
                 </p>
               </div>
             </div>
-            {killActive && (
-              <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-1.5 text-sm text-rose-200">
-                <OctagonX className="h-4 w-4" />
-                Emergency stop ACTIVE
-              </div>
-            )}
+            <div className="flex flex-wrap items-center gap-3">
+              {orgOptions.length > 0 && (
+                <select
+                  className="rounded-md border border-slate-700 bg-slate-900 px-2 py-1.5 text-xs text-slate-200"
+                  value={effectiveOrgId}
+                  onChange={(e) => setOrgId(e.target.value)}
+                >
+                  {orgOptions.map((o) => (
+                    <option key={o.id} value={o.id}>
+                      {o.name}
+                    </option>
+                  ))}
+                </select>
+              )}
+              {killActive && (
+                <div className="flex items-center gap-2 rounded-lg border border-rose-500/40 bg-rose-500/15 px-3 py-1.5 text-sm text-rose-200">
+                  <OctagonX className="h-4 w-4" />
+                  Emergency stop ACTIVE
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </div>
@@ -142,6 +208,50 @@ export default function CcdiCommandCentre() {
           />
         </div>
 
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <StatCard
+            icon={<Wrench className="h-5 w-5 text-violet-400" />}
+            label="Remediation"
+            value={rs?.total ?? "—"}
+            sub={
+              rs
+                ? `${rs.open ?? 0} open · ${rs.in_progress ?? 0} in progress · ${rs.overdue ?? 0} overdue`
+                : effectiveOrgId
+                  ? "loading or empty"
+                  : "select an organisation"
+            }
+            loading={remediation.isLoading}
+          />
+          <StatCard
+            icon={<Clock className="h-5 w-5 text-orange-400" />}
+            label="SLA Breaches"
+            value={
+              breaches
+                ? (breaches.criticalFindingsPastSla ?? 0) +
+                  (breaches.highFindingsPastSla ?? 0) +
+                  (breaches.remediationTasksOverdue ?? 0)
+                : "—"
+            }
+            sub={
+              breaches
+                ? `${breaches.criticalFindingsPastSla ?? 0} crit · ${breaches.highFindingsPastSla ?? 0} high · ${breaches.remediationTasksOverdue ?? 0} tasks`
+                : "policy-based"
+            }
+            loading={sla.isLoading}
+          />
+          <StatCard
+            icon={<Gauge className="h-5 w-5 text-sky-400" />}
+            label="Webhooks / Evidence"
+            value={metrics.data?.evidenceTotal ?? "—"}
+            sub={
+              metrics.data?.webhooks
+                ? `${metrics.data.webhooks.activeEndpoints} endpoints · ${metrics.data.webhooks.outboxPending} outbox · ${metrics.data.webhooks.outboxDead} dead`
+                : "ops metrics"
+            }
+            loading={metrics.isLoading}
+          />
+        </div>
+
         <div className="grid gap-4 lg:grid-cols-2">
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
             <h2 className="text-sm font-medium text-muted-foreground">Platform status</h2>
@@ -160,6 +270,17 @@ export default function CcdiCommandCentre() {
                 <dd className="font-medium">{health.data?.status ?? "—"}</dd>
               </div>
             </dl>
+            {sla.data?.policyDays && (
+              <div className="mt-4 border-t border-border/40 pt-3">
+                <p className="text-xs font-medium text-muted-foreground">SLA policy (days)</p>
+                <p className="mt-1 text-xs text-foreground/80">
+                  crit {String(sla.data.policyDays.critical ?? "—")} · high{" "}
+                  {String(sla.data.policyDays.high ?? "—")} · med{" "}
+                  {String(sla.data.policyDays.medium ?? "—")} · low{" "}
+                  {String(sla.data.policyDays.low ?? "—")}
+                </p>
+              </div>
+            )}
           </div>
 
           <div className="rounded-xl border border-border/60 bg-card/40 p-5">
@@ -177,7 +298,12 @@ export default function CcdiCommandCentre() {
               {orgs.data?.organizations.map((o) => (
                 <li
                   key={o.id}
-                  className="flex items-center justify-between rounded-lg border border-border/40 px-3 py-2 text-sm"
+                  className={`flex cursor-pointer items-center justify-between rounded-lg border px-3 py-2 text-sm ${
+                    o.id === effectiveOrgId
+                      ? "border-cyan-500/40 bg-cyan-500/10"
+                      : "border-border/40"
+                  }`}
+                  onClick={() => setOrgId(o.id)}
                 >
                   <span className="font-medium">{o.name}</span>
                   <span className="text-xs text-muted-foreground">{o.status}</span>
@@ -194,6 +320,7 @@ export default function CcdiCommandCentre() {
             <li>AI agents are advisory only — no autonomous exploitation.</li>
             <li>Worker claim/heartbeat/complete APIs are available for isolated executors.</li>
             <li>Metrics above are evidence-backed database counts only.</li>
+            <li>Prometheus text metrics: GET /api/ccdi/metrics/prometheus</li>
           </ul>
         </div>
       </div>
