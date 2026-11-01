@@ -1,8 +1,10 @@
 /**
- * CINTEXA CCDI — Phase 9 RBAC helpers
+ * CINTEXA CCDI — Phase 9–10 RBAC helpers
  *
  * Seeds system permissions/roles and provides permission checks.
- * Fine-grained enforcement can be applied per-route via requireCcdiPermission.
+ * Fine-grained enforcement via requireCcdiPermission.
+ *
+ * CCDI_STRICT_RBAC=1 disables bootstrap allow (users with zero roles are denied).
  */
 import type { RequestHandler } from "express";
 import { pool } from "@workspace/db";
@@ -11,10 +13,14 @@ import { CCDI_PERMISSION_SEED, CCDI_SYSTEM_ROLES } from "@workspace/db";
 
 let seeded = false;
 
+function strictRbacEnabled(): boolean {
+  const v = String(process.env.CCDI_STRICT_RBAC || "").toLowerCase();
+  return v === "1" || v === "true" || v === "yes";
+}
+
 export async function seedCcdiRbac(): Promise<void> {
   if (seeded) return;
   try {
-    // Permissions
     for (const p of CCDI_PERMISSION_SEED) {
       await pool.query(
         `INSERT INTO ccdi_permissions (code, name, category, description)
@@ -24,7 +30,6 @@ export async function seedCcdiRbac(): Promise<void> {
       );
     }
 
-    // System roles (organization_id NULL = global templates)
     for (const role of CCDI_SYSTEM_ROLES) {
       const { rows } = await pool.query(
         `INSERT INTO ccdi_roles (organization_id, name, slug, description, is_system)
@@ -58,7 +63,6 @@ export async function userHasCcdiPermission(
   organizationId: string | null | undefined,
   permissionCode: string,
 ): Promise<boolean> {
-  // Platform admins via any role that grants ccdi.platform.admin
   const { rows } = await pool.query(
     `SELECT 1
      FROM ccdi_user_roles ur
@@ -80,9 +84,8 @@ export async function userHasCcdiPermission(
 
 /**
  * Express middleware factory.
- * If the user has no CCDI role assignments at all, allow (bootstrap mode)
- * so the platform remains usable until roles are assigned.
- * Once any CCDI role exists for the user, enforce the permission.
+ * Default: if the user has no CCDI role assignments, allow (bootstrap).
+ * When CCDI_STRICT_RBAC=1, users with zero roles are denied.
  */
 export function requireCcdiPermission(permissionCode: string): RequestHandler {
   return async (req, res, next) => {
@@ -98,12 +101,19 @@ export function requireCcdiPermission(permissionCode: string): RequestHandler {
         (typeof req.query?.organizationId === "string" && req.query.organizationId) ||
         null;
 
-      // Bootstrap: if user has zero CCDI roles, allow authenticated access
       const { rows: roleCount } = await pool.query(
         `SELECT count(*)::int AS n FROM ccdi_user_roles WHERE user_ref = $1`,
         [userRef],
       );
-      if ((roleCount[0]?.n ?? 0) === 0) {
+      const n = roleCount[0]?.n ?? 0;
+
+      if (n === 0) {
+        if (strictRbacEnabled()) {
+          res.status(403).json({
+            error: "CCDI_STRICT_RBAC is enabled and this user has no CCDI roles assigned",
+          });
+          return;
+        }
         next();
         return;
       }
@@ -116,7 +126,6 @@ export function requireCcdiPermission(permissionCode: string): RequestHandler {
       next();
     } catch (err) {
       logger.error({ err }, "ccdi.rbac.check failed");
-      // Fail open only for infra errors would be wrong; fail closed
       res.status(500).json({ error: "Permission check failed" });
     }
   };
