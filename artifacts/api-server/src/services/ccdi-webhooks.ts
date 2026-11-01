@@ -1,13 +1,13 @@
 /**
- * CINTEXA CCDI — Phase 11 Webhooks & SIEM-oriented events
+ * CINTEXA CCDI — Phase 11/15 Webhooks & SIEM-oriented events
  *
- * Organisations can register webhook endpoints for control-plane events
- * (job lifecycle, findings, kill-switch, approvals). Delivery is best-effort
- * with logged outcomes. No customer-asset scanning is triggered here.
+ * Organisations can register webhook endpoints for control-plane events.
+ * Immediate delivery is attempted; failures are enqueued to the durable outbox (Phase 15).
  */
 import { createHmac, randomBytes } from "crypto";
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
+import * as outbox from "./ccdi-webhook-queue";
 
 export const CCDI_PHASE11_SCHEMA: string[] = [
   `CREATE TABLE IF NOT EXISTS ccdi_webhook_endpoints (
@@ -61,7 +61,6 @@ export async function registerWebhook(opts: {
   eventTypes?: string[];
   createdBy: string;
 }) {
-  // Basic SSRF guardrails — block obvious local/metadata targets
   let parsed: URL;
   try {
     parsed = new URL(opts.url);
@@ -102,7 +101,6 @@ export async function registerWebhook(opts: {
     ],
   );
 
-  // Return secret once at creation time only
   return { endpoint: rows[0], secret };
 }
 
@@ -118,7 +116,7 @@ export async function emitCcdiEvent(opts: {
     [opts.organizationId, opts.eventType],
   );
 
-  if (!endpoints.length) return { delivered: 0 };
+  if (!endpoints.length) return { delivered: 0, enqueued: 0 };
 
   const body = JSON.stringify({
     event: opts.eventType,
@@ -128,6 +126,7 @@ export async function emitCcdiEvent(opts: {
   });
 
   let delivered = 0;
+  let enqueued = 0;
   for (const ep of endpoints) {
     const signature = createHmac("sha256", ep.secret).update(body).digest("hex");
     try {
@@ -139,7 +138,7 @@ export async function emitCcdiEvent(opts: {
           "Content-Type": "application/json",
           "X-CCDI-Event": opts.eventType,
           "X-CCDI-Signature": `sha256=${signature}`,
-          "User-Agent": "CINTEXA-CCDI-Webhook/1.0",
+          "User-Agent": "CINTEXA-CCDI-Webhook/1.1",
         },
         body,
         signal: controller.signal,
@@ -152,7 +151,17 @@ export async function emitCcdiEvent(opts: {
          VALUES ($1,$2,$3,$4,$5,$6)`,
         [ep.id, opts.organizationId, opts.eventType, body, res.status, res.ok],
       );
-      if (res.ok) delivered += 1;
+      if (res.ok) {
+        delivered += 1;
+      } else {
+        await outbox.enqueueWebhookDelivery({
+          endpointId: ep.id,
+          organizationId: opts.organizationId,
+          eventType: opts.eventType,
+          payload: body,
+        });
+        enqueued += 1;
+      }
     } catch (err: any) {
       await pool.query(
         `INSERT INTO ccdi_webhook_deliveries
@@ -160,13 +169,21 @@ export async function emitCcdiEvent(opts: {
          VALUES ($1,$2,$3,$4,false,$5)`,
         [ep.id, opts.organizationId, opts.eventType, body, String(err?.message || err)],
       );
-      logger.warn({ err, endpointId: ep.id }, "ccdi.webhook.delivery_failed");
+      await outbox
+        .enqueueWebhookDelivery({
+          endpointId: ep.id,
+          organizationId: opts.organizationId,
+          eventType: opts.eventType,
+          payload: body,
+        })
+        .catch(() => undefined);
+      enqueued += 1;
+      logger.warn({ err, endpointId: ep.id }, "ccdi.webhook.delivery_failed_enqueued");
     }
   }
-  return { delivered };
+  return { delivered, enqueued };
 }
 
-/** SIEM-friendly newline-delimited JSON of recent audit events */
 export async function exportSiemEvents(opts: {
   organizationId?: string;
   since?: string;
@@ -210,4 +227,4 @@ export async function exportSiemEvents(opts: {
   ).join("\n") + (rows.length ? "\n" : "");
 }
 
-logger.info("CCDI Phase 11 webhooks service loaded");
+logger.info("CCDI Phase 11/15 webhooks service loaded");
