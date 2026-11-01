@@ -28,6 +28,7 @@ import salesRouter from "./sales";
 import financeRouter from "./finance";
 import intelligenceRouter from "./intelligence";
 import sentinelRouter from "./sentinel";
+import ccdiRouter from "./ccdi";
 import { apiGuard } from "../lib/auth-middleware";
 
 const router: IRouter = Router();
@@ -66,5 +67,6 @@ router.use("/sales", salesRouter);
 router.use("/finance", financeRouter);
 router.use("/intelligence", intelligenceRouter);
 router.use("/sentinel", sentinelRouter);
+router.use("/ccdi", ccdiRouter);
 
 export default router;
