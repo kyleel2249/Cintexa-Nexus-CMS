@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 12 Worker Adapters
+ * CINTEXA CCDI — Phase 12–13 Worker Adapters
  *
  * Adapters execute ONLY after a job has been claimed through the control plane
  * (approved scope, human approval, kill-switch clear).
@@ -7,10 +7,13 @@
  * Built-in adapters:
  * - demo.echo — no network; returns parameters for pipeline testing
  * - passive.dns — DNS resolution of targets already in an approved scope
+ * - passive.tls — TLS certificate metadata (no vulnerability scanning)
+ * - passive.http — HTTP HEAD/GET metadata (headers only, no crawling)
  *
  * No port scanners, vulnerability scanners, or exploit tools are included.
  */
 import { resolve4, resolve6 } from "dns/promises";
+import tls from "tls";
 import { logger } from "../lib/logger";
 
 export type AdapterContext = {
@@ -46,10 +49,39 @@ export type Adapter = {
   key: string;
   name: string;
   description: string;
-  /** job_type values this adapter handles */
   jobTypes: string[];
   run: (ctx: AdapterContext) => Promise<AdapterResult>;
 };
+
+/** Allow only hostnames/IPs that look like normal targets; no shell metacharacters. */
+function isSafeTarget(t: string): boolean {
+  if (!t || t.length > 253) return false;
+  if (/[\s;|&$`<>\\]/.test(t)) return false;
+  return /^[A-Za-z0-9._:\[\]-]+$/.test(t);
+}
+
+function stripUrlToHost(target: string): { host: string; port: number } | null {
+  let host = target.trim();
+  let port = 443;
+  try {
+    if (host.includes("://")) {
+      const u = new URL(host);
+      host = u.hostname;
+      port = u.port ? Number(u.port) : u.protocol === "http:" ? 80 : 443;
+    } else if (host.includes(":") && !host.includes("://") && !host.startsWith("[")) {
+      const parts = host.split(":");
+      if (parts.length === 2 && /^\d+$/.test(parts[1]!)) {
+        host = parts[0]!;
+        port = Number(parts[1]);
+      }
+    }
+  } catch {
+    return null;
+  }
+  if (!isSafeTarget(host)) return null;
+  if (port < 1 || port > 65535) return null;
+  return { host, port };
+}
 
 // ── Built-in adapters ──────────────────────────────────────────────────────
 
@@ -82,14 +114,6 @@ const demoEcho: Adapter = {
   },
 };
 
-/** Allow only hostnames/IPs that look like normal targets; no shell metacharacters. */
-function isSafeTarget(t: string): boolean {
-  if (!t || t.length > 253) return false;
-  // hostname or IPv4/IPv6-ish — reject spaces and shell chars
-  if (/[\s;|&$`<>\\]/.test(t)) return false;
-  return /^[A-Za-z0-9._:\\[\\]-]+$/.test(t);
-}
-
 const passiveDns: Adapter = {
   key: "passive.dns",
   name: "Passive DNS Lookup",
@@ -120,7 +144,7 @@ const passiveDns: Adapter = {
       metrics: {
         adapter: "passive.dns",
         targets: results.length,
-        resolved: results.filter((r) => (r.a?.length || r.aaaa?.length)).length,
+        resolved: results.filter((r) => r.a?.length || r.aaaa?.length).length,
       },
       evidence: [
         {
@@ -141,7 +165,215 @@ const passiveDns: Adapter = {
   },
 };
 
-const ADAPTERS: Adapter[] = [demoEcho, passiveDns];
+function fetchTlsMeta(host: string, port: number, timeoutMs = 8000): Promise<Record<string, unknown>> {
+  return new Promise((resolve, reject) => {
+    const socket = tls.connect(
+      { host, port, servername: host, rejectUnauthorized: false, timeout: timeoutMs },
+      () => {
+        const cert = socket.getPeerCertificate();
+        const protocol = socket.getProtocol();
+        const cipher = socket.getCipher();
+        socket.end();
+        if (!cert || !Object.keys(cert).length) {
+          reject(new Error("No peer certificate"));
+          return;
+        }
+        resolve({
+          host,
+          port,
+          protocol,
+          cipher: cipher ? { name: cipher.name, version: cipher.version } : null,
+          subject: cert.subject,
+          issuer: cert.issuer,
+          valid_from: cert.valid_from,
+          valid_to: cert.valid_to,
+          serialNumber: cert.serialNumber,
+          fingerprint: cert.fingerprint,
+          fingerprint256: cert.fingerprint256,
+          subjectaltname: cert.subjectaltname,
+        });
+      },
+    );
+    socket.on("error", (err) => reject(err));
+    socket.on("timeout", () => {
+      socket.destroy();
+      reject(new Error("TLS connection timeout"));
+    });
+  });
+}
+
+const passiveTls: Adapter = {
+  key: "passive.tls",
+  name: "Passive TLS Certificate Metadata",
+  description: "Collects certificate subject/issuer/validity. No cipher brute-force or vuln scanning.",
+  jobTypes: ["tls_cert", "passive_tls", "cert_metadata"],
+  async run(ctx) {
+    const results: Array<Record<string, unknown>> = [];
+    const findings: AdapterResult["findings"] = [];
+
+    for (const target of ctx.targets.slice(0, 25)) {
+      const parsed = stripUrlToHost(target);
+      if (!parsed) {
+        results.push({ target, error: "target rejected by safety filter" });
+        continue;
+      }
+      try {
+        const meta = await fetchTlsMeta(parsed.host, parsed.port === 80 ? 443 : parsed.port);
+        results.push(meta);
+
+        // Informational findings only — expiry proximity
+        if (typeof meta.valid_to === "string") {
+          const exp = new Date(meta.valid_to as string).getTime();
+          const days = (exp - Date.now()) / (86400 * 1000);
+          if (days < 0) {
+            findings!.push({
+              title: `TLS certificate expired: ${parsed.host}`,
+              severity: "high",
+              description: `Certificate valid_to=${meta.valid_to}`,
+            });
+          } else if (days < 30) {
+            findings!.push({
+              title: `TLS certificate expires within 30 days: ${parsed.host}`,
+              severity: "medium",
+              description: `Certificate valid_to=${meta.valid_to}`,
+            });
+          }
+        }
+      } catch (err: any) {
+        results.push({ target, host: parsed.host, error: String(err?.message || err) });
+      }
+    }
+
+    const body = JSON.stringify({ results, collectedAt: new Date().toISOString() }, null, 2);
+    return {
+      success: true,
+      stdoutSummary: body.slice(0, 4000),
+      metrics: { adapter: "passive.tls", targets: results.length },
+      evidence: [
+        {
+          evidenceType: "json",
+          storageRef: `inline:passive-tls:${ctx.jobId}`,
+          filename: `passive-tls-${ctx.jobId.slice(0, 8)}.json`,
+          sizeBytes: body.length,
+        },
+      ],
+      findings,
+    };
+  },
+};
+
+const passiveHttp: Adapter = {
+  key: "passive.http",
+  name: "Passive HTTP Metadata",
+  description: "HTTP HEAD (fallback GET) for status and security-relevant response headers only.",
+  jobTypes: ["http_headers", "passive_http", "header_check"],
+  async run(ctx) {
+    const results: Array<Record<string, unknown>> = [];
+    const findings: AdapterResult["findings"] = [];
+
+    for (const target of ctx.targets.slice(0, 25)) {
+      let url = target.trim();
+      if (!/^https?:\/\//i.test(url)) {
+        if (!isSafeTarget(url)) {
+          results.push({ target, error: "target rejected by safety filter" });
+          continue;
+        }
+        url = `https://${url}`;
+      } else {
+        try {
+          const u = new URL(url);
+          if (!isSafeTarget(u.hostname)) {
+            results.push({ target, error: "hostname rejected by safety filter" });
+            continue;
+          }
+        } catch {
+          results.push({ target, error: "invalid URL" });
+          continue;
+        }
+      }
+
+      try {
+        const controller = new AbortController();
+        const timer = setTimeout(() => controller.abort(), 8000);
+        let res = await fetch(url, {
+          method: "HEAD",
+          redirect: "manual",
+          signal: controller.signal,
+          headers: { "User-Agent": "CINTEXA-CCDI-Passive/1.0" },
+        });
+        // Some hosts reject HEAD
+        if (res.status === 405 || res.status === 501) {
+          res = await fetch(url, {
+            method: "GET",
+            redirect: "manual",
+            signal: controller.signal,
+            headers: { "User-Agent": "CINTEXA-CCDI-Passive/1.0" },
+          });
+        }
+        clearTimeout(timer);
+
+        const headerNames = [
+          "strict-transport-security",
+          "content-security-policy",
+          "x-frame-options",
+          "x-content-type-options",
+          "referrer-policy",
+          "permissions-policy",
+          "server",
+          "x-powered-by",
+          "location",
+        ];
+        const headers: Record<string, string> = {};
+        for (const h of headerNames) {
+          const v = res.headers.get(h);
+          if (v) headers[h] = v;
+        }
+
+        results.push({
+          url,
+          status: res.status,
+          statusText: res.statusText,
+          headers,
+        });
+
+        if (!headers["strict-transport-security"] && url.startsWith("https:")) {
+          findings!.push({
+            title: `Missing HSTS header: ${url}`,
+            severity: "low",
+            description: "strict-transport-security not present on HTTPS response",
+          });
+        }
+        if (!headers["x-content-type-options"]) {
+          findings!.push({
+            title: `Missing X-Content-Type-Options: ${url}`,
+            severity: "info",
+            description: "Consider nosniff",
+          });
+        }
+      } catch (err: any) {
+        results.push({ target, url, error: String(err?.message || err) });
+      }
+    }
+
+    const body = JSON.stringify({ results, collectedAt: new Date().toISOString() }, null, 2);
+    return {
+      success: true,
+      stdoutSummary: body.slice(0, 4000),
+      metrics: { adapter: "passive.http", targets: results.length },
+      evidence: [
+        {
+          evidenceType: "json",
+          storageRef: `inline:passive-http:${ctx.jobId}`,
+          filename: `passive-http-${ctx.jobId.slice(0, 8)}.json`,
+          sizeBytes: body.length,
+        },
+      ],
+      findings,
+    };
+  },
+};
+
+const ADAPTERS: Adapter[] = [demoEcho, passiveDns, passiveTls, passiveHttp];
 
 export function listAdapters() {
   return ADAPTERS.map((a) => ({
@@ -157,10 +389,6 @@ export function resolveAdapter(jobType: string): Adapter | null {
   return ADAPTERS.find((a) => a.jobTypes.includes(t) || a.key === t) ?? null;
 }
 
-/**
- * Run an adapter for a claimed job context.
- * Callers must ensure the job was legitimately claimed.
- */
 export async function runAdapter(ctx: AdapterContext): Promise<AdapterResult> {
   const adapter = resolveAdapter(ctx.jobType);
   if (!adapter) {
@@ -181,4 +409,4 @@ export async function runAdapter(ctx: AdapterContext): Promise<AdapterResult> {
   }
 }
 
-logger.info({ adapters: ADAPTERS.map((a) => a.key) }, "CCDI Phase 12 adapters loaded");
+logger.info({ adapters: ADAPTERS.map((a) => a.key) }, "CCDI Phase 13 adapters loaded");
