@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 12–13 Worker Adapters
+ * CINTEXA CCDI — Phase 12–14 Worker Adapters
  *
  * Adapters execute ONLY after a job has been claimed through the control plane
  * (approved scope, human approval, kill-switch clear).
@@ -9,12 +9,14 @@
  * - passive.dns — DNS resolution of targets already in an approved scope
  * - passive.tls — TLS certificate metadata (no vulnerability scanning)
  * - passive.http — HTTP HEAD/GET metadata (headers only, no crawling)
+ * - passive.dns_posture — SPF/DMARC/MX/CAA DNS checks
  *
  * No port scanners, vulnerability scanners, or exploit tools are included.
  */
 import { resolve4, resolve6 } from "dns/promises";
 import tls from "tls";
 import { logger } from "../lib/logger";
+import { passiveDnsPosture } from "./ccdi-dns-posture";
 
 export type AdapterContext = {
   jobId: string;
@@ -221,7 +223,6 @@ const passiveTls: Adapter = {
         const meta = await fetchTlsMeta(parsed.host, parsed.port === 80 ? 443 : parsed.port);
         results.push(meta);
 
-        // Informational findings only — expiry proximity
         if (typeof meta.valid_to === "string") {
           const exp = new Date(meta.valid_to as string).getTime();
           const days = (exp - Date.now()) / (86400 * 1000);
@@ -301,7 +302,6 @@ const passiveHttp: Adapter = {
           signal: controller.signal,
           headers: { "User-Agent": "CINTEXA-CCDI-Passive/1.0" },
         });
-        // Some hosts reject HEAD
         if (res.status === 405 || res.status === 501) {
           res = await fetch(url, {
             method: "GET",
@@ -329,12 +329,7 @@ const passiveHttp: Adapter = {
           if (v) headers[h] = v;
         }
 
-        results.push({
-          url,
-          status: res.status,
-          statusText: res.statusText,
-          headers,
-        });
+        results.push({ url, status: res.status, statusText: res.statusText, headers });
 
         if (!headers["strict-transport-security"] && url.startsWith("https:")) {
           findings!.push({
@@ -373,7 +368,7 @@ const passiveHttp: Adapter = {
   },
 };
 
-const ADAPTERS: Adapter[] = [demoEcho, passiveDns, passiveTls, passiveHttp];
+const ADAPTERS: Adapter[] = [demoEcho, passiveDns, passiveTls, passiveHttp, passiveDnsPosture];
 
 export function listAdapters() {
   return ADAPTERS.map((a) => ({
@@ -409,4 +404,4 @@ export async function runAdapter(ctx: AdapterContext): Promise<AdapterResult> {
   }
 }
 
-logger.info({ adapters: ADAPTERS.map((a) => a.key) }, "CCDI Phase 13 adapters loaded");
+logger.info({ adapters: ADAPTERS.map((a) => a.key) }, "CCDI Phase 14 adapters loaded");
