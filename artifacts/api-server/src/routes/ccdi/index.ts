@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–19 API routes.
+ * CINTEXA CCDI — Phase 2–20 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -24,6 +24,7 @@ import remediationRouter from "./remediation";
 import phase17Router from "./phase17";
 import phase18Router from "./phase18";
 import phase19Router from "./phase19";
+import phase20Router from "./phase20";
 
 const router = Router();
 
@@ -37,16 +38,16 @@ router.get("/health", async (_req: Request, res: Response) => {
   await rbac.seedCcdiRbac().catch(() => undefined);
   res.json({
     module: "ccdi",
-    phase: 19,
-    status: kill ? "emergency_stop" : "ownership_bulk_ready",
+    phase: 20,
+    status: kill ? "emergency_stop" : "alerts_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Phase 19 (asset ownership verification + bulk findings) is active.",
+      : "CCDI Phase 20 (in-app alerts + subscription preferences) is active.",
   });
 });
 
-// Mount Phase 4–19 routers
+// Mount Phase 4–20 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);
@@ -61,6 +62,7 @@ router.use(remediationRouter);
 router.use(phase17Router);
 router.use(phase18Router);
 router.use(phase19Router);
+router.use(phase20Router);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -438,6 +440,26 @@ router.post("/kill-switch", requireAuth, requireCcdiPermission("ccdi.platform.ad
       return;
     }
     const result = await orch.setKillSwitch(active, actor(req), reason);
+    if (active) {
+      try {
+        const { raiseAlert } = await import("../../services/ccdi-alerts");
+        const { rows: orgs } = await pool.query(
+          `SELECT id FROM ccdi_organizations WHERE status = 'active' ORDER BY created_at ASC LIMIT 1`,
+        );
+        if (orgs[0]) {
+          await raiseAlert({
+            organizationId: orgs[0].id,
+            eventType: "kill_switch.changed",
+            severity: "critical",
+            title: "CCDI emergency stop activated",
+            body: reason || "Kill switch enabled by operator",
+            meta: { activatedBy: actor(req) },
+          });
+        }
+      } catch {
+        /* non-fatal */
+      }
+    }
     res.json(result);
   } catch (err) {
     logger.error({ err }, "ccdi.kill-switch.set failed");
@@ -511,7 +533,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 19,
+        phase: 20,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
