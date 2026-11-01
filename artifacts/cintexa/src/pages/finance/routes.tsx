@@ -22,6 +22,10 @@ const Bills = lazy(() => import("./bills"));
 const Receivables = lazy(() => import("./receivables"));
 const Payables = lazy(() => import("./payables"));
 const Payments = lazy(() => import("./payments"));
+const Banking = lazy(() => import("./banking"));
+const BankDetail = lazy(() => import("./bank-detail"));
+const Cashbook = lazy(() => import("./cashbook"));
+const Expenses = lazy(() => import("./expenses"));
 const Tax = lazy(() => import("./tax"));
 const Settings = lazy(() => import("./settings"));
 
@@ -101,6 +105,10 @@ export function FinanceRoutes() {
             {R("/finance/bills", Bills, "finance:read")}
             {R("/finance/payables", Payables, "ledger:read")}
             {R("/finance/payments", Payments, "finance:read")}
+            {R("/finance/banking/:id", BankDetail, "ledger:read")}
+            {R("/finance/banking", Banking, "finance:read")}
+            {R("/finance/cashbook", Cashbook, "ledger:read")}
+            {R("/finance/expenses", Expenses, "finance:read")}
             {R("/finance/tax", Tax, "finance:read")}
             {R("/finance/approvals", Approvals, "finance:approve")}
             {R("/finance/audit", Audit, "audit:read")}

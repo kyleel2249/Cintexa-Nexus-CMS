@@ -2,7 +2,7 @@ import type pg from "pg";
 import { WI_SCHEMA_STATEMENTS } from "./wi-schema";
 import { SALES_SCHEMA_STATEMENTS } from "./sales-schema";
 import { SENTINEL_SCHEMA_STATEMENTS } from "./sentinel-schema";
-import { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS } from "./finance-schema";
+import { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS, FINANCE_PHASE5_STATEMENTS } from "./finance-schema";
 import { CCDI_SCHEMA_STATEMENTS } from "./ccdi-schema";
 
 /**
@@ -481,6 +481,7 @@ END $$`,
   ...SENTINEL_SCHEMA_STATEMENTS,
   ...FINANCE_SCHEMA_STATEMENTS,
   ...FINANCE_PHASE4_STATEMENTS,
+  ...FINANCE_PHASE5_STATEMENTS,
   ...CCDI_SCHEMA_STATEMENTS,
 ];
 
