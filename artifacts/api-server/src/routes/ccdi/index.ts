@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–13 API routes.
+ * CINTEXA CCDI — Phase 2–14 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -32,16 +32,16 @@ router.get("/health", async (_req: Request, res: Response) => {
   await rbac.seedCcdiRbac().catch(() => undefined);
   res.json({
     module: "ccdi",
-    phase: 13,
-    status: kill ? "emergency_stop" : "passive_recon_ready",
+    phase: 14,
+    status: kill ? "emergency_stop" : "findings_ingest_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Phase 13 (passive TLS/HTTP adapters + worker packaging guide) is active. Adapters: demo.echo, passive.dns, passive.tls, passive.http.",
+      : "CCDI Phase 14 (findings ingest + DNS posture) is active. Adapters include passive.dns_posture; adapter findings auto-ingest into ccdi_findings.",
   });
 });
 
-// Mount Phase 4–13 routers
+// Mount Phase 4–14 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);
@@ -501,7 +501,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 13,
+        phase: 14,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
