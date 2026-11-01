@@ -1,5 +1,5 @@
 /**
- * CINTEXA CCDI — Phase 2–5 API routes.
+ * CINTEXA CCDI — Phase 2–6 API routes.
  * Mounted at /api/ccdi
  */
 import { Router, type Request, type Response } from "express";
@@ -10,6 +10,7 @@ import * as orch from "../../services/ccdi-orchestration";
 import * as engines from "../../services/ccdi-engines";
 import findingsRouter from "./findings";
 import advancedRouter from "./advanced";
+import intelligenceRouter from "./intelligence";
 
 const router = Router();
 
@@ -22,18 +23,19 @@ router.get("/health", async (_req: Request, res: Response) => {
   const kill = await orch.isKillSwitchActive().catch(() => false);
   res.json({
     module: "ccdi",
-    phase: 5,
-    status: kill ? "emergency_stop" : "advanced_engines_ready",
+    phase: 6,
+    status: kill ? "emergency_stop" : "intelligence_ready",
     killSwitchActive: kill,
     message: kill
       ? "Global emergency stop is ACTIVE. All new execution is blocked."
-      : "CCDI Advanced Security Engines (Phase 5) are active. Cloud, server, container, mobile, database and IoT assessments require approved scopes and human approval.",
+      : "CCDI Intelligence, Automation & AI Agents (Phase 6) are active. Advisory agents only — no autonomous exploitation.",
   });
 });
 
-// Mount Phase 4 + Phase 5 routers
+// Mount Phase 4–6 routers
 router.use(findingsRouter);
 router.use(advancedRouter);
+router.use(intelligenceRouter);
 
 // ── Organisations ──────────────────────────────────────────────────────────
 router.get("/organizations", requireAuth, async (_req: Request, res: Response) => {
@@ -441,7 +443,7 @@ router.get("/audit", requireAuth, async (req: Request, res: Response) => {
   }
 });
 
-// ── Command Centre (evidence-backed) ───────────────────────────────────────
+// ── Command Centre ─────────────────────────────────────────────────────────
 router.get("/command-centre", requireAuth, async (req: Request, res: Response) => {
   try {
     const orgId = typeof req.query.organizationId === "string" ? req.query.organizationId : null;
@@ -484,7 +486,7 @@ router.get("/command-centre", requireAuth, async (req: Request, res: Response) =
         findings,
         recentAuditEvents: auditRes.rows[0]?.recent_events ?? 0,
         killSwitchActive: Boolean(killRes.rows[0]?.active),
-        phase: 5,
+        phase: 6,
         note: "All metrics are derived from real database records. No fabricated statistics.",
       },
     });
