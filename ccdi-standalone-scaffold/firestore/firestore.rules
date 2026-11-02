@@ -1,0 +1,258 @@
+rules_version = '2';
+
+/**
+ * CINTEXA CCDI — Firestore Security Rules (Phase 4)
+ * -----------------------------------------------------------------------
+ * Trust boundary: these rules are the authoritative enforcement of tenant
+ * isolation and RBAC for all direct client reads/writes. They read role
+ * and tenantId from the Firebase Auth custom claims on request.auth.token
+ * (set server-side in functions/src/routes/tenants.js and users.js) —
+ * never from a client-supplied field — so a modified client cannot forge
+ * a role or tenant membership.
+ *
+ * Collections written exclusively through Cloud Functions (approval
+ * decisions, scan execution results, vulnerability intelligence sync,
+ * engagement authorization) still have rules below for READ access, but
+ * their state-changing writes require the stronger checks already done in
+ * the callable functions; the client-write rules here only need to be at
+ * least as strict to cover any direct-write path we DO allow (plain CRUD
+ * like editing an asset's description).
+ * -----------------------------------------------------------------------
+ */
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // ---------------------------------------------------------------
+    // Helpers
+    // ---------------------------------------------------------------
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function tokenTenantId() {
+      return request.auth.token.tenantId;
+    }
+
+    function tokenRole() {
+      return request.auth.token.role;
+    }
+
+    function roleRank(role) {
+      return role == 'owner' ? 5
+        : role == 'admin' ? 4
+        : role == 'analyst' ? 3
+        : role == 'tester' ? 2
+        : role == 'viewer' ? 1
+        : 0;
+    }
+
+    function hasRole(minRole) {
+      return isSignedIn() && roleRank(tokenRole()) >= roleRank(minRole);
+    }
+
+    // True when the document being read/written belongs to the caller's tenant.
+    function sameTenant(data) {
+      return isSignedIn() && data.tenantId == tokenTenantId();
+    }
+
+    function incomingSameTenant() {
+      return isSignedIn() && request.resource.data.tenantId == tokenTenantId();
+    }
+
+    // Prevents a client write from changing tenantId, createdBy or createdAt
+    // on an update (those fields are set once at creation and are immutable
+    // from the client afterward).
+    function immutableCreationFields() {
+      return request.resource.data.tenantId == resource.data.tenantId
+        && request.resource.data.createdBy == resource.data.createdBy
+        && request.resource.data.createdAt == resource.data.createdAt;
+    }
+
+    // ---------------------------------------------------------------
+    // Tenants & Users
+    // ---------------------------------------------------------------
+    match /tenants/{tenantId} {
+      allow read: if isSignedIn() && tenantId == tokenTenantId();
+      allow update: if hasRole('owner') && tenantId == tokenTenantId();
+      allow create, delete: if false; // only via tenants-bootstrap Cloud Function
+    }
+
+    match /users/{userId} {
+      allow read: if isSignedIn() && sameTenant(resource.data);
+      allow write: if false; // only via users-invite / users-updateRole Cloud Functions
+    }
+
+    match /tenant_invites/{inviteId} {
+      allow read: if hasRole('admin') && sameTenant(resource.data);
+      allow write: if false; // only via users-invite Cloud Function
+    }
+
+    // ---------------------------------------------------------------
+    // Assets, relationships, history
+    // ---------------------------------------------------------------
+    match /assets/{assetId} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update: if hasRole('analyst') && sameTenant(resource.data) && immutableCreationFields()
+        // Lifecycle verification and scope changes require admin:
+        && (
+          !(resource.data.lifecycleStatus != request.resource.data.lifecycleStatus
+            || resource.data.scopeStatus != request.resource.data.scopeStatus)
+          || hasRole('admin')
+        );
+      allow delete: if hasRole('admin') && sameTenant(resource.data);
+    }
+
+    match /asset_relationships/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update, delete: if hasRole('analyst') && sameTenant(resource.data);
+    }
+
+    match /asset_history/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update, delete: if false; // append-only
+    }
+
+    // ---------------------------------------------------------------
+    // Discovery & attack surface (job approval only via Cloud Function)
+    // ---------------------------------------------------------------
+    match /discovery_jobs/{jobId} {
+      allow read: if sameTenant(resource.data);
+      allow create, update, delete: if false; // discovery-requestActive / discovery-approveJob
+    }
+
+    match /attack_surface_observations/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update, delete: if hasRole('admin') && sameTenant(resource.data);
+    }
+
+    // ---------------------------------------------------------------
+    // Vulnerability management
+    // ---------------------------------------------------------------
+    match /vulnerability_findings/{findingId} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update: if hasRole('analyst') && sameTenant(resource.data) && immutableCreationFields()
+        && (
+          !(request.resource.data.status == 'accepted_risk' && resource.data.status != 'accepted_risk')
+          || hasRole('admin')
+        );
+      allow delete: if hasRole('admin') && sameTenant(resource.data);
+    }
+
+    match /finding_evidence/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update, delete: if hasRole('admin') && sameTenant(resource.data);
+    }
+
+    match /retest_records/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update, delete: if false; // append-only history
+    }
+
+    match /cve_cache/{cveId} {
+      // Shared read-only public reference data cached by Cloud Functions;
+      // no tenant field, readable by any signed-in user, write-protected.
+      allow read: if isSignedIn();
+      allow write: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // Connectors, scan profiles, scans
+    // ---------------------------------------------------------------
+    match /connectors/{id} {
+      allow read: if hasRole('analyst') && sameTenant(resource.data);
+      allow create, update, delete: if false; // connectors-register / connectors-healthCheck
+    }
+
+    match /scan_profiles/{id} {
+      allow read: if sameTenant(resource.data);
+      allow write: if hasRole('admin') && sameTenant(resource.data);
+    }
+
+    match /scans/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create, update, delete: if false; // scans-request / scans-approve / scans-cancel / scans-importResult
+    }
+
+    // ---------------------------------------------------------------
+    // API inventory
+    // ---------------------------------------------------------------
+    match /api_inventory/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update, delete: if hasRole('analyst') && sameTenant(resource.data);
+    }
+
+    match /api_endpoints/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create, update, delete: if hasRole('analyst') && sameTenant(resource.data);
+    }
+
+    match /network_services/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create, update, delete: if hasRole('analyst') && sameTenant(resource.data);
+    }
+
+    // ---------------------------------------------------------------
+    // Penetration testing
+    // ---------------------------------------------------------------
+    match /pentest_engagements/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant() && request.resource.data.status == 'draft';
+      allow update: if hasRole('analyst') && sameTenant(resource.data) && resource.data.status == 'draft'
+        && !('status' in request.resource.data.diff(resource.data).affectedKeys());
+      // All status transitions (authorize/approve/cancel) go through Cloud Functions.
+      allow delete: if false;
+    }
+
+    match /pentest_authorizations/{id} {
+      allow read: if sameTenant(resource.data);
+      allow write: if false; // pentest-authorize Cloud Function
+    }
+
+    match /pentest_notes/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if (hasRole('tester') || hasRole('admin')) && incomingSameTenant();
+      allow update, delete: if false; // append-only timeline
+    }
+
+    // ---------------------------------------------------------------
+    // Remediation
+    // ---------------------------------------------------------------
+    match /remediation_tasks/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('analyst') && incomingSameTenant();
+      allow update: if hasRole('analyst') && sameTenant(resource.data);
+      allow delete: if hasRole('admin') && sameTenant(resource.data);
+    }
+
+    // ---------------------------------------------------------------
+    // Reports
+    // ---------------------------------------------------------------
+    match /reports/{id} {
+      allow read: if sameTenant(resource.data);
+      allow create: if hasRole('viewer') && incomingSameTenant();
+      allow update, delete: if false;
+    }
+
+    // ---------------------------------------------------------------
+    // Audit log — append-only, admin-read
+    // ---------------------------------------------------------------
+    match /audit_log/{id} {
+      allow read: if hasRole('admin') && sameTenant(resource.data);
+      allow create: if isSignedIn() && incomingSameTenant();
+      allow update, delete: if false;
+    }
+
+    // Deny everything else by default.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}

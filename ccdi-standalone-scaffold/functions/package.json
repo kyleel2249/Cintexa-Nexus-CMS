@@ -1,0 +1,22 @@
+{
+  "name": "ccdi-functions",
+  "version": "4.0.0",
+  "description": "CINTEXA CCDI Phase 4 — Cloud Functions backend (orchestration, approvals, vulnerability intelligence)",
+  "main": "src/index.js",
+  "engines": { "node": "20" },
+  "scripts": {
+    "serve": "firebase emulators:start --only functions,firestore,auth",
+    "deploy": "firebase deploy --only functions",
+    "lint": "eslint src --ext .js",
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "firebase-admin": "^12.3.1",
+    "firebase-functions": "^5.1.1",
+    "node-fetch": "^2.7.0"
+  },
+  "devDependencies": {
+    "eslint": "^8.57.0"
+  },
+  "private": true
+}
