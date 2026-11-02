@@ -1,7 +1,7 @@
 /**
  * Cloudflare Pages Function for /api/*
- * - Proxies to API_ORIGIN when set (the Express API; AUTH_MODE=open there means no sign-in is needed)
- * - Otherwise provides working stubs for sites, OpenRouter settings and API keys
+ * - Proxies to API_ORIGIN when set to a valid http(s) URL (the Express API; AUTH_MODE=open there means no sign-in is needed)
+ * - Otherwise (unset OR not a valid URL) provides working stubs for sites, OpenRouter settings and API keys
  *   so the SPA does not get empty/405/503 responses on POST/PUT in Settings.
  *   Stub data lives in the function isolate's memory only and is lost on redeploy/restart.
  */
@@ -70,6 +70,22 @@ async function readJson(request: Request): Promise<any> {
   }
 }
 
+/**
+ * API_ORIGIN must be the base URL of the Express API, e.g. https://api.example.com (no /api suffix).
+ * A common mistake is pasting a secret (such as an OpenRouter key) into this variable. Anything that is not a valid
+ * http(s) URL is ignored here and is never echoed back to the browser.
+ */
+function validOrigin(raw: string | undefined): string {
+  const v = (raw || "").trim().replace(/\/+$/, "");
+  if (!v) return "";
+  try {
+    const u = new URL(v);
+    return u.protocol === "http:" || u.protocol === "https:" ? v.replace(/\/api$/i, "") : "";
+  } catch {
+    return "";
+  }
+}
+
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { request, env, params } = context;
   const method = request.method.toUpperCase();
@@ -80,7 +96,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   const pathParts = (params.path as string[] | string | undefined) || [];
   const subpath = Array.isArray(pathParts) ? pathParts.join("/") : String(pathParts || "");
-  const origin = (env.API_ORIGIN || "").replace(/\/$/, "");
+  const origin = validOrigin(env.API_ORIGIN);
 
   if (origin) {
     const target = `${origin}/api/${subpath}${new URL(request.url).search}`;
@@ -113,8 +129,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           "cache-control": "no-store",
         },
       });
-    } catch (e: any) {
-      return json({ error: e?.message || "Upstream API unreachable" }, 502);
+    } catch {
+      return json({ error: "The API server set in API_ORIGIN could not be reached." }, 502);
     }
   }
 
@@ -273,7 +289,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     {
       error: "API backend not configured",
       hint:
-        "Deploy the Express API (see docs/website-intelligence/api-host-setup.md, or the Dockerfile and render.yaml at the repo root) and set API_ORIGIN in Cloudflare Pages -> Settings -> Environment variables to its base URL, without /api. Content, media, forms, SEO, webhooks and intake share links all need it.",
+        "Deploy the Express API (see docs/website-intelligence/api-host-setup.md, or the Dockerfile and render.yaml at the repo root) and set API_ORIGIN in Cloudflare Pages -> Settings -> Environment variables to its base URL (https://..., without /api). Content, media, forms, SEO, webhooks and intake share links all need it.",
       path: subpath,
       method,
     },
