@@ -83,3 +83,11 @@ export function openSecret(sealed: SealedSecret, aad: string): string {
 
 /** Only CCDI_-prefixed variables may be referenced, so a reference can never read arbitrary server env. */
 export const ENV_REF_RE = /^CCDI_[A-Z0-9_]{1,80}$/;
+
+/**
+ * Platform-internal variables that must never be usable as a credential. Without this, a credential
+ * pointing at CCDI_MASTER_KEYS would be sent to an AI provider as its API key by the connection test.
+ */
+export function isReservedEnvRef(name: string): boolean {
+  return /MASTER|ACCESS_MODE|PLATFORM_ADMINS|STRICT_RBAC|ENCRYPTION|SIGNING|JWT/.test(name.toUpperCase());
+}

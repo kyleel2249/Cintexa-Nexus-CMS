@@ -2,7 +2,7 @@
  * CINTEXA CCDI — application shell (Phase 2 foundation).
  *
  * Routes (all under /ccdi): "" Command Centre, users, integrations, settings are implemented.
- * Every other navigation item is a clearly labelled, non-operational placeholder for a later phase.
+ * Every other navigation item is a clearly labelled placeholder: it has no screen in this workspace yet.
  */
 import { lazy, Suspense, type ReactNode } from "react";
 import { Link, useLocation } from "wouter";
@@ -89,7 +89,7 @@ function ComingLater({ item }: { item: NavItem }) {
       <Icon className="mx-auto h-9 w-9 text-muted-foreground" aria-hidden />
       <h2 className="mt-3 text-xl font-semibold">{item.label}</h2>
       <p className="mt-2 text-sm text-muted-foreground">
-        This module is not available yet. The permissions, data structures and navigation for it are reserved, and it will be built in a later phase.
+        This module has no screen in the CCDI workspace yet. Its permissions and navigation entry are reserved, and the screen will be added in a later phase. Some backend APIs from earlier phases already exist; they are not exposed here.
       </p>
     </div>
   );
@@ -153,7 +153,7 @@ function Shell() {
           ) : (
             <div className="mx-auto max-w-6xl space-y-4 p-4 sm:p-6">
               {section !== "" && NAV.find((n) => n.slug === section)?.implemented === false && (
-                <Notice kind="info">Navigation preview. This module is not operational in the current phase.</Notice>
+                <Notice kind="info">Navigation preview. There is no screen for this module yet.</Notice>
               )}
               <Body section={section} />
             </div>
@@ -181,7 +181,7 @@ function NavList({ section }: { section: string }) {
             >
               <Icon className="h-4 w-4 shrink-0" aria-hidden />
               <span className="min-w-0 flex-1 truncate">{n.label}</span>
-              {!n.implemented && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">soon</span>}
+              {!n.implemented && <span className="rounded bg-muted px-1.5 py-0.5 text-[10px] uppercase text-muted-foreground">no screen</span>}
             </Link>
           </li>
         );

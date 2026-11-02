@@ -91,8 +91,22 @@ export const ccdiContext: RequestHandler = async (req: Request, res: Response, n
   }
 };
 
+/**
+ * Bootstrap platform administrators for enforced mode, so the first organisation can be created.
+ * CCDI_PLATFORM_ADMINS = comma separated user refs or e-mail addresses (case-insensitive).
+ * They receive the non-restricted admin wildcard only; restricted capabilities still need an explicit grant.
+ */
+export function isBootstrapAdmin(userRef: string, email?: string | null): boolean {
+  const list = String(process.env.CCDI_PLATFORM_ADMINS || "")
+    .split(",")
+    .map((v) => v.trim().toLowerCase())
+    .filter(Boolean);
+  if (!list.length) return false;
+  return list.includes(userRef.toLowerCase()) || (!!email && list.includes(email.toLowerCase()));
+}
+
 /** Permission codes the caller holds in an organisation (wildcard roles expand to non-restricted codes only). */
-export async function permissionSet(userRef: string, orgId: string | null): Promise<Set<string>> {
+export async function permissionSet(userRef: string, orgId: string | null, email?: string | null): Promise<Set<string>> {
   const { rows } = await pool.query(
     `SELECT DISTINCT p.code
      FROM ccdi_user_roles ur
@@ -105,6 +119,10 @@ export async function permissionSet(userRef: string, orgId: string | null): Prom
     [userRef, orgId],
   );
   const held = new Set<string>(rows.map((r: { code: string }) => r.code));
+  if (isBootstrapAdmin(userRef, email)) {
+    held.add("ccdi.platform.admin");
+    held.add("ccdi.org.admin");
+  }
   // Wildcards never cover restricted codes. An org admin does NOT inherit platform administration.
   const platformAdmin = held.has("ccdi.platform.admin");
   if (platformAdmin || held.has("ccdi.org.admin")) {
@@ -115,8 +133,8 @@ export async function permissionSet(userRef: string, orgId: string | null): Prom
   return held;
 }
 
-export async function hasPermission(userRef: string, orgId: string | null, code: string): Promise<boolean> {
-  return (await permissionSet(userRef, orgId)).has(code);
+export async function hasPermission(userRef: string, orgId: string | null, code: string, email?: string | null): Promise<boolean> {
+  return (await permissionSet(userRef, orgId, email)).has(code);
 }
 
 async function organisationExists(orgId: string): Promise<boolean> {
@@ -164,8 +182,8 @@ export function requirePermission(code: string, opts: GuardOptions = {}): Reques
       }
 
       const ok = opts.platform
-        ? (await permissionSet(ctx.actorRef, null)).has("ccdi.platform.admin")
-        : await hasPermission(ctx.actorRef, ctx.orgId, code);
+        ? (await permissionSet(ctx.actorRef, null, ctx.actorEmail)).has("ccdi.platform.admin")
+        : await hasPermission(ctx.actorRef, ctx.orgId, code, ctx.actorEmail);
       if (!ok) {
         await appendAudit({ organizationId: ctx.orgId, actorRef: ctx.actorRef, actorEmail: ctx.actorEmail, action: "access.denied", entityType: "permission", entityId: code, outcome: "denied", correlationId: ctx.correlationId, ip: ctx.ip, userAgent: ctx.userAgent, meta: { reason: "missing_permission", path: req.path } }).catch(() => undefined);
         res.status(403).json({ error: `Missing permission: ${code}`, correlationId: ctx.correlationId });
@@ -192,7 +210,7 @@ export async function assertCanGrant(ctx: CcdiContext, orgId: string, codes: str
     if (restricted.length) throw new HttpError(403, `Restricted permissions cannot be granted in open-access mode: ${restricted.join(", ")}`);
     return;
   }
-  const held = await permissionSet(ctx.actorRef, orgId);
+  const held = await permissionSet(ctx.actorRef, orgId, ctx.actorEmail);
   const missing = codes.filter((c) => !held.has(c));
   if (missing.length) throw new HttpError(403, `You cannot grant permissions you do not hold: ${missing.join(", ")}`);
 }

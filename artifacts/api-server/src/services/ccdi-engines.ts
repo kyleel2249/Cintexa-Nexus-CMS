@@ -135,7 +135,7 @@ export async function upsertFinding(input: FindingInput) {
     `INSERT INTO ccdi_findings
        (organization_id, asset_id, job_id, execution_id, title, description, severity,
         cve_id, cwe_id, cvss_score, cvss_vector, category, affected_url, affected_component,
-        evidence_summary, remediation, references, source_connector, fingerprint, owner_ref, meta)
+        evidence_summary, remediation, "references", source_connector, fingerprint, owner_ref, meta)
      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
      ON CONFLICT (organization_id, fingerprint) WHERE fingerprint IS NOT NULL AND status NOT IN ('resolved','false_positive','duplicate')
      DO UPDATE SET

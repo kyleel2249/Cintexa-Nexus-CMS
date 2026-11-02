@@ -50,7 +50,7 @@ async function grant(roleId: string | undefined, codes: string[]): Promise<void>
   for (const code of codes) {
     await pool.query(
       `INSERT INTO ccdi_role_permissions (role_id, permission_id)
-       SELECT $1, id FROM ccdi_permissions WHERE code = $2 ON CONFLICT DO NOTHING`,
+       SELECT $1::uuid, id FROM ccdi_permissions WHERE code = $2::text ON CONFLICT DO NOTHING`,
       [roleId, code],
     );
   }

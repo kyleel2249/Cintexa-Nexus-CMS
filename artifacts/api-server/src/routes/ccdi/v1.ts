@@ -14,6 +14,7 @@ import { logger } from "../../lib/logger";
 import {
   assertCanGrant,
   ccdiContext,
+  isBootstrapAdmin,
   isRestricted,
   permissionSet,
   requirePermission,
@@ -23,6 +24,7 @@ import { appendAudit, verifyAuditChain, withAudit } from "../../services/ccdi-fo
 import { seedFoundation } from "../../services/ccdi-foundation/seed";
 import {
   ENV_REF_RE,
+  isReservedEnvRef,
   maskSecret,
   openSecret,
   sealSecret,
@@ -178,7 +180,7 @@ router.get("/me", handler(async (req, res) => {
      JOIN ccdi_organizations o ON o.id = m.organization_id WHERE m.user_ref = $1 AND m.status <> 'removed'`,
     [c.actorRef],
   );
-  const perms = c.orgId ? [...(await permissionSet(c.actorRef, c.orgId))].sort() : [];
+  const perms = c.orgId ? [...(await permissionSet(c.actorRef, c.orgId, c.actorEmail))].sort() : [];
   res.json({ mode: "enforced", actor: c.actorRef, email: c.actorEmail, authenticated: true, organizationId: c.orgId, memberships: memberships.rows, permissions: perms });
 }));
 
@@ -188,6 +190,14 @@ router.get("/organizations", handler(async (req, res) => {
   const { limit, offset } = page(req);
   if (c.mode === "enforced") {
     if (!c.authenticated) throw new HttpError(401, "Authentication required");
+    if (isBootstrapAdmin(c.actorRef, c.actorEmail)) {
+      const all = await pool.query(
+        `SELECT id, name, slug, status, created_at FROM ccdi_organizations ORDER BY name LIMIT $1 OFFSET $2`,
+        [limit, offset],
+      );
+      res.json({ organizations: all.rows, limit, offset });
+      return;
+    }
     const { rows } = await pool.query(
       `SELECT o.id, o.name, o.slug, o.status, o.created_at FROM ccdi_organizations o
        JOIN ccdi_org_members m ON m.organization_id = o.id AND m.user_ref = $1 AND m.status = 'active'
@@ -220,7 +230,7 @@ router.post("/organizations", requirePermission("ccdi.organizations.manage", { p
         await client.query(`INSERT INTO ccdi_org_members (organization_id, user_ref, email, status) VALUES ($1,$2,$3,'active')`, [rows[0].id, c.actorRef, c.actorEmail]);
         await client.query(
           `INSERT INTO ccdi_user_roles (organization_id, user_ref, role_id, assigned_by)
-           SELECT $1, $2, id, $2 FROM ccdi_roles WHERE organization_id IS NULL AND slug = 'organization_administrator'`,
+           SELECT $1::uuid, $2::text, id, $2::text FROM ccdi_roles WHERE organization_id IS NULL AND slug = 'organization_administrator'`,
           [rows[0].id, c.actorRef],
         );
       }
@@ -405,7 +415,7 @@ router.post("/organizations/:orgId/roles", requirePermission("ccdi.roles.manage"
         [orgId, name, slug, description ?? null],
       );
       await client.query(
-        `INSERT INTO ccdi_role_permissions (role_id, permission_id) SELECT $1, id FROM ccdi_permissions WHERE code = ANY($2::text[])`,
+        `INSERT INTO ccdi_role_permissions (role_id, permission_id) SELECT $1::uuid, id FROM ccdi_permissions WHERE code = ANY($2::text[])`,
         [rows[0].id, codes],
       );
       return rows[0];
@@ -427,7 +437,7 @@ router.put("/organizations/:orgId/roles/:roleId/permissions", requirePermission(
       if (role.rows[0].is_system) throw new HttpError(403, "System roles cannot be modified");
       await client.query(`DELETE FROM ccdi_role_permissions WHERE role_id = $1`, [roleId]);
       await client.query(
-        `INSERT INTO ccdi_role_permissions (role_id, permission_id) SELECT $1, id FROM ccdi_permissions WHERE code = ANY($2::text[])`,
+        `INSERT INTO ccdi_role_permissions (role_id, permission_id) SELECT $1::uuid, id FROM ccdi_permissions WHERE code = ANY($2::text[])`,
         [roleId, codes],
       );
     },
@@ -591,6 +601,7 @@ router.post("/organizations/:orgId/credentials", credentialLimiter, requirePermi
   } else {
     externalRef = reqStr(req.body?.externalRef, "externalRef");
     if (!ENV_REF_RE.test(externalRef)) throw new HttpError(400, "externalRef must be an environment variable name starting with CCDI_");
+    if (isReservedEnvRef(externalRef)) throw new HttpError(400, "That variable is reserved for the platform and cannot be used as a credential");
     hint = `env:${externalRef}`;
   }
 
@@ -927,7 +938,7 @@ router.post("/organizations/:orgId/ai-providers/:id/test", rateLimit("ccdi-ai-te
   } else {
     let key: string | undefined;
     try {
-      key = p.storage === "env" ? process.env[p.external_ref as string] : openSecret({ ciphertext: p.ciphertext, iv: p.iv, tag: p.auth_tag, keyVersion: p.key_version }, p.credential_id);
+      key = p.storage === "env" ? (isReservedEnvRef(String(p.external_ref)) ? undefined : process.env[p.external_ref as string]) : openSecret({ ciphertext: p.ciphertext, iv: p.iv, tag: p.auth_tag, keyVersion: p.key_version }, p.credential_id);
     } catch {
       key = undefined;
     }

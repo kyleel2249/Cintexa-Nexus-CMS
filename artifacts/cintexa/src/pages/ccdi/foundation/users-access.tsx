@@ -224,7 +224,7 @@ function Roles() {
   });
 
   if (!orgId) return <NeedsOrg />;
-  const categories = [...new Set(perms.data?.permissions.map((p) => p.category) ?? [])];
+  const categories: string[] = [...new Set<string>((perms.data?.permissions ?? []).map((p) => p.category))];
   const toggle = (code: string, on: boolean) => setChosen(on ? [...chosen, code] : chosen.filter((c) => c !== code));
 
   return (

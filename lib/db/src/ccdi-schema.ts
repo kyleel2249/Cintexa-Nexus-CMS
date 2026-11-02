@@ -297,7 +297,7 @@ export const CCDI_SCHEMA_STATEMENTS: string[] = [
   affected_component TEXT,
   evidence_summary TEXT,
   remediation TEXT,
-  references JSONB NOT NULL DEFAULT '[]'::jsonb,
+  "references" JSONB NOT NULL DEFAULT '[]'::jsonb,
   first_seen_at ${TS} NOT NULL DEFAULT now(),
   last_seen_at ${TS} NOT NULL DEFAULT now(),
   resolved_at ${TS},
