@@ -6,6 +6,7 @@ import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as alerts from "../../services/ccdi-alerts";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -69,12 +70,12 @@ router.post("/alerts/:id/acknowledge", requireAuth, async (req: Request, res: Re
       return;
     }
     const result = await alerts.acknowledgeAlert({
-      alertId: req.params.id,
+      alertId: pid(req.params.id),
       organizationId: String(organizationId),
       actor: actor(req),
     });
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
     res.json(result);

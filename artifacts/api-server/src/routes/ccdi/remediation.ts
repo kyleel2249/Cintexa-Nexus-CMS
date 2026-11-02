@@ -6,6 +6,7 @@ import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as rem from "../../services/ccdi-remediation";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -71,7 +72,7 @@ router.post(
         createdBy: actor(req),
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.status(201).json(result);
@@ -94,7 +95,7 @@ router.patch(
         return;
       }
       const result = await rem.updateRemediationTask({
-        taskId: req.params.id,
+        taskId: pid(req.params.id),
         organizationId: String(body.organizationId),
         actor: actor(req),
         status: body.status,
@@ -105,7 +106,7 @@ router.patch(
         description: body.description,
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.json(result);
@@ -128,14 +129,14 @@ router.post(
         return;
       }
       const result = await rem.assignFinding({
-        findingId: req.params.id,
+        findingId: pid(req.params.id),
         organizationId: String(body.organizationId),
         ownerRef: String(body.ownerRef),
         actor: actor(req),
         createTask: Boolean(body.createTask),
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.json(result);

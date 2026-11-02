@@ -6,6 +6,7 @@ import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as wf from "../../services/ccdi-assets-workflow";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -42,7 +43,7 @@ router.post(
         return;
       }
       const result = await wf.verifyAssetOwnership({
-        assetId: req.params.id,
+        assetId: pid(req.params.id),
         organizationId: String(organizationId),
         actor: actor(req),
         decision,
@@ -50,7 +51,7 @@ router.post(
         ownerRef,
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.json(result);
@@ -80,7 +81,7 @@ router.post(
         actor: actor(req),
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.json(result);

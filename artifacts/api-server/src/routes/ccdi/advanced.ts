@@ -5,6 +5,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as advanced from "../../services/ccdi-advanced-engines";
+import { httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -40,7 +41,7 @@ router.post("/advanced/assessments", requireAuth, async (req: Request, res: Resp
     });
 
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
 

@@ -11,6 +11,7 @@ import * as orch from "../../services/ccdi-orchestration";
 import * as webhooks from "../../services/ccdi-webhooks";
 import * as ingest from "../../services/ccdi-findings-ingest";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -41,7 +42,7 @@ router.post(
 
       const claimed = await workers.claimNextJob(workerId, organizationId);
       if ("error" in claimed) {
-        res.status(claimed.status).json({ error: claimed.error });
+        res.status(httpStatus(claimed.status)).json({ error: claimed.error });
         return;
       }
       if (!claimed.job) {
@@ -189,7 +190,7 @@ router.post(
 // ── HTML report export ─────────────────────────────────────────────────────
 router.get("/reporting/reports/:id/export.html", requireAuth, async (req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query(`SELECT * FROM ccdi_reports WHERE id = $1`, [req.params.id]);
+    const { rows } = await pool.query(`SELECT * FROM ccdi_reports WHERE id = $1`, [pid(req.params.id)]);
     if (!rows[0]) {
       res.status(404).json({ error: "Report not found" });
       return;
@@ -198,10 +199,11 @@ router.get("/reporting/reports/:id/export.html", requireAuth, async (req: Reques
     const sections = Array.isArray(r.sections) ? r.sections : [];
     const escape = (s: string) =>
       String(s)
-        .replace(/&/g, "&")
-        .replace(/</g, "<")
-        .replace(/>/g, ">")
-        .replace(/"/g, """);
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
 
     const sectionHtml = sections
       .map(

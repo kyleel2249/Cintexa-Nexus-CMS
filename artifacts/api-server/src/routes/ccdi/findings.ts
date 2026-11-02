@@ -7,6 +7,7 @@ import { pool } from "@workspace/db";
 import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as engines from "../../services/ccdi-engines";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -97,9 +98,9 @@ router.patch("/findings/:id/status", requireAuth, async (req: Request, res: Resp
     res.status(400).json({ error: "organizationId and status are required" });
     return;
   }
-  const result = await engines.updateFindingStatus(req.params.id, String(organizationId), status, actor(req));
+  const result = await engines.updateFindingStatus(pid(req.params.id), String(organizationId), status, actor(req));
   if ("error" in result) {
-    res.status(result.status).json({ error: result.error });
+    res.status(httpStatus(result.status)).json({ error: result.error });
     return;
   }
   res.json(result);
@@ -183,7 +184,7 @@ router.post("/assessments/request", requireAuth, async (req: Request, res: Respo
       connectorKey: body.connectorKey,
     });
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
     res.status(201).json({

@@ -6,6 +6,7 @@ import { pool } from "@workspace/db";
 import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as rbac from "../../services/ccdi-rbac";
+import { httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -70,7 +71,7 @@ router.post("/rbac/assign", requireAuth, async (req: Request, res: Response) => 
       assignedBy: actor(req),
     });
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
     res.status(201).json(result);

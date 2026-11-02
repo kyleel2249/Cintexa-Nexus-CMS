@@ -8,6 +8,7 @@ import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as connectors from "../../services/ccdi-connectors";
 import * as reporting from "../../services/ccdi-reporting";
+import { pid } from "./http-util";
 
 const router = Router();
 
@@ -15,7 +16,7 @@ const router = Router();
 router.post("/connectors/:id/health", requireAuth, async (req: Request, res: Response) => {
   try {
     const orgId = typeof req.body?.organizationId === "string" ? req.body.organizationId : undefined;
-    const out = await connectors.checkConnectorHealth(req.params.id, orgId);
+    const out = await connectors.checkConnectorHealth(pid(req.params.id), orgId);
     if (out.error) {
       res.status(out.status ?? 400).json({ error: out.error });
       return;
@@ -48,7 +49,7 @@ router.post("/connectors/health-all", requireAuth, async (req: Request, res: Res
 router.get("/reporting/reports/:id/export", requireAuth, async (req: Request, res: Response) => {
   try {
     const format = (typeof req.query.format === "string" ? req.query.format : "json").toLowerCase();
-    const { rows } = await pool.query(`SELECT * FROM ccdi_reports WHERE id = $1`, [req.params.id]);
+    const { rows } = await pool.query(`SELECT * FROM ccdi_reports WHERE id = $1`, [pid(req.params.id)]);
     if (!rows[0]) {
       res.status(404).json({ error: "Report not found" });
       return;

@@ -6,6 +6,7 @@ import { Router, type Request, type Response } from "express";
 import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as workers from "../../services/ccdi-workers";
+import { httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -15,7 +16,7 @@ router.post("/workers/claim", requireAuth, async (req: Request, res: Response) =
     const organizationId = req.body?.organizationId ? String(req.body.organizationId) : undefined;
     const result = await workers.claimNextJob(workerId, organizationId);
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
     res.json(result);
@@ -34,7 +35,7 @@ router.post("/workers/heartbeat", requireAuth, async (req: Request, res: Respons
     }
     const result = await workers.heartbeatExecution(String(executionId), String(workerId), metrics);
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
     res.json(result);
@@ -62,7 +63,7 @@ router.post("/workers/complete", requireAuth, async (req: Request, res: Response
       evidence: body.evidence,
     });
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
     res.json(result);

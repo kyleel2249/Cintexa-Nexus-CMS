@@ -30,6 +30,7 @@ import phase22Router from "./phase22";
 import phase23Router from "./phase23";
 import phase25Router from "./phase25";
 import v1Router from "./v1";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -247,9 +248,9 @@ router.post("/scopes/:id/submit", requireAuth, async (req: Request, res: Respons
     res.status(400).json({ error: "organizationId is required" });
     return;
   }
-  const result = await orch.submitScopeForApproval(req.params.id, String(orgId), actor(req));
+  const result = await orch.submitScopeForApproval(pid(req.params.id), String(orgId), actor(req));
   if ("error" in result) {
-    res.status(result.status).json({ error: result.error });
+    res.status(httpStatus(result.status)).json({ error: result.error });
     return;
   }
   res.json(result);
@@ -262,10 +263,10 @@ router.post("/scopes/:id/decide", requireAuth, requireCcdiPermission("ccdi.scope
     return;
   }
   const result = await orch.decideScopeApproval(
-    req.params.id, String(organizationId), actor(req), decision, note, expiresAt,
+    pid(req.params.id), String(organizationId), actor(req), decision, note, expiresAt,
   );
   if ("error" in result) {
-    res.status(result.status).json({ error: result.error });
+    res.status(httpStatus(result.status)).json({ error: result.error });
     return;
   }
   res.json(result);
@@ -312,7 +313,7 @@ router.post("/jobs", requireAuth, async (req: Request, res: Response) => {
     requestedBy: actor(req),
   });
   if ("error" in result) {
-    res.status(result.status).json({ error: result.error });
+    res.status(httpStatus(result.status)).json({ error: result.error });
     return;
   }
   res.status(201).json(result);
@@ -324,9 +325,9 @@ router.post("/jobs/:id/submit", requireAuth, async (req: Request, res: Response)
     res.status(400).json({ error: "organizationId is required" });
     return;
   }
-  const result = await orch.submitJobForApproval(req.params.id, String(orgId), actor(req));
+  const result = await orch.submitJobForApproval(pid(req.params.id), String(orgId), actor(req));
   if ("error" in result) {
-    res.status(result.status).json({ error: result.error });
+    res.status(httpStatus(result.status)).json({ error: result.error });
     return;
   }
   res.json(result);
@@ -338,9 +339,9 @@ router.post("/jobs/:id/decide", requireAuth, requireCcdiPermission("ccdi.job.app
     res.status(400).json({ error: "organizationId and decision (approved|rejected) are required" });
     return;
   }
-  const result = await orch.decideJobApproval(req.params.id, String(organizationId), actor(req), decision, note);
+  const result = await orch.decideJobApproval(pid(req.params.id), String(organizationId), actor(req), decision, note);
   if ("error" in result) {
-    res.status(result.status).json({ error: result.error });
+    res.status(httpStatus(result.status)).json({ error: result.error });
     return;
   }
   res.json(result);
@@ -352,9 +353,9 @@ router.post("/jobs/:id/cancel", requireAuth, async (req: Request, res: Response)
     res.status(400).json({ error: "organizationId is required" });
     return;
   }
-  const result = await orch.cancelJob(req.params.id, String(orgId), actor(req));
+  const result = await orch.cancelJob(pid(req.params.id), String(orgId), actor(req));
   if ("error" in result) {
-    res.status(result.status).json({ error: result.error });
+    res.status(httpStatus(result.status)).json({ error: result.error });
     return;
   }
   res.json(result);

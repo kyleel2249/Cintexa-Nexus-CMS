@@ -6,6 +6,7 @@ import { pool } from "@workspace/db";
 import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as intel from "../../services/ccdi-intelligence";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -91,9 +92,9 @@ router.post("/intelligence/triage/:findingId", requireAuth, async (req: Request,
       res.status(400).json({ error: "organizationId is required" });
       return;
     }
-    const result = await intel.triageFinding(req.params.findingId, String(orgId), actor(req));
+    const result = await intel.triageFinding(pid(req.params.findingId), String(orgId), actor(req));
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
     res.json(result);
@@ -119,7 +120,7 @@ router.post("/intelligence/advisory", requireAuth, async (req: Request, res: Res
       actor: actor(req),
     });
     if ("error" in result) {
-      res.status(result.status).json({ error: result.error });
+      res.status(httpStatus(result.status)).json({ error: result.error });
       return;
     }
     res.json(result);

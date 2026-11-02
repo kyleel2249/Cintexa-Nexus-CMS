@@ -8,12 +8,13 @@ import { logger } from "../../lib/logger";
 import { buildSimplePdf, reportToPdfLines } from "../../services/ccdi-pdf";
 import * as outbox from "../../services/ccdi-webhook-queue";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
+import { pid } from "./http-util";
 
 const router = Router();
 
 router.get("/reporting/reports/:id/export.pdf", requireAuth, async (req: Request, res: Response) => {
   try {
-    const { rows } = await pool.query(`SELECT * FROM ccdi_reports WHERE id = $1`, [req.params.id]);
+    const { rows } = await pool.query(`SELECT * FROM ccdi_reports WHERE id = $1`, [pid(req.params.id)]);
     if (!rows[0]) {
       res.status(404).json({ error: "Report not found" });
       return;

@@ -7,6 +7,7 @@ import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as webhooks from "../../services/ccdi-webhooks";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -43,7 +44,7 @@ router.post(
         createdBy: actor(req),
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.status(201).json({
@@ -92,7 +93,7 @@ router.delete(
       }
       const { rowCount } = await pool.query(
         `DELETE FROM ccdi_webhook_endpoints WHERE id = $1 AND organization_id = $2`,
-        [req.params.id, orgId],
+        [pid(req.params.id), orgId],
       );
       if (!rowCount) {
         res.status(404).json({ error: "Webhook not found" });

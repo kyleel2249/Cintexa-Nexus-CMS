@@ -6,6 +6,7 @@ import { pool } from "@workspace/db";
 import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as reporting from "../../services/ccdi-reporting";
+import { pid } from "./http-util";
 
 const router = Router();
 
@@ -90,7 +91,7 @@ router.get("/reporting/reports", requireAuth, async (req: Request, res: Response
 router.get("/reporting/reports/:id", requireAuth, async (req: Request, res: Response) => {
   try {
     await ensureSchema();
-    const { rows } = await pool.query(`SELECT * FROM ccdi_reports WHERE id = $1`, [req.params.id]);
+    const { rows } = await pool.query(`SELECT * FROM ccdi_reports WHERE id = $1`, [pid(req.params.id)]);
     if (!rows[0]) {
       res.status(404).json({ error: "Report not found" });
       return;

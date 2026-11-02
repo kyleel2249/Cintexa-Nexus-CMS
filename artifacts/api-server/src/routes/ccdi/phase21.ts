@@ -6,6 +6,7 @@ import { requireAuth } from "../../lib/auth-middleware";
 import { logger } from "../../lib/logger";
 import * as integrity from "../../services/ccdi-evidence-integrity";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -20,7 +21,7 @@ router.get("/evidence/:id/custody", requireAuth, async (req: Request, res: Respo
       res.status(400).json({ error: "organizationId is required" });
       return;
     }
-    const chain = await integrity.listCustodyChain(organizationId, req.params.id);
+    const chain = await integrity.listCustodyChain(organizationId, pid(req.params.id));
     res.json({ custody: chain });
   } catch (err) {
     logger.error({ err }, "ccdi.evidence.custody.list failed");
@@ -41,14 +42,14 @@ router.post(
       }
       const result = await integrity.recordCustodyEvent({
         organizationId: String(body.organizationId),
-        evidenceId: req.params.id,
+        evidenceId: pid(req.params.id),
         action: String(body.action),
         actorRef: actor(req),
         note: body.note,
         meta: body.meta,
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.status(201).json(result);
@@ -72,12 +73,12 @@ router.post(
       }
       const result = await integrity.verifyEvidenceIntegrity({
         organizationId: String(body.organizationId),
-        evidenceId: req.params.id,
+        evidenceId: pid(req.params.id),
         actorRef: actor(req),
         computedSha256: body.computedSha256,
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.json(result);
