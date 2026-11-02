@@ -11,14 +11,19 @@ import { resolveOpenRouterApiKey, getOpenRouterSettings } from "../../lib/openro
 import type { Integrations } from "./integrations/providers";
 import type { SalesRequest, SalesResponse } from "./core/types";
 import { logger } from "../../lib/logger";
+import { createCintexaFinanceProvider } from "../finance/integration";
 
 /**
  * Provider registry. Sales reports inventory, invoicing, e-mail, WhatsApp and AI as "not connected" until an adapter
- * is registered here AND switched on in Sales Settings -> Integrations. No adapter ships in this release because none
- * could be verified against a live service; add one by assigning to this object at start-up, e.g.
- *   import { integrations } from "./services/sales"; integrations.email = myEmailAdapter;
+ * is registered here AND switched on in Sales Settings -> Integrations.
+ *
+ * Phase 2 (Financial Intelligence): the Cintexa Finance provider is registered so the Sales outbox can create
+ * real finance invoices / journals via the existing double-entry engine (source_module + source_ref idempotency).
  */
+const salesDb = createSalesDb(pool);
+
 export const integrations: Integrations = {
+  finance: createCintexaFinanceProvider(salesDb),
   // OpenRouter adapter for agent narration and the contextual assistant. It is inert until an administrator turns on
   // Sales Settings -> Integrations -> AI AND allows an external provider; the API key is read from the platform OpenRouter
   // settings or OPENROUTER_API_KEY at call time and is never stored in code. If it is missing, agents stay deterministic.
@@ -30,7 +35,7 @@ export const integrations: Integrations = {
 
 const router = buildRouter();
 router.add(...researchRoutes);
-const db = createSalesDb(pool);
+const db = salesDb;
 const deps: Deps = {
   now: () => new Date(),
   integrations,

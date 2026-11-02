@@ -19,4 +19,5 @@ export { SALES_SCHEMA_STATEMENTS } from "./sales-schema";
 export { createSalesDb, type SalesDb, type SalesQueryable } from "./sales-adapter";
 export { SENTINEL_SCHEMA_STATEMENTS } from "./sentinel-schema";
 export { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS, FINANCE_PHASE5_STATEMENTS } from "./finance-schema";
+export { FINANCE_INTEGRATION_STATEMENTS } from "./finance-integration-schema";
 export { CCDI_SCHEMA_STATEMENTS, CCDI_PERMISSION_SEED, CCDI_SYSTEM_ROLES } from "./ccdi-schema";
