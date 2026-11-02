@@ -107,3 +107,17 @@ export interface Integrations {
 }
 
 export const NO_INTEGRATIONS: Integrations = {};
+
+/** No-op finance adapter after CINTEXA Finance application removal. Sales never claims invoice/receipt success. */
+export const nullFinanceProvider: FinanceProvider = {
+  name: "none",
+  async createInvoice() {
+    return { ok: false, error: "CINTEXA Finance is not installed", retryable: false };
+  },
+  async voidInvoice() {
+    return { ok: false, error: "CINTEXA Finance is not installed", retryable: false };
+  },
+  async recordPayment() {
+    return { ok: false, error: "CINTEXA Finance is not installed", retryable: false };
+  },
+};

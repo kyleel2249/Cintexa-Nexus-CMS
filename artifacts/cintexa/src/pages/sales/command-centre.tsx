@@ -64,7 +64,7 @@ export default function CommandCentrePage() {
                   <div className="min-w-0 flex-1"><p className="text-sm font-semibold">System health: <StatusBadge status={d.health} tone={h.tone} label={h.label} /></p><p className="text-xs text-muted-foreground">{h.text} {d.lastSuccessfulExecution ? `Last successful run ${relative(d.lastSuccessfulExecution)}.` : "No successful run yet."}</p></div>
                   <Tag>{d.ai.mode === "ai_narration_available" ? "AI narration available" : "Deterministic mode (no AI used)"}</Tag>
                 </div>
-                {d.ai.mode === "deterministic_only" && <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs">Agents run in <strong>native mode</strong> — scoring, findings, recommendations and briefings work without any external API key. Optional generative phrasing can be enabled later under Sales Settings → Integrations; it is never required for Sales, Finance or Financial Intelligence.</p>}
+                {d.ai.mode === "deterministic_only" && <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 p-3 text-xs">Agents run in <strong>native mode</strong> — scoring, findings, recommendations and briefings work without any external API key. Optional generative phrasing can be enabled later under Sales Settings → Integrations; it is never required for Sales Management.</p>}
                 <div className="grid grid-cols-2 gap-3 md:grid-cols-4 xl:grid-cols-8">
                   <KpiCard label="Configured" value={d.totals.configured} />
                   <KpiCard label="Active" value={d.totals.active} tone="success" hint={`${d.totals.idle} idle · ${d.totals.running} running`} />
