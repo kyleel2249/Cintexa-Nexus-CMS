@@ -1,6 +1,6 @@
 /** Read-only integration status and reconciliation endpoints. */
 import { route, ok, type Route } from "../core/route";
-import { qstr } from "../core/validate";
+import { asObject, qstr } from "../core/validate";
 import { runPeriodReconciliation } from "../integration/reconciliation";
 
 const status = route("GET", "/integration/status", { perm: "ledger:read" }, async (c) => {
@@ -31,12 +31,15 @@ const status = route("GET", "/integration/status", { perm: "ledger:read" }, asyn
 });
 
 const reconcile = route("POST", "/integration/reconcile", { perm: "finance:admin" }, async (c) => {
-  const from = qstr(c.body?.period_start as string) || qstr(c.query.period_start);
-  const to = qstr(c.body?.period_end as string) || qstr(c.query.period_end);
-  if (!from || !to) {
-    return ok({ error: "period_start and period_end (YYYY-MM-DD) are required" }, 422);
+  const b = asObject(c.body);
+  const from = (typeof b.period_start === "string" ? b.period_start : undefined) || qstr(c.query.period_start);
+  const to = (typeof b.period_end === "string" ? b.period_end : undefined) || qstr(c.query.period_end);
+  const isDate = (d?: string) => !!d && /^\d{4}-\d{2}-\d{2}$/.test(d) && new Date(d + "T00:00:00Z").toISOString().slice(0, 10) === d;
+  if (!isDate(from) || !isDate(to)) {
+    return ok({ error: "period_start and period_end (YYYY-MM-DD) are required", code: "validation_failed" }, 422);
   }
-  const result = await runPeriodReconciliation(c.q, c.org.orgId, from, to, c.actor.sub);
+  if (from! > to!) return ok({ error: "period_start must not be after period_end", code: "validation_failed" }, 422);
+  const result = await runPeriodReconciliation(c.q, c.org.orgId, from!, to!, c.actor.sub);
   return ok({ reconciliation: result });
 });
 

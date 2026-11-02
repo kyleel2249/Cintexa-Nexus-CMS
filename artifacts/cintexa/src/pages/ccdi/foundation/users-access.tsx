@@ -14,7 +14,7 @@ export default function UsersAccess() {
   const [tab, setTab] = useState<"orgs" | "members" | "roles">("members");
   return (
     <div>
-      <Tabs
+      <Tabs<typeof tab>
         tabs={[
           { id: "members", label: "Members" },
           { id: "roles", label: "Roles and permissions" },

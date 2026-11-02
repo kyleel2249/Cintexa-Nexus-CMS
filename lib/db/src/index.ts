@@ -29,3 +29,5 @@ export {
   CCDI_FOUNDATION_ROLE_EXTENSIONS,
   CCDI_RESTRICTED_PERMISSIONS,
 } from "./ccdi-foundation-schema";
+/** The transaction client type returned by `pool.connect()` (not derivable via ReturnType: connect() is overloaded). */
+export type { PoolClient } from "pg";

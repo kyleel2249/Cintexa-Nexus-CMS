@@ -20,7 +20,7 @@ export default function Integrations() {
     <div>
       <Notice kind="info">Registration and configuration only. Nothing here is marked connected until a real connection test succeeds.</Notice>
       <div className="mt-4" />
-      <Tabs tabs={[{ id: "integrations", label: "Integrations" }, { id: "credentials", label: "Credentials" }, { id: "ai", label: "AI providers" }]} value={tab} onChange={setTab} />
+      <Tabs<typeof tab> tabs={[{ id: "integrations", label: "Integrations" }, { id: "credentials", label: "Credentials" }, { id: "ai", label: "AI providers" }]} value={tab} onChange={setTab} />
       {tab === "integrations" && <IntegrationList />}
       {tab === "credentials" && <Credentials />}
       {tab === "ai" && <AiProviders />}

@@ -7,6 +7,7 @@ import { logger } from "../../lib/logger";
 import * as schedules from "../../services/ccdi-schedules";
 import { requireCcdiPermission } from "../../services/ccdi-rbac";
 import { ccdiRateLimit } from "../../middleware/ccdi-rate-limit";
+import { pid, httpStatus } from "./http-util";
 
 const router = Router();
 
@@ -53,7 +54,7 @@ router.post(
         createdBy: actor(req),
       });
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.status(201).json(result);
@@ -79,12 +80,12 @@ router.post(
       const enabled = req.body?.enabled !== false;
       const result = await schedules.setScheduleEnabled(
         String(organizationId),
-        req.params.id,
+        pid(req.params.id),
         enabled,
         actor(req),
       );
       if ("error" in result) {
-        res.status(result.status).json({ error: result.error });
+        res.status(httpStatus(result.status)).json({ error: result.error });
         return;
       }
       res.json(result);

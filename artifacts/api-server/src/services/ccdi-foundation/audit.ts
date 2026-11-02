@@ -7,10 +7,10 @@
  * sets it NULL (the one update the trigger permits), and the chain must stay valid.
  */
 import { createHash, randomUUID } from "node:crypto";
-import { pool } from "@workspace/db";
+import { pool, type PoolClient } from "@workspace/db";
 
 /** Derived from the shared pool so this package needs no direct dependency on pg typings. */
-export type PoolClient = Awaited<ReturnType<typeof pool.connect>>;
+export type { PoolClient };
 
 export interface AuditInput {
   organizationId?: string | null;

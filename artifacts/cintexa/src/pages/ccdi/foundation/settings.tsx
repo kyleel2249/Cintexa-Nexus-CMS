@@ -10,7 +10,7 @@ export default function Settings() {
   const [tab, setTab] = useState<"security" | "audit" | "account">("security");
   return (
     <div>
-      <Tabs tabs={[{ id: "security", label: "Security settings" }, { id: "audit", label: "Audit log" }, { id: "account", label: "Account security" }]} value={tab} onChange={setTab} />
+      <Tabs<typeof tab> tabs={[{ id: "security", label: "Security settings" }, { id: "audit", label: "Audit log" }, { id: "account", label: "Account security" }]} value={tab} onChange={setTab} />
       {tab === "security" && <SecuritySettings />}
       {tab === "audit" && <AuditLog />}
       {tab === "account" && <AccountSecurity />}
