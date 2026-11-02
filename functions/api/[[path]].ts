@@ -1,13 +1,15 @@
 /**
  * Cloudflare Pages Function for /api/*
- * - Proxies to API_ORIGIN when set
- * - Otherwise provides working stubs for sites + OpenRouter settings
- *   so the SPA does not get empty/405 responses on POST/PUT
+ * - Proxies to API_ORIGIN when set (the Express API; AUTH_MODE=open there means no sign-in is needed)
+ * - Otherwise provides working stubs for sites, OpenRouter settings and API keys
+ *   so the SPA does not get empty/405/503 responses on POST/PUT in Settings.
+ *   Stub data lives in the function isolate's memory only and is lost on redeploy/restart.
  */
 
 type Env = { API_ORIGIN?: string };
 
 const memorySites: any[] = [];
+const memoryKeys: any[] = [];
 let openRouterStore: {
   apiKey: string;
   model: string;
@@ -20,16 +22,23 @@ let openRouterStore: {
   appName: "CINTEXA Nexus CMS",
 };
 
+const CORS = {
+  "access-control-allow-origin": "*",
+  "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
+  "access-control-allow-headers": "content-type,authorization,x-api-key",
+};
+
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data ?? {}), {
     status,
-    headers: {
-      "content-type": "application/json; charset=utf-8",
-      "access-control-allow-origin": "*",
-      "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-      "access-control-allow-headers": "content-type,authorization",
-    },
+    headers: { "content-type": "application/json; charset=utf-8", ...CORS },
   });
+}
+
+function randomHex(bytes: number) {
+  const a = new Uint8Array(bytes);
+  crypto.getRandomValues(a);
+  return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function maskKey(key: string) {
@@ -90,9 +99,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       // Ensure JSON body for the SPA even if upstream is empty
       const text = await upstream.text();
       if (!text || !text.trim()) {
+        // 204 / empty success must not be turned into an error
         return json(
           upstream.ok ? { ok: true } : { error: `Upstream ${upstream.status}` },
-          upstream.status || 502,
+          upstream.ok ? 200 : upstream.status || 502,
         );
       }
       return new Response(text, {
@@ -122,6 +132,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       allowPasswordLogin: true,
       sessionTimeoutMinutes: 60,
     });
+  }
+  if (method === "GET" && subpath === "settings/whoami") {
+    return json({ ip: request.headers.get("cf-connecting-ip") || "", role: "admin", email: null });
   }
 
   // --- Sites stub ---
@@ -184,20 +197,47 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       return json({ ok: false, error: "No OpenRouter API key configured" }, 400);
     }
     try {
-      const r = await fetch("https://openrouter.ai/api/v1/models", {
+      // /models is public and accepts any key; /auth/key actually validates it.
+      const r = await fetch("https://openrouter.ai/api/v1/auth/key", {
         headers: { Authorization: `Bearer ${openRouterStore.apiKey}` },
       });
+      if (r.status === 401 || r.status === 403) {
+        return json({ ok: false, error: `OpenRouter rejected the key (${r.status})` }, 400);
+      }
       if (!r.ok) {
-        const text = await r.text().catch(() => "");
-        return json(
-          { ok: false, error: `OpenRouter rejected the key (${r.status})`, detail: text.slice(0, 200) },
-          400,
-        );
+        return json({ ok: false, error: `OpenRouter could not verify the key right now (${r.status})` }, 502);
       }
       return json({ ok: true, message: "OpenRouter API key is valid" });
     } catch (e: any) {
       return json({ ok: false, error: e?.message || "Test failed" }, 500);
     }
+  }
+
+  // --- Application API keys stub (in-memory; accepted without any authentication) ---
+  if (subpath === "settings/api-keys" || subpath === "settings/api-keys/") {
+    if (method === "GET") return json(memoryKeys);
+    if (method === "POST") {
+      const body = await readJson(request);
+      const days = Number(body.expiresInDays);
+      const secret = `cxk_${randomHex(24)}`;
+      const entry = {
+        id: randomHex(8),
+        name: String(body.name || "API key").trim().slice(0, 80) || "API key",
+        prefix: secret.slice(0, 12),
+        scopes: Array.isArray(body.scopes) && body.scopes.includes("write") ? ["read", "write"] : ["read"],
+        createdAt: new Date().toISOString(),
+        expiresAt: Number.isFinite(days) && days > 0 ? new Date(Date.now() + days * 86_400_000).toISOString() : null,
+        lastUsedAt: null,
+      };
+      memoryKeys.unshift(entry);
+      return json({ ...entry, secret }, 201);
+    }
+  }
+  if (subpath.startsWith("settings/api-keys/") && method === "DELETE") {
+    const id = subpath.split("/")[2];
+    const idx = memoryKeys.findIndex((k) => k.id === id);
+    if (idx >= 0) memoryKeys.splice(idx, 1);
+    return json({ ok: true }, 200);
   }
 
   // Other settings GETs — empty safe defaults so UI does not crash
@@ -217,10 +257,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       passwordMinLength: 8,
       allowPasswordLogin: true,
       ipAllowlist: "",
+      apiRateLimitPerMinute: 240,
     });
   }
-  if (method === "GET" && subpath === "settings/api-keys") return json([]);
   if (method === "GET" && subpath === "settings/webhooks") return json([]);
+  if (method === "GET" && subpath === "settings/webhooks/events") {
+    return json(["content.published", "content.scheduled", "form.submitted", "intake.submitted", "media.uploaded"]);
+  }
   if (method === "PUT" && (subpath === "settings/general" || subpath === "settings/security")) {
     const body = await readJson(request);
     return json({ ...body, saved: true });
@@ -230,7 +273,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     {
       error: "API backend not configured",
       hint:
-        "Deploy the Express API (see docs/website-intelligence/api-host-setup.md, or the Dockerfile and render.yaml at the repo root) and set API_ORIGIN in Cloudflare Pages -> Settings -> Environment variables to its base URL, without /api. Content, media, forms, SEO, API keys, webhooks and intake share links all need it.",
+        "Deploy the Express API (see docs/website-intelligence/api-host-setup.md, or the Dockerfile and render.yaml at the repo root) and set API_ORIGIN in Cloudflare Pages -> Settings -> Environment variables to its base URL, without /api. Content, media, forms, SEO, webhooks and intake share links all need it.",
       path: subpath,
       method,
     },
