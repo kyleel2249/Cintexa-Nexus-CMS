@@ -16,10 +16,11 @@ import { integrationRoutes } from "./modules/integration-routes";
 import { ratioRoutes } from "./modules/ratios";
 import { statementRoutes } from "./modules/statements";
 import { capitalRoutes } from "./modules/capital";
+import { dividendValuationRoutes } from "./modules/dividends-valuation";
 import { logger } from "../../lib/logger";
 import type { Db, FinanceRequest, FinanceResponse } from "./core/types";
 
-export const financeRoutes = [...organisationRoutes, ...accountRoutes, ...periodRoutes, ...journalRoutes, ...reportRoutes, ...taxRoutes, ...partyRouteList, ...invoiceRoutes, ...billRoutes, ...ageingRoutes, ...bankRoutes, ...expenseRoutes, ...integrationRoutes, ...ratioRoutes, ...statementRoutes, ...capitalRoutes];
+export const financeRoutes = [...organisationRoutes, ...accountRoutes, ...periodRoutes, ...journalRoutes, ...reportRoutes, ...taxRoutes, ...partyRouteList, ...invoiceRoutes, ...billRoutes, ...ageingRoutes, ...bankRoutes, ...expenseRoutes, ...integrationRoutes, ...ratioRoutes, ...statementRoutes, ...capitalRoutes, ...dividendValuationRoutes];
 export const financeDeps: Deps = { now: () => new Date(), log: { error: (o, m) => logger.error(o as object, m) } };
 export { dispatch };
 

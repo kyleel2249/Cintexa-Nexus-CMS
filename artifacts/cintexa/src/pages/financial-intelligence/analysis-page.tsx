@@ -87,11 +87,11 @@ const META: Record<AnalysisKind, { title: string; description: string }> = {
   },
   dividends: {
     title: "Dividends & Investor Returns",
-    description: "Dividend policy and distributions require approval workflows (Phase 7). No dividends are assumed payable.",
+    description: "Use Dividends & Investor Returns for declarations, approval, and payment tracking. No dividends are assumed payable.",
   },
   valuation: {
     title: "Business Valuation",
-    description: "Valuation models and exit scenarios ship in Phase 7. Net asset signals use posted equity balances only.",
+    description: "Use Business Valuation for book NAV and saved scenarios. Net asset signals use posted equity balances only.",
   },
   reports: {
     title: "Financial Reports",
