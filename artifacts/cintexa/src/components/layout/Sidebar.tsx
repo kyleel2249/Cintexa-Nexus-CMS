@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Sparkles, Landmark, Shield,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Sparkles, Landmark, Shield, LineChart,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
@@ -16,6 +16,7 @@ import { useSalesQuery } from "@/lib/sales/hooks";
 import { activeNavKey } from "@/lib/sales/nav";
 import { NAV_ICONS } from "@/lib/sales/nav-icons";
 import { FINANCE_NAV, activeFinanceKey } from "@/lib/finance/nav";
+import { FI_NAV, activeFiKey } from "@/lib/financial-intelligence/nav";
 
 const navGroups = [
   { title: "Overview", items: [{ name: "Dashboard", href: "/", icon: LayoutDashboard }] },
@@ -39,10 +40,12 @@ const navGroups = [
 ];
 
 const SALES_OPEN_KEY = "cintexa-sales-nav-open";
+const FINANCE_OPEN_KEY = "cintexa-finance-nav-open";
+const FI_OPEN_KEY = "cintexa-fi-nav-open";
 
-function readOpen(): boolean | null {
+function readOpen(key: string): boolean | null {
   try {
-    const v = localStorage.getItem(SALES_OPEN_KEY);
+    const v = localStorage.getItem(key);
     return v === null ? null : v === "1";
   } catch {
     return null;
@@ -60,25 +63,21 @@ function NavLink({ href, label, Icon, active, onNavigate, extra, clue }: { clue?
   );
 }
 
-/** Sales Management group: always shown; narrows to the sections the signed-in member's role may open. */
 function SalesGroup({ location, onNavigate }: { location: string; onNavigate?: () => void }) {
   const s = useSalesOptional();
   const onSales = location === "/sales" || location.startsWith("/sales/");
-  const [stored, setStored] = useState<boolean | null>(() => readOpen());
+  const [stored, setStored] = useState<boolean | null>(() => readOpen(SALES_OPEN_KEY));
   const open = onSales ? true : stored ?? false;
-  // Always visible so the module is discoverable. Once the member profile loads the list narrows to the sections their role may open;
-  // before that (or when sign-in / the API is unavailable) every section is listed and each page explains what is missing.
   const items = s && s.access === "ready" && s.nav.length > 0 ? s.nav : SALES_NAV;
   const activeKey = activeNavKey(location.split("?")[0]!);
   const ready = Boolean(s && s.access === "ready");
-  // AI Command Centre: pinned under the 22 sections. Shown when the role may use it (or while the profile is still loading / unavailable, like the other sections).
   const showAi = !ready || (s ? showAiNav(s.perms) : true);
   const pending = useSalesQuery<{ total: number }>(ready && s?.can("approvals:read") ? "/approvals" : null, { status: "PENDING", page_size: 1 });
   const AiIcon = NAV_ICONS[SALES_AI_NAV.icon];
   const toggle = () => {
     const next = !open;
     setStored(next);
-    try { localStorage.setItem(SALES_OPEN_KEY, next ? "1" : "0"); } catch { /* storage unavailable: state is in memory only */ }
+    try { localStorage.setItem(SALES_OPEN_KEY, next ? "1" : "0"); } catch { /* storage unavailable */ }
   };
   return (
     <div className="space-y-2">
@@ -102,11 +101,9 @@ function SalesGroup({ location, onNavigate }: { location: string; onNavigate?: (
   );
 }
 
-const FINANCE_OPEN_KEY = "cintexa-finance-nav-open";
-/** CINTEXA FINANCE group: lists only the finished modules; access is enforced by the server for every request. */
 function FinanceGroup({ location, onNavigate }: { location: string; onNavigate?: () => void }) {
   const onFinance = location === "/finance" || location.startsWith("/finance/");
-  const [stored, setStored] = useState<boolean | null>(() => { try { const v = localStorage.getItem(FINANCE_OPEN_KEY); return v === null ? null : v === "1"; } catch { return null; } });
+  const [stored, setStored] = useState<boolean | null>(() => readOpen(FINANCE_OPEN_KEY));
   const open = onFinance ? true : stored ?? false;
   const active = activeFinanceKey(location);
   const toggle = () => { const next = !open; setStored(next); try { localStorage.setItem(FINANCE_OPEN_KEY, next ? "1" : "0"); } catch { /* in-memory only */ } };
@@ -130,6 +127,35 @@ function FinanceGroup({ location, onNavigate }: { location: string; onNavigate?:
   );
 }
 
+/** Financial Intelligence group — analysis layer over Sales + Finance. */
+function FinancialIntelligenceGroup({ location, onNavigate }: { location: string; onNavigate?: () => void }) {
+  const onFi = location === "/financial-intelligence" || location.startsWith("/financial-intelligence/");
+  const [stored, setStored] = useState<boolean | null>(() => readOpen(FI_OPEN_KEY));
+  const open = onFi ? true : stored ?? false;
+  const active = activeFiKey(location);
+  const toggle = () => { const next = !open; setStored(next); try { localStorage.setItem(FI_OPEN_KEY, next ? "1" : "0"); } catch { /* in-memory only */ } };
+  const sections = [...new Set(FI_NAV.map((i) => i.section))];
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={toggle} aria-expanded={open} aria-controls="fi-nav" className="flex w-full items-center gap-2 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+        <LineChart className="h-3.5 w-3.5" /><span>Financial Intelligence</span><ChevronDown className={cn("ml-auto h-3.5 w-3.5 transition-transform", open ? "rotate-180" : "")} />
+      </button>
+      {open && (
+        <nav id="fi-nav" aria-label="Financial Intelligence" className="space-y-1">
+          {sections.map((sec) => (
+            <div key={sec} className="space-y-1">
+              <p className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{sec}</p>
+              {FI_NAV.filter((i) => i.section === sec).map((i) => (
+                <NavLink key={i.key} href={i.href} label={i.label} Icon={LineChart} active={active === i.key} onNavigate={onNavigate} />
+              ))}
+            </div>
+          ))}
+        </nav>
+      )}
+    </div>
+  );
+}
+
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -139,6 +165,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         {navGroups.slice(0, 1).map((group) => <Group key={group.title} group={group} location={location} onNavigate={onNavigate} />)}
         <SalesGroup location={location} onNavigate={onNavigate} />
         <FinanceGroup location={location} onNavigate={onNavigate} />
+        <FinancialIntelligenceGroup location={location} onNavigate={onNavigate} />
         {navGroups.slice(1).map((group) => <Group key={group.title} group={group} location={location} onNavigate={onNavigate} />)}
       </div>
       <div className="px-4 py-4 border-t border-border/50"><button onClick={() => setPreviewOpen(true)} className="w-full flex items-center gap-3 px-3 py-2 rounded-md text-muted-foreground hover:bg-secondary hover:text-foreground transition-colors group"><MonitorPlay className="w-4 h-4 text-muted-foreground group-hover:text-foreground"/><span className="text-sm">Preview Site</span><span className="ml-auto text-[9px] bg-indigo-500/20 text-indigo-400 px-1.5 py-0.5 rounded font-semibold">LIVE</span></button></div>
@@ -161,7 +188,6 @@ function Group({ group, location, onNavigate }: { group: (typeof navGroups)[numb
   );
 }
 
-/** Fixed sidebar on large screens; a slide-in drawer (opened from the top bar) on small screens. */
 export function Sidebar({ mobileOpen = false, onClose }: { mobileOpen?: boolean; onClose?: () => void }) {
   const [location] = useLocation();
   useEffect(() => { onClose?.(); }, [location]); // eslint-disable-line react-hooks/exhaustive-deps
