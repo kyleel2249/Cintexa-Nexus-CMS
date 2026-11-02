@@ -19,6 +19,7 @@ import rbacRouter from "./rbac";
 import phase10Router from "./phase10";
 import webhooksRouter from "./webhooks";
 import adaptersRouter from "./adapters";
+import v1Router from "./v1";
 
 const router = Router();
 
@@ -42,6 +43,8 @@ router.get("/health", async (_req: Request, res: Response) => {
 });
 
 // Mount Phase 4–13 routers
+// Phase 2 foundation API (versioned). Mounted first; it answers its own 404s.
+router.use("/v1", v1Router);
 router.use(findingsRouter);
 router.use(advancedRouter);
 router.use(intelligenceRouter);

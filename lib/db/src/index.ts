@@ -20,3 +20,11 @@ export { createSalesDb, type SalesDb, type SalesQueryable } from "./sales-adapte
 export { SENTINEL_SCHEMA_STATEMENTS } from "./sentinel-schema";
 export { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS } from "./finance-schema";
 export { CCDI_SCHEMA_STATEMENTS, CCDI_PERMISSION_SEED, CCDI_SYSTEM_ROLES } from "./ccdi-schema";
+
+export {
+  CCDI_FOUNDATION_SCHEMA_STATEMENTS,
+  CCDI_FOUNDATION_PERMISSION_SEED,
+  CCDI_FOUNDATION_SYSTEM_ROLES,
+  CCDI_FOUNDATION_ROLE_EXTENSIONS,
+  CCDI_RESTRICTED_PERMISSIONS,
+} from "./ccdi-foundation-schema";

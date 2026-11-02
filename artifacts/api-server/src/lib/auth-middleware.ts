@@ -170,6 +170,9 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 const PUBLIC_ROUTES: Array<{ method: string; pattern: RegExp }> = [
   { method: "GET", pattern: /^\/healthz?$/ },
   { method: "*", pattern: /^\/auth\/(login|register|logout)$/ },
+  // CCDI foundation API: sign-in is disabled for now (CCDI_ACCESS_MODE=open). The router builds its own
+  // access context and, when CCDI_ACCESS_MODE=enforced, rejects unauthenticated or unauthorised callers itself.
+  { method: "*", pattern: /^\/ccdi\/v1(\/|$)/ },
   { method: "GET", pattern: /^\/settings\/public$/ },
   { method: "GET", pattern: /^\/intake\/public\/[^/]+$/ },
   { method: "POST", pattern: /^\/intake\/public\/[^/]+\/submit$/ },

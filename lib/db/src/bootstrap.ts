@@ -4,6 +4,7 @@ import { SALES_SCHEMA_STATEMENTS } from "./sales-schema";
 import { SENTINEL_SCHEMA_STATEMENTS } from "./sentinel-schema";
 import { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS } from "./finance-schema";
 import { CCDI_SCHEMA_STATEMENTS } from "./ccdi-schema";
+import { CCDI_FOUNDATION_SCHEMA_STATEMENTS } from "./ccdi-foundation-schema";
 
 /**
  * Idempotent schema bootstrap.
@@ -482,6 +483,7 @@ END $$`,
   ...FINANCE_SCHEMA_STATEMENTS,
   ...FINANCE_PHASE4_STATEMENTS,
   ...CCDI_SCHEMA_STATEMENTS,
+  ...CCDI_FOUNDATION_SCHEMA_STATEMENTS,
 ];
 
 let running: Promise<void> | null = null;
