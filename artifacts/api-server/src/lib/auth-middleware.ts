@@ -13,22 +13,29 @@ import {
 } from "./platform-settings";
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "cintexa-dev-secret-change-in-production";
-if (!process.env.JWT_SECRET && process.env.NODE_ENV === "production") {
-  logger.warn("JWT_SECRET is not set - legacy JWT sessions are using an insecure default secret");
-}
 const COOKIE_NAME = "cintexa_token";
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "cintexa-nexus";
 const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
 const FIREBASE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"));
 
-/** Comma separated list of admin e-mails. When empty, every signed-in user is an admin (bootstrap mode). */
+/**
+ * AUTH_MODE
+ *  - "open" (DEFAULT): authentication is switched off. Every request is served as an administrator, whether it carries no
+ *                      credential, a valid or an invalid cxk_ API key, a Firebase token or a legacy JWT. API keys are accepted
+ *                      unconditionally (scopes and the settings/users restriction are not applied).
+ *  - "enforced"       : every non-public route needs a valid credential (original behaviour).
+ */
+const AUTH_MODE: "open" | "enforced" = (process.env.AUTH_MODE ?? "open").trim().toLowerCase() === "enforced" ? "enforced" : "open";
+const OPEN_ACCESS_EMAIL = (process.env.OPEN_ACCESS_EMAIL ?? "open-access@cintexa.local").trim();
+if (AUTH_MODE === "open") {
+  logger.warn("AUTH_MODE=open - authentication is disabled; every API request is treated as an administrator. Set AUTH_MODE=enforced to re-enable it.");
+}
+
+/** Comma separated list of admin e-mails (only used when AUTH_MODE=enforced). When empty, every signed-in user is an admin. */
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
   .split(",")
   .map((e) => e.trim().toLowerCase())
   .filter(Boolean);
-if (!ADMIN_EMAILS.length) {
-  logger.warn("ADMIN_EMAILS is not set - running in bootstrap mode (all signed-in users are admins). Set ADMIN_EMAILS to lock this down.");
-}
 
 export interface AuthPayload {
   sub: string | number;
@@ -37,6 +44,8 @@ export interface AuthPayload {
   firebase?: boolean;
   apiKeyId?: string;
   scopes?: Array<"read" | "write">;
+  /** true when AUTH_MODE=open granted this identity without a usable credential */
+  openAccess?: boolean;
 }
 
 declare global {
@@ -45,6 +54,10 @@ declare global {
       auth?: AuthPayload;
     }
   }
+}
+
+function openAccessIdentity(): AuthPayload {
+  return { sub: "open-access", email: OPEN_ACCESS_EMAIL, role: "admin", openAccess: true, scopes: ["read", "write"] };
 }
 
 function resolveRole(email: string, adminClaim: boolean): string {
@@ -104,40 +117,51 @@ async function verifyApiKey(raw: string): Promise<AuthPayload | null> {
 
 function extractToken(req: Request): string | undefined {
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
+  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7).trim();
   const apiKeyHeader = req.headers["x-api-key"];
-  if (typeof apiKeyHeader === "string" && apiKeyHeader) return apiKeyHeader;
+  if (typeof apiKeyHeader === "string" && apiKeyHeader.trim()) return apiKeyHeader.trim();
   return (req as any).cookies?.[COOKIE_NAME];
 }
 
-/** Attach Firebase, API-key or legacy JWT auth to req.auth when a valid credential is present. */
-export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
-  if (req.auth) return next();
+/** Resolve whatever credential the request carries (API key, Firebase token or legacy JWT) or null. */
+async function resolveCredential(req: Request): Promise<AuthPayload | null> {
   const raw = extractToken(req);
-  if (!raw) return next();
-
+  if (!raw) return null;
   const apiKey = await verifyApiKey(raw);
-  if (apiKey) {
-    req.auth = apiKey;
-    return next();
-  }
-
+  if (apiKey) return apiKey;
   const firebaseAuth = await verifyFirebaseToken(raw);
-  if (firebaseAuth) {
-    req.auth = firebaseAuth;
-    return next();
-  }
-
+  if (firebaseAuth) return firebaseAuth;
   try {
     const decoded = jwt.verify(raw, JWT_SECRET) as AuthPayload;
-    req.auth = { ...decoded, role: resolveRole(decoded.email ?? "", decoded.role === "admin") };
+    return { ...decoded, role: resolveRole(decoded.email ?? "", decoded.role === "admin") };
   } catch {
-    // expired / invalid - leave req.auth undefined
+    return null;
   }
+}
+
+/**
+ * Attach auth to req.auth.
+ *  - AUTH_MODE=open: always succeeds. A recognised user token keeps its identity (promoted to admin); an API key or anything
+ *    else becomes the open-access administrator, so keys are never rejected.
+ *  - AUTH_MODE=enforced: only a valid credential sets req.auth.
+ */
+export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
+  if (req.auth) return next();
+  let cred: AuthPayload | null = null;
+  try {
+    cred = await resolveCredential(req);
+  } catch (err) {
+    logger.warn({ err }, "credential check failed");
+  }
+  if (AUTH_MODE === "open") {
+    req.auth = cred && cred.role !== "api" ? { ...cred, role: "admin", scopes: ["read", "write"] } : openAccessIdentity();
+    return next();
+  }
+  if (cred) req.auth = cred;
   next();
 }
 
-/** Reject unauthenticated requests with 401. */
+/** Reject unauthenticated requests with 401 (never happens in AUTH_MODE=open). */
 export function requireAuth(req: Request, res: Response, next: NextFunction) {
   void optionalAuth(req, res, () => {
     if (!req.auth) {
@@ -148,7 +172,7 @@ export function requireAuth(req: Request, res: Response, next: NextFunction) {
   });
 }
 
-/** Reject non-admin requests with 403. API keys are never admins. */
+/** Reject non-admin requests with 403 (never happens in AUTH_MODE=open). API keys are never admins when enforced. */
 export function requireAdmin(req: Request, res: Response, next: NextFunction) {
   void optionalAuth(req, res, () => {
     if (!req.auth) {
@@ -164,7 +188,7 @@ export function requireAdmin(req: Request, res: Response, next: NextFunction) {
 }
 
 // ---------------------------------------------------------------------------
-// Public routes (no credentials needed)
+// Public routes (no credentials needed even when AUTH_MODE=enforced)
 // ---------------------------------------------------------------------------
 
 const PUBLIC_ROUTES: Array<{ method: string; pattern: RegExp }> = [
@@ -239,10 +263,9 @@ setInterval(() => {
 /**
  * Global API guard, mounted once in routes/index.ts.
  *  - public routes pass straight through
- *  - everything else needs a valid Firebase token / legacy JWT / API key
- *  - API keys are read-only unless they were issued with the "write" scope
- *  - Settings -> Security IP allow-list + rate limit are enforced
- *    (set DISABLE_IP_ALLOWLIST=1 to recover from an accidental lock-out)
+ *  - AUTH_MODE=open (default): no credential is required or rejected; the IP allow-list (if you set one) and the rate limit
+ *    still apply (DISABLE_IP_ALLOWLIST=1 bypasses the allow-list)
+ *  - AUTH_MODE=enforced: needs a valid Firebase token / legacy JWT / API key; keys are read-only unless issued with "write"
  */
 export async function apiGuard(req: Request, res: Response, next: NextFunction) {
   if (req.method === "OPTIONS" || isPublic(req)) return next();
@@ -260,7 +283,9 @@ export async function apiGuard(req: Request, res: Response, next: NextFunction) 
       res.status(403).json({ error: "Your IP address is not on the allow-list" });
       return;
     }
-    if (rateLimited(`${req.auth.sub}`, Math.max(30, Number(security.apiRateLimitPerMinute) || 240))) {
+    // The open-access identity is shared by everyone, so bucket it per client IP instead of globally.
+    const bucketKey = req.auth.openAccess ? `open:${ip}` : `${req.auth.sub}`;
+    if (rateLimited(bucketKey, Math.max(30, Number(security.apiRateLimitPerMinute) || 240))) {
       res.status(429).json({ error: "Rate limit exceeded. Try again in a minute." });
       return;
     }
