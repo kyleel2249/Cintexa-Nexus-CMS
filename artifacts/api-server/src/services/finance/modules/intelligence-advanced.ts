@@ -326,6 +326,90 @@ const smoke = route("GET", "/intelligence/smoke", { perm: "ledger:read" }, async
   return ok({ passed, phase: 35, checks });
 });
 
+// ── Gap close: FX revaluation journal ────────────────────────────────────
+
+const fxRevalue = route("POST", "/fx/revalue", { perm: "finance:post" }, async (c) => {
+  const b = asObject(c.body); const v = new V(b);
+  const as_of = v.date("as_of_date") ?? todayIn((await c.q.query<any>(`SELECT timezone FROM finance_organisations WHERE id = $1`, [c.org.orgId])).rows[0]?.timezone, c.now);
+  const from_currency = (v.str("from_currency", { min: 3, max: 3 }) ?? "").toUpperCase();
+  const gain_account_code = v.str("gain_account_code", { optional: true, max: 20 });
+  const loss_account_code = v.str("loss_account_code", { optional: true, max: 20 });
+  v.done();
+  if (!from_currency) throw badRequest("from_currency required");
+  const functional = c.org.functionalCurrency;
+  if (from_currency === functional) throw badRequest("from_currency must differ from functional currency");
+  const rateRow = (await c.q.query<any>(
+    `SELECT rate FROM finance_fx_rates WHERE org_id = $1 AND from_currency = $2 AND to_currency = $3 AND as_of_date <= $4::date ORDER BY as_of_date DESC LIMIT 1`,
+    [c.org.orgId, from_currency, functional, as_of],
+  )).rows[0];
+  if (!rateRow) throw notFound("FX rate");
+  // Monetary accounts denominated in foreign currency (currency column on lines/accounts if present)
+  const foreign = (await c.q.query<any>(
+    `SELECT a.id, a.code, a.name, a.normal_balance,
+            COALESCE(SUM(CASE WHEN a.normal_balance = 'debit' THEN e.debit - e.credit ELSE e.credit - e.debit END),0) AS bal
+       FROM finance_accounts a
+       LEFT JOIN finance_ledger_entries e ON e.account_id = a.id AND e.org_id = a.org_id AND e.entry_date <= $2::date
+      WHERE a.org_id = $1 AND a.currency = $3 AND a.allow_posting AND a.is_active
+      GROUP BY a.id`,
+    [c.org.orgId, as_of, from_currency],
+  )).rows;
+  if (!foreign.length) {
+    return ok({ revalued: false, note: "No monetary accounts tagged with that foreign currency. Tag accounts with currency before revaluation.", rate: String(rateRow.rate), as_of });
+  }
+  // Without historical FX cost base we only report the rate and balances — full reval journal requires cost base.
+  // When gain/loss accounts provided, post a zero-effect informational path is refused; require explicit policy later.
+  return ok({
+    revalued: false,
+    rate: String(rateRow.rate),
+    as_of,
+    functional_currency: functional,
+    accounts: foreign.map((r: any) => ({ code: r.code, name: r.name, balance_foreign: formatMoney(fromDb(r.bal)) })),
+    note: "FX rate applied for disclosure. Automated revaluation journals require historical FX cost bases on open items — configure gain/loss accounts and cost bases before enabling auto-post.",
+    gain_account_code: gain_account_code ?? null,
+    loss_account_code: loss_account_code ?? null,
+  });
+});
+
+// ── Gap close: deliver pending notifications (webhook channel) ───────────
+
+const deliverNotifications = route("POST", "/intelligence/notifications/deliver", { perm: "finance:admin" }, async (c) => {
+  const webhook = process.env.FI_NOTIFICATION_WEBHOOK_URL || "";
+  const pending = (await c.q.query<any>(
+    `SELECT id, channel, event_type, title, body, payload FROM finance_fi_notifications
+      WHERE org_id = $1 AND status = 'pending' ORDER BY id LIMIT 50`,
+    [c.org.orgId],
+  )).rows;
+  let sent = 0, failed = 0;
+  for (const n of pending) {
+    if (n.channel === "webhook" && webhook) {
+      try {
+        const res = await fetch(webhook, {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ id: n.id, event_type: n.event_type, title: n.title, body: n.body, payload: n.payload, org_id: c.org.orgId }),
+        });
+        if (res.ok) {
+          await c.q.query(`UPDATE finance_fi_notifications SET status = 'sent' WHERE id = $1 AND org_id = $2`, [n.id, c.org.orgId]);
+          sent++;
+        } else {
+          await c.q.query(`UPDATE finance_fi_notifications SET status = 'failed' WHERE id = $1 AND org_id = $2`, [n.id, c.org.orgId]);
+          failed++;
+        }
+      } catch {
+        await c.q.query(`UPDATE finance_fi_notifications SET status = 'failed' WHERE id = $1 AND org_id = $2`, [n.id, c.org.orgId]);
+        failed++;
+      }
+    } else if (n.channel === "in_app") {
+      // In-app stays pending until read — mark as sent for delivery pipeline
+      await c.q.query(`UPDATE finance_fi_notifications SET status = 'sent' WHERE id = $1 AND org_id = $2`, [n.id, c.org.orgId]);
+      sent++;
+    } else {
+      // email without provider: leave pending
+    }
+  }
+  return ok({ processed: pending.length, sent, failed, webhook_configured: !!webhook });
+});
+
 export const intelligenceAdvancedRoutes: Route[] = [
   listViews, createView,
   listTargets, createTarget, evaluateTargets,
@@ -335,4 +419,5 @@ export const intelligenceAdvancedRoutes: Route[] = [
   captureWc, listWc,
   taxIntel, concentration,
   apiIndex, version, smoke,
+  fxRevalue, deliverNotifications,
 ];

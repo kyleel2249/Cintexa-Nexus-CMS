@@ -123,7 +123,7 @@ function IntegrationView({ can }: { can: (p: string) => boolean }) {
     <>
       <PageHeader
         title="Sales ↔ Finance Integration"
-        description="Event log, party links, and period reconciliation between Sales Management and CINTEXA Finance. No duplicate postings: source_ref uniqueness is enforced."
+        description="Event log, party links, payment bridge (finance.payment), and period reconciliation. No duplicate postings: source_ref uniqueness is enforced. Draft journals never affect FI."
         actions={
           <div className="flex gap-2">
             <Button variant="outline" size="sm" asChild><Link href="/financial-intelligence">Overview</Link></Button>

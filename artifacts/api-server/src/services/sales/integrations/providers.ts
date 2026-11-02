@@ -31,10 +31,25 @@ export interface InventoryProvider {
   availability(skus: string[]): Promise<Record<string, { physical: string; reserved: string; availableToPromise: string; incoming: string } | null>>;
 }
 
+export interface PaymentPayload {
+  orderId: number;
+  orderNumber: string;
+  accountId: number;
+  paymentId: number;
+  amount: string;
+  currency: string;
+  receivedOn: string;
+  method?: string | null;
+  reference?: string | null;
+  notes?: string | null;
+}
+
 export interface FinanceProvider {
   readonly name: string;
   createInvoice(order: OrderPayload, idempotencyKey: string): Promise<ProviderResult>;
   voidInvoice(invoiceRef: string, reason: string, idempotencyKey: string): Promise<ProviderResult>;
+  /** Optional: post a customer receipt for a Sales order payment into Finance (idempotent). */
+  recordPayment?(payment: PaymentPayload, idempotencyKey: string): Promise<ProviderResult>;
 }
 
 export interface EmailMessage {

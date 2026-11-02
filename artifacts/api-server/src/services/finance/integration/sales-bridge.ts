@@ -5,7 +5,7 @@
  * Uses the same journal engine, source_module/source_ref uniqueness and audit trail as native Finance documents.
  * Never posts revenue for unpaid orders; only creates invoices when the outbox requests it.
  */
-import type { FinanceProvider, OrderPayload, ProviderResult } from "../../sales/integrations/providers";
+import type { FinanceProvider, OrderPayload, PaymentPayload, ProviderResult } from "../../sales/integrations/providers";
 import type { SalesDb } from "@workspace/db";
 import { ensureFinanceCustomerFromSalesAccount } from "./party-link";
 import { emitIntegrationEvent, markEventFailed, markEventProcessing, markEventSucceeded, markEventSkipped } from "./events";
@@ -38,6 +38,40 @@ async function defaultRevenueAccount(q: SalesDb, orgId: number): Promise<number 
     [orgId],
   );
   return r2.rows[0] ? Number(r2.rows[0].id) : null;
+}
+
+
+async function defaultBankAccount(q: SalesDb, orgId: number): Promise<{ bankAccountId: number; glAccountId: number } | null> {
+  const r = await q.query<{ id: number; account_id: number }>(
+    `SELECT b.id, b.account_id FROM finance_bank_accounts b
+      WHERE b.org_id = $1 AND b.is_active
+      ORDER BY b.id LIMIT 1`,
+    [orgId],
+  );
+  if (r.rows[0]) return { bankAccountId: Number(r.rows[0].id), glAccountId: Number(r.rows[0].account_id) };
+  // Fall back to first cash/bank GL account (register a virtual bank id only if bank table empty)
+  const gl = await q.query<{ id: number }>(
+    `SELECT id FROM finance_accounts WHERE org_id = $1 AND subtype IN ('bank','cash','mobile_money') AND is_active AND allow_posting ORDER BY code LIMIT 1`,
+    [orgId],
+  );
+  if (!gl.rows[0]) return null;
+  // Ensure a bank account row exists for payment FK
+  try {
+    const ins = await q.query<{ id: number }>(
+      `INSERT INTO finance_bank_accounts (org_id, account_id, name, currency)
+       VALUES ($1,$2,'Default bank',(SELECT functional_currency FROM finance_organisations WHERE id = $1))
+       RETURNING id`,
+      [orgId, gl.rows[0].id],
+    );
+    return { bankAccountId: Number(ins.rows[0].id), glAccountId: Number(gl.rows[0].id) };
+  } catch {
+    const again = await q.query<{ id: number; account_id: number }>(
+      `SELECT id, account_id FROM finance_bank_accounts WHERE org_id = $1 AND account_id = $2 LIMIT 1`,
+      [orgId, gl.rows[0].id],
+    );
+    if (again.rows[0]) return { bankAccountId: Number(again.rows[0].id), glAccountId: Number(again.rows[0].account_id) };
+    return null;
+  }
 }
 
 export function createCintexaFinanceProvider(db: SalesDb): FinanceProvider {
@@ -280,6 +314,116 @@ export function createCintexaFinanceProvider(db: SalesDb): FinanceProvider {
         logger.error({ err, invoiceRef }, "Sales→Finance void failed");
         return { ok: false, error: msg, retryable: true };
       }
-    },
+    },,
+
+    async recordPayment(payment: PaymentPayload, idempotencyKey: string): Promise<ProviderResult> {
+      try {
+        return await db.tx(async (q) => {
+          const orgId = await resolveOrgId(q as unknown as SalesDb);
+          if (!orgId) return { ok: false, error: "No finance organisation configured", retryable: true };
+
+          const { id: eventId, duplicate } = await emitIntegrationEvent(q as any, {
+            orgId,
+            eventType: "sales.order.payment_recorded",
+            sourceModule: "sales",
+            sourceEntityType: "payment",
+            sourceEntityId: String(payment.paymentId),
+            payload: { orderId: payment.orderId, amount: payment.amount, receivedOn: payment.receivedOn, idempotencyKey },
+            idempotencyKey: `sales.payment:${idempotencyKey}`,
+          });
+          if (duplicate) {
+            const prior = (await (q as any).query(`SELECT status, result_ref FROM finance_integration_events WHERE id = $1`, [eventId])).rows[0];
+            if (prior?.status === "succeeded" && prior.result_ref) return { ok: true, ref: prior.result_ref };
+          }
+          await markEventProcessing(q as any, eventId);
+
+          // Idempotent: existing payment journal for this sales payment
+          const existing = (await (q as any).query(
+            `SELECT id, reference FROM finance_journals
+              WHERE org_id = $1 AND source_module = 'sales.payment' AND source_ref = $2 AND journal_type <> 'reversal'`,
+            [orgId, String(payment.paymentId)],
+          )).rows[0];
+          if (existing) {
+            await markEventSucceeded(q as any, eventId, existing.reference, { journalId: existing.id });
+            return { ok: true, ref: existing.reference };
+          }
+
+          const amount = parseMoney(payment.amount);
+          if (amount <= 0n) {
+            await markEventSkipped(q as any, eventId, "Zero amount payment");
+            return { ok: true, ref: "skipped-zero" };
+          }
+
+          const linked = await ensureFinanceCustomerFromSalesAccount(q as any, orgId, payment.accountId, "sales-bridge");
+          const bank = await defaultBankAccount(q as unknown as SalesDb, orgId);
+          if (!bank) {
+            await markEventFailed(q as any, eventId, "No bank/cash account configured in Finance", false);
+            return { ok: false, error: "No bank/cash account configured", retryable: true };
+          }
+          const arId = await controlAccount(q as any, orgId, "accounts_receivable");
+          if (!arId) {
+            await markEventFailed(q as any, eventId, "No AR control account", false);
+            return { ok: false, error: "No AR control account", retryable: true };
+          }
+
+          const who: Who = { orgId, sub: "sales-bridge", label: "Sales Bridge" };
+          const date = payment.receivedOn.slice(0, 10);
+          const period = await loadPeriod(q as any, orgId, date);
+          assertPostable(period, true);
+
+          // Prefer allocating to open sales-linked invoice for this order
+          // Match Sales-created invoices by reference = order number (bridge stores order.number on the invoice).
+          const inv = (await (q as any).query(
+            `SELECT id, number, total, amount_paid, status FROM finance_invoices
+              WHERE org_id = $1 AND status = 'issued' AND reference = $2
+              ORDER BY id DESC LIMIT 1`,
+            [orgId, payment.orderNumber],
+          )).rows[0];
+
+          const j = await insertJournal(q as any, who, {
+            type: "automated",
+            date,
+            description: `Sales receipt ${payment.orderNumber} payment #${payment.paymentId}`,
+            lines: [
+              { account_id: bank.glAccountId, debit: amount, credit: 0n, description: "Bank/cash" },
+              { account_id: arId, debit: 0n, credit: amount, description: "AR settlement" },
+            ],
+            sourceModule: "sales.payment",
+            sourceRef: String(payment.paymentId),
+          }, period);
+          const posted = await postJournal(q as any, who, Number(j.id), new Date(), true);
+
+          const number = `SR-${String(await nextNumber(q as any, orgId, "sales_receipt")).padStart(6, "0")}`;
+          const pay = (await (q as any).query(
+            `INSERT INTO finance_payments (org_id, direction, number, customer_id, payment_date, amount, bank_account_id, method, reference, notes, journal_id, created_by, created_by_label)
+             VALUES ($1,'receipt',$2,$3,$4,$5,$6,$7,$8,$9,$10,'sales-bridge','Sales Bridge')
+             RETURNING id, number`,
+            [orgId, number, linked.financeCustomerId, date, formatMoney(amount), bank.bankAccountId,
+             payment.method || "bank_transfer", payment.reference ?? null, payment.notes ?? `Sales order ${payment.orderNumber}`, posted.id],
+          )).rows[0];
+
+          if (inv) {
+            const outstanding = fromDb(inv.total) - fromDb(inv.amount_paid);
+            const alloc = amount <= outstanding ? amount : outstanding;
+            if (alloc > 0n) {
+              await (q as any).query(
+                `INSERT INTO finance_payment_allocations (org_id, payment_id, invoice_id, amount) VALUES ($1,$2,$3,$4)`,
+                [orgId, pay.id, inv.id, formatMoney(alloc)],
+              );
+              await (q as any).query(
+                `UPDATE finance_invoices SET amount_paid = amount_paid + $3, updated_at = now() WHERE id = $1 AND org_id = $2`,
+                [inv.id, orgId, formatMoney(alloc)],
+              );
+            }
+          }
+
+          await markEventSucceeded(q as any, eventId, posted.reference ?? number, { journalId: posted.id, paymentId: pay.id, paymentNumber: pay.number });
+          return { ok: true, ref: posted.reference ?? number };
+        });
+      } catch (e: any) {
+        logger.error({ err: e }, "sales-bridge.recordPayment failed");
+        return { ok: false, error: e?.message ?? "payment bridge failed", retryable: true };
+      }
+    }
   };
 }

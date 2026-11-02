@@ -14,7 +14,7 @@ import type { Db, Queryable } from "../core/types";
 import type { Deps } from "../core/router";
 import type { ProviderResult, OrderPayload, EmailMessage, WhatsAppMessage } from "./providers";
 
-export type OutboxKind = "inventory.reserve" | "inventory.release" | "finance.invoice" | "finance.void_invoice" | "email.send" | "whatsapp.send";
+export type OutboxKind = "inventory.reserve" | "inventory.release" | "finance.invoice" | "finance.void_invoice" | "finance.payment" | "email.send" | "whatsapp.send";
 
 export const MAX_ATTEMPTS = 5;
 
@@ -31,6 +31,7 @@ const PROVIDER_OF: Record<OutboxKind, string> = {
   "inventory.release": "inventory",
   "finance.invoice": "finance",
   "finance.void_invoice": "finance",
+  "finance.payment": "finance",
   "email.send": "email",
   "whatsapp.send": "whatsapp",
 };
@@ -115,6 +116,11 @@ async function callProvider(deps: Deps, row: OutboxRow): Promise<ProviderResult>
     case "inventory.release": return i.inventory!.release(p.order as OrderPayload, row.idempotency_key);
     case "finance.invoice": return i.finance!.createInvoice(p.order as OrderPayload, row.idempotency_key);
     case "finance.void_invoice": return i.finance!.voidInvoice(String(p.invoiceRef), String(p.reason ?? ""), row.idempotency_key);
+    case "finance.payment": {
+      const fn = i.finance!.recordPayment;
+      if (!fn) return { ok: false, error: "Finance provider does not support payments", retryable: false };
+      return fn(p.payment as import("./providers").PaymentPayload, row.idempotency_key);
+    }
     case "email.send": return i.email!.send(p.message as EmailMessage, row.idempotency_key);
     case "whatsapp.send": return i.whatsapp!.sendTemplate(p.message as WhatsAppMessage, row.idempotency_key);
   }

@@ -334,6 +334,29 @@ export const orderRoutes: Route[] = [
       const r = await q.query<{ id: number }>("INSERT INTO sales_order_payments (order_id, amount, method, reference, received_on, source, recorded_by, notes) VALUES ($1,$2,$3,$4,$5,'manual',$6,$7) RETURNING id", [id, b.amount, b.method, b.reference ?? null, receivedOn, actor.label, b.notes ?? null]);
       const res = await recomputePayment(q, id);
       for (const h of orderHooks.paid) await h(q, id, { now, actor, requestId });
+            // Push receipt into Finance (idempotent outbox). Never invents revenue — only cash/AR movement when invoice exists.
+      try {
+        await enqueue(q, {
+          kind: "finance.payment",
+          entityType: "order",
+          entityId: id,
+          idempotencyKey: `sales.payment:${r.rows[0]!.id}`,
+          payload: {
+            payment: {
+              orderId: id,
+              orderNumber: o.number,
+              accountId: o.account_id,
+              paymentId: r.rows[0]!.id,
+              amount: b.amount,
+              currency: o.currency,
+              receivedOn,
+              method: b.method ?? null,
+              reference: b.reference ?? null,
+              notes: b.notes ?? null,
+            },
+          },
+        });
+      } catch { /* outbox enqueue must not block payment recording */ }
       await audit(q, actor, { action: "order.payment", entityType: "order", entityId: id, summary: `Recorded payment ${b.amount} on ${o.number} (${res.status}); recorded manually, not verified with a bank` }, requestId);
       events.push({ type: "order.paid", entityType: "order", entityId: id, data: { status: res.status } } as DomainEvent);
       return created({ id: r.rows[0]!.id, paid_total: res.paid, payment_status: res.status });

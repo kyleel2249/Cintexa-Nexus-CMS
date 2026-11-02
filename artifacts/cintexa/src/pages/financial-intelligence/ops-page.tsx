@@ -43,7 +43,7 @@ function Shell({ title, description, children }: { title: string; description: s
 function PaymentBridge() {
   const q = useFinanceQuery<any>("/intelligence/payment-bridge");
   return (
-    <Shell title="Payment Bridge" description="Sales payment events versus Finance payment records. Revenue is never posted for unpaid orders.">
+    <Shell title="Payment Bridge" description="Sales payment outbox posts Finance receipts (Dr bank, Cr AR) when configured. Revenue is never posted for unpaid orders.">
       <QueryBoundary q={q}>{(d) => (
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
