@@ -385,10 +385,11 @@ const readiness = route("GET", "/intelligence/readiness", { perm: "ledger:read" 
     schema_phase7: !!(await c.q.query<any>(`SELECT to_regclass('finance_dividend_declarations') AS t`)).rows[0]?.t,
     schema_phase8: !!(await c.q.query<any>(`SELECT to_regclass('finance_budgets') AS t`)).rows[0]?.t,
     schema_phase10_21: !!(await c.q.query<any>(`SELECT to_regclass('finance_fx_rates') AS t`)).rows[0]?.t,
+    schema_phase22_35: !!(await c.q.query<any>(`SELECT to_regclass('finance_kpi_targets') AS t`)).rows[0]?.t,
     integration: !!(await c.q.query<any>(`SELECT to_regclass('finance_integration_events') AS t`)).rows[0]?.t,
   };
   const ready = Object.values(checks).every(Boolean);
-  return ok({ ready, checks, note: ready ? "Financial Intelligence phases 1–21 schema present." : "Some schema components missing — run bootstrap." });
+  return ok({ ready, checks, note: ready ? "Financial Intelligence phases 1–35 schema present." : "Some schema components missing — run bootstrap." });
 });
 
 export const intelligenceOpsRoutes: Route[] = [

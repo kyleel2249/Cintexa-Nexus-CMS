@@ -16,6 +16,7 @@ const DividendsValuationPage = lazy(() => import("./dividends-valuation-page"));
 const BudgetHealthPage = lazy(() => import("./budget-health-page"));
 const SettingsIntegrationPage = lazy(() => import("./settings-integration-page"));
 const OpsPage = lazy(() => import("./ops-page"));
+const AdvancedPage = lazy(() => import("./advanced-page"));
 
 const spinner = <div className="flex min-h-[300px] items-center justify-center"><Spinner className="h-6 w-6" /></div>;
 
@@ -158,6 +159,34 @@ export function FinancialIntelligenceRoutes() {
             </Route>
             <Route path="/financial-intelligence/audit">
               <Guard perm="audit:read"><Suspense fallback={spinner}><OpsPage mode="audit" /></Suspense></Guard>
+            </Route>
+            
+            <Route path="/financial-intelligence/views">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="views" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/kpi-targets">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="kpi-targets" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/exports">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="exports" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/stress">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="stress" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/wc-snapshots">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="wc" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/tax-intel">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="tax" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/concentration">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="concentration" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/api-index">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="api-index" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/version">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><AdvancedPage mode="version" /></Suspense></Guard>
             </Route>
             <Route path="/financial-intelligence/system-health">
               <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="health" /></Suspense></Guard>
