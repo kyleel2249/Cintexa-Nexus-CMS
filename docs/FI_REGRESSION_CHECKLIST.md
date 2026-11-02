@@ -2,6 +2,10 @@
 
 Use before promoting a release. FI figures must come only from **posted** Finance ledger data.
 
+**Document version:** 1.2 · **Product:** CINTEXA Financial Intelligence · **Applies through:** phase 35 + gap-close
+
+---
+
 ## Bootstrap
 - [ ] `FINANCE_PHASE10_21_STATEMENTS` and `FINANCE_PHASE22_35_STATEMENTS` applied (bootstrap / migrate)
 - [ ] `FINANCE_INTEGRATION_STATEMENTS` applied
@@ -10,10 +14,12 @@ Use before promoting a release. FI figures must come only from **posted** Financ
 - [ ] `GET /api/finance/intelligence/health-check` → overall `ok` (or documented degraded modules)
 - [ ] Sales outbox worker is running (or a manual outbox drain is available in the environment)
 - [ ] Pending `finance.invoice` / `finance.payment` outbox rows can leave `pending` and reach `sent` or a terminal failure state
+- [ ] Finance organisation selected; functional currency confirmed
 
 ## Core analysis
 - [ ] Overview KPIs match trial balance (posted only)
 - [ ] Overview chart / monthly movement uses posted periods only
+- [ ] Dashboard widget on main app dashboard reflects same posted KPIs (or empty)
 - [ ] Ratios page loads (null metrics when denominators missing — not invented)
 - [ ] CAC / customer-acquisition page does not invent CAC when inputs are missing
 - [ ] P&L / Balance sheet / Cash flow lines + CSV download
@@ -92,6 +98,13 @@ Use before promoting a release. FI figures must come only from **posted** Financ
 - [ ] Named owner: who acknowledges alerts
 - [ ] Named owner: who runs period reconciliation
 - [ ] Temporary CI/deploy secrets (e.g. GitHub PAT) revoked after use
+
+## Sign-off
+- [ ] Tester name: ____________________  Date: __________
+- [ ] Environment (e.g. staging): ____________________
+- [ ] Build / commit SHA: ____________________
+- [ ] Result: Pass / Pass with notes / Fail
+- [ ] Notes: ________________________________________________
 
 ## Suggested minimum pass bar
 1. Bootstrap section all green (including outbox worker).
