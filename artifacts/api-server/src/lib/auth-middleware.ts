@@ -21,6 +21,20 @@ const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "cintexa-nexus";
 const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
 const FIREBASE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"));
 
+/**
+ * AUTH_MODE
+ *  - "open"     (default): no sign-in is required. The web app deliberately sends no credentials
+ *                          (see artifacts/cintexa/src/lib/api.ts), so requests that carry no valid
+ *                          credential are treated as an implicit administrator. Valid Firebase tokens,
+ *                          legacy JWTs and cxk_ API keys are still recognised when they are sent.
+ *  - "enforced"          : every non-public route needs a valid credential (previous behaviour).
+ */
+const AUTH_MODE: "open" | "enforced" = (process.env.AUTH_MODE ?? "open").trim().toLowerCase() === "enforced" ? "enforced" : "open";
+const OPEN_ACCESS_EMAIL = (process.env.OPEN_ACCESS_EMAIL ?? "open-access@cintexa.local").trim();
+if (AUTH_MODE === "open") {
+  logger.warn("AUTH_MODE=open - the API does not require sign-in. Set AUTH_MODE=enforced before exposing this server publicly.");
+}
+
 /** Comma separated list of admin e-mails. When empty, every signed-in user is an admin (bootstrap mode). */
 const ADMIN_EMAILS = (process.env.ADMIN_EMAILS ?? "")
   .split(",")
@@ -37,6 +51,8 @@ export interface AuthPayload {
   firebase?: boolean;
   apiKeyId?: string;
   scopes?: Array<"read" | "write">;
+  /** true when AUTH_MODE=open granted this identity without any credential */
+  openAccess?: boolean;
 }
 
 declare global {
@@ -45,6 +61,10 @@ declare global {
       auth?: AuthPayload;
     }
   }
+}
+
+function openAccessIdentity(): AuthPayload {
+  return { sub: "open-access", email: OPEN_ACCESS_EMAIL, role: "admin", openAccess: true };
 }
 
 function resolveRole(email: string, adminClaim: boolean): string {
@@ -104,36 +124,43 @@ async function verifyApiKey(raw: string): Promise<AuthPayload | null> {
 
 function extractToken(req: Request): string | undefined {
   const authHeader = req.headers.authorization;
-  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7);
+  if (authHeader?.startsWith("Bearer ")) return authHeader.slice(7).trim();
   const apiKeyHeader = req.headers["x-api-key"];
-  if (typeof apiKeyHeader === "string" && apiKeyHeader) return apiKeyHeader;
+  if (typeof apiKeyHeader === "string" && apiKeyHeader.trim()) return apiKeyHeader.trim();
   return (req as any).cookies?.[COOKIE_NAME];
 }
 
-/** Attach Firebase, API-key or legacy JWT auth to req.auth when a valid credential is present. */
+/**
+ * Attach Firebase, API-key or legacy JWT auth to req.auth when a valid credential is present.
+ * In AUTH_MODE=open a request without a valid credential receives the implicit open-access admin identity.
+ */
 export async function optionalAuth(req: Request, _res: Response, next: NextFunction) {
   if (req.auth) return next();
   const raw = extractToken(req);
-  if (!raw) return next();
 
-  const apiKey = await verifyApiKey(raw);
-  if (apiKey) {
-    req.auth = apiKey;
-    return next();
+  if (raw) {
+    const apiKey = await verifyApiKey(raw);
+    if (apiKey) {
+      req.auth = apiKey;
+      return next();
+    }
+
+    const firebaseAuth = await verifyFirebaseToken(raw);
+    if (firebaseAuth) {
+      req.auth = firebaseAuth;
+      return next();
+    }
+
+    try {
+      const decoded = jwt.verify(raw, JWT_SECRET) as AuthPayload;
+      req.auth = { ...decoded, role: resolveRole(decoded.email ?? "", decoded.role === "admin") };
+      return next();
+    } catch {
+      // expired / invalid - fall through
+    }
   }
 
-  const firebaseAuth = await verifyFirebaseToken(raw);
-  if (firebaseAuth) {
-    req.auth = firebaseAuth;
-    return next();
-  }
-
-  try {
-    const decoded = jwt.verify(raw, JWT_SECRET) as AuthPayload;
-    req.auth = { ...decoded, role: resolveRole(decoded.email ?? "", decoded.role === "admin") };
-  } catch {
-    // expired / invalid - leave req.auth undefined
-  }
+  if (AUTH_MODE === "open") req.auth = openAccessIdentity();
   next();
 }
 
@@ -239,7 +266,8 @@ setInterval(() => {
 /**
  * Global API guard, mounted once in routes/index.ts.
  *  - public routes pass straight through
- *  - everything else needs a valid Firebase token / legacy JWT / API key
+ *  - AUTH_MODE=enforced: everything else needs a valid Firebase token / legacy JWT / API key
+ *  - AUTH_MODE=open (default): credential-less requests are served as the open-access admin
  *  - API keys are read-only unless they were issued with the "write" scope
  *  - Settings -> Security IP allow-list + rate limit are enforced
  *    (set DISABLE_IP_ALLOWLIST=1 to recover from an accidental lock-out)
@@ -260,7 +288,9 @@ export async function apiGuard(req: Request, res: Response, next: NextFunction) 
       res.status(403).json({ error: "Your IP address is not on the allow-list" });
       return;
     }
-    if (rateLimited(`${req.auth.sub}`, Math.max(30, Number(security.apiRateLimitPerMinute) || 240))) {
+    // The open-access identity is shared by everyone, so bucket it per client IP instead of globally.
+    const bucketKey = req.auth.openAccess ? `open:${ip}` : `${req.auth.sub}`;
+    if (rateLimited(bucketKey, Math.max(30, Number(security.apiRateLimitPerMinute) || 240))) {
       res.status(429).json({ error: "Rate limit exceeded. Try again in a minute." });
       return;
     }
