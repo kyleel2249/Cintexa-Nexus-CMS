@@ -67,7 +67,7 @@ const META: Record<AnalysisKind, { title: string; description: string }> = {
   },
   budget: {
     title: "Budget & Forecasting",
-    description: "Budget vs actual and scenario planning ship in Phase 8. Historical actuals are shown below when posted.",
+    description: "Use Budget & Forecasting for budget vs actual and scenarios. Actuals always come from the posted ledger.",
   },
   "working-capital": {
     title: "Working Capital",
@@ -75,7 +75,7 @@ const META: Record<AnalysisKind, { title: string; description: string }> = {
   },
   health: {
     title: "Financial Health & Risk",
-    description: "Liquidity and profitability signals from live KPIs. Automated alerts and AI recommendations arrive in Phase 8.",
+    description: "Use Financial Health & Risk for KPI signals and rule-based alerts. Thresholds are configurable.",
   },
   investors: {
     title: "Investor Management",
@@ -182,10 +182,10 @@ export default function AnalysisPage({ kind }: { kind: AnalysisKind }) {
             return (
               <Panel>
                 <EmptyState
-                  title={kind === "budget" ? "Budgeting arrives in Phase 8" : "Intelligence settings"}
+                  title={kind === "budget" ? "Budget & Forecasting" : "Intelligence settings"}
                   description={
                     kind === "budget"
-                      ? "Conservative, base and aggressive scenarios will use verified history only. Monthly actuals from the ledger are available on the overview."
+                      ? "Open Budget & Forecasting to manage budgets, scenarios, and variance analysis."
                       : "Reporting currency, alert thresholds and AI analyst preferences will be configurable here. Accounting policies remain under CINTEXA Finance → Company Settings."
                   }
                   action={
