@@ -147,9 +147,9 @@ export default function AnalysisPage({ kind }: { kind: AnalysisKind }) {
                     title="Capital module not yet configured"
                     description={
                       kind === "investors"
-                        ? "Known context (subject to verification): total stated capital/equity GHS 8,000; combined investor contributions GHS 6,000; remaining GHS 2,000. Ownership percentages are not assigned until a formal agreement is recorded in Phase 6."
+                        ? "Use Investor Management to register investors and contributions. Ownership is assigned only via the share register."
                         : kind === "shareholders"
-                          ? "The shareholder register and cap table will be introduced in Phase 6. Proposed allocations are never treated as issued shares."
+                          ? "Use Shareholder Management to maintain the share register and capitalisation table."
                           : kind === "dividends"
                             ? "Dividend planning and approval workflows ship in Phase 7. No payout is calculated or authorised from this page."
                             : "Valuation models ship in Phase 7. Equity book value below uses posted ledger equity accounts only when present."

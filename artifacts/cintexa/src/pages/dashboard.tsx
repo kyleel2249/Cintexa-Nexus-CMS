@@ -3,6 +3,7 @@ import { WebsiteIntelligenceCard } from "@/components/website-intelligence-card"
 import { CcdiDashboardCard } from "@/components/ccdi-dashboard-card";
 import { SentinelKeyCard } from "@/components/sentinel-key-card";
 import { SalesOverviewWidget } from "@/components/sales/SalesOverviewWidget";
+import { FiDashboardWidget } from "@/components/financial-intelligence/FiDashboardWidget";
 import { Link } from "wouter";
 import { useEffect, useState } from "react";
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
@@ -291,6 +292,10 @@ export default function Dashboard() {
 
       <motion.div variants={fadeUp}>
         <SalesOverviewWidget compact />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <FiDashboardWidget />
       </motion.div>
 
       <motion.div

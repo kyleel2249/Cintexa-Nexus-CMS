@@ -11,6 +11,7 @@ import type { AnalysisKind } from "./analysis-page";
 
 const Overview = lazy(() => import("./overview"));
 const AnalysisPage = lazy(() => import("./analysis-page"));
+const CapitalPage = lazy(() => import("./capital-page"));
 
 const spinner = <div className="flex min-h-[300px] items-center justify-center"><Spinner className="h-6 w-6" /></div>;
 
@@ -109,8 +110,12 @@ export function FinancialIntelligenceRoutes() {
             <Route path="/financial-intelligence/budget"><AnalysisRoute kind="budget" /></Route>
             <Route path="/financial-intelligence/working-capital"><AnalysisRoute kind="working-capital" /></Route>
             <Route path="/financial-intelligence/health"><AnalysisRoute kind="health" /></Route>
-            <Route path="/financial-intelligence/investors"><AnalysisRoute kind="investors" /></Route>
-            <Route path="/financial-intelligence/shareholders"><AnalysisRoute kind="shareholders" /></Route>
+            <Route path="/financial-intelligence/investors">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><CapitalPage mode="investors" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/shareholders">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><CapitalPage mode="shareholders" /></Suspense></Guard>
+            </Route>
             <Route path="/financial-intelligence/dividends"><AnalysisRoute kind="dividends" /></Route>
             <Route path="/financial-intelligence/valuation"><AnalysisRoute kind="valuation" /></Route>
             <Route path="/financial-intelligence/reports"><AnalysisRoute kind="reports" /></Route>
