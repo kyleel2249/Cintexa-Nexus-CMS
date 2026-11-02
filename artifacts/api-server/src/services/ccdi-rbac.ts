@@ -34,7 +34,7 @@ export async function seedCcdiRbac(): Promise<void> {
       const { rows } = await pool.query(
         `INSERT INTO ccdi_roles (organization_id, name, slug, description, is_system)
          VALUES (NULL, $1, $2, $3, true)
-         ON CONFLICT (organization_id, slug) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description
+         ON CONFLICT (slug) WHERE organization_id IS NULL DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description
          RETURNING id`,
         [role.name, role.slug, role.description],
       );

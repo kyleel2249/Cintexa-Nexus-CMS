@@ -29,6 +29,7 @@ import phase21Router from "./phase21";
 import phase22Router from "./phase22";
 import phase23Router from "./phase23";
 import phase25Router from "./phase25";
+import v1Router from "./v1";
 
 const router = Router();
 
@@ -51,6 +52,8 @@ router.get("/health", async (_req: Request, res: Response) => {
   });
 });
 
+// Phase 2 foundation API (versioned). Mounted first; it answers its own 404s.
+router.use("/v1", v1Router);
 // Mount Phase 4–25 routers
 router.use(findingsRouter);
 router.use(advancedRouter);

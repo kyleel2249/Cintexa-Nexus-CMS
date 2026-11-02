@@ -52,7 +52,14 @@ app.use((err: unknown, _req: Request, res: Response, _next: NextFunction) => {
 
   if (res.headersSent) return;
 
-  const message = err instanceof Error ? err.message : "Internal server error";
+  // Body-parser and similar middleware attach a safe 4xx status. Everything else is an internal
+  // fault whose message (SQL text, paths, stack hints) must not reach the client in production.
+  const status = Number((err as { status?: number; statusCode?: number } | null)?.status ?? (err as { statusCode?: number } | null)?.statusCode);
+  if (Number.isInteger(status) && status >= 400 && status < 500) {
+    res.status(status).json({ error: err instanceof Error ? err.message : "Bad request" });
+    return;
+  }
+  const message = process.env.NODE_ENV === "production" ? "Internal server error" : err instanceof Error ? err.message : "Internal server error";
   res.status(500).json({ error: message });
 });
 
