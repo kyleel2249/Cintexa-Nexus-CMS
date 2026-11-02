@@ -256,7 +256,7 @@ router.post("/scopes/:id/submit", requireAuth, async (req: Request, res: Respons
   res.json(result);
 });
 
-router.post("/scopes/:id/decide", requireAuth, requireCcdiPermission("ccdi.scope.approve"), async (req: Request, res: Response) => {
+router.post("/scopes/:id/decide", requireAuth, requireCcdiPermission("ccdi.scopes.approve"), async (req: Request, res: Response) => {
   const { organizationId, decision, note, expiresAt } = req.body ?? {};
   if (!organizationId || !["approved", "rejected"].includes(decision)) {
     res.status(400).json({ error: "organizationId and decision (approved|rejected) are required" });
@@ -333,7 +333,7 @@ router.post("/jobs/:id/submit", requireAuth, async (req: Request, res: Response)
   res.json(result);
 });
 
-router.post("/jobs/:id/decide", requireAuth, requireCcdiPermission("ccdi.job.approve"), async (req: Request, res: Response) => {
+router.post("/jobs/:id/decide", requireAuth, requireCcdiPermission("ccdi.jobs.approve"), async (req: Request, res: Response) => {
   const { organizationId, decision, note } = req.body ?? {};
   if (!organizationId || !["approved", "rejected"].includes(decision)) {
     res.status(400).json({ error: "organizationId and decision (approved|rejected) are required" });

@@ -3,8 +3,10 @@
  */
 import { Router, type Request, type Response } from "express";
 import { requireAuth } from "../../lib/auth-middleware";
+import { requireCcdiPermission } from "../../services/ccdi-rbac";
 import { logger } from "../../lib/logger";
 import * as advanced from "../../services/ccdi-advanced-engines";
+import { ADVANCED_ENGINE_TYPES } from "../../services/ccdi-advanced-validation";
 import { httpStatus } from "./http-util";
 
 const router = Router();
@@ -16,106 +18,99 @@ function actor(req: Request): string {
 /**
  * POST /api/ccdi/advanced/assessments
  * Body: { organizationId, scopeId, name, engineType, targets, parameters?, connectorKey? }
- * engineType: cloud_audit | server_audit | container_scan | mobile_scan | database_audit | iot_scan | config_audit | dependency_scan
+ * Requires permission ccdi.jobs.request in the organisation.
+ * An approved, unexpired scope is mandatory; the job is created as a draft only.
  */
-router.post("/advanced/assessments", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const body = req.body ?? {};
-    if (!body.organizationId || !body.scopeId || !body.name || !body.engineType) {
-      res.status(400).json({
-        error:
-          "organizationId, scopeId, name and engineType are required. engineType one of: cloud_audit, server_audit, container_scan, mobile_scan, database_audit, iot_scan, config_audit, dependency_scan",
+router.post(
+  "/advanced/assessments",
+  requireAuth,
+  requireCcdiPermission("ccdi.jobs.request"),
+  async (req: Request, res: Response) => {
+    try {
+      const parsed = advanced.validateAssessmentRequest(req.body);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error });
+        return;
+      }
+
+      const result = await advanced.requestAdvancedAssessment({
+        ...parsed.value,
+        requestedBy: actor(req),
       });
-      return;
+
+      if ("error" in result) {
+        res.status(httpStatus(result.status)).json({ error: result.error });
+        return;
+      }
+
+      res.status(201).json({
+        ...result,
+        note: "Advanced assessment job created in draft. Submit and obtain approval before any execution. No tool has been executed.",
+        connectorHints: advanced.ADVANCED_CONNECTOR_HINTS,
+      });
+    } catch (err) {
+      logger.error({ err }, "ccdi.advanced.assessments failed");
+      res.status(500).json({ error: "Failed to create advanced assessment" });
     }
-
-    const result = await advanced.requestAdvancedAssessment({
-      organizationId: body.organizationId,
-      scopeId: body.scopeId,
-      name: body.name,
-      engineType: body.engineType,
-      targets: body.targets ?? [],
-      parameters: body.parameters,
-      requestedBy: actor(req),
-      connectorKey: body.connectorKey,
-    });
-
-    if ("error" in result) {
-      res.status(httpStatus(result.status)).json({ error: result.error });
-      return;
-    }
-
-    res.status(201).json({
-      ...result,
-      note: "Advanced assessment job created in draft. Submit and obtain approval before any execution.",
-      connectorHints: advanced.ADVANCED_CONNECTOR_HINTS,
-    });
-  } catch (err) {
-    logger.error({ err }, "ccdi.advanced.assessments failed");
-    res.status(500).json({ error: "Failed to create advanced assessment" });
-  }
-});
+  },
+);
 
 /**
  * POST /api/ccdi/advanced/findings
  * Record a domain-specific finding (cloud/server/container/mobile/database/iot).
+ * Requires permission ccdi.findings.manage in the organisation.
  */
-router.post("/advanced/findings", requireAuth, async (req: Request, res: Response) => {
-  try {
-    const body = req.body ?? {};
-    const domains = ["cloud", "server", "container", "mobile", "database", "iot"];
-    if (!body.organizationId || !body.domain || !body.title || !body.severity) {
-      res.status(400).json({
-        error: "organizationId, domain, title and severity are required",
-      });
-      return;
-    }
-    if (!domains.includes(body.domain)) {
-      res.status(400).json({ error: `domain must be one of: ${domains.join(", ")}` });
-      return;
-    }
+router.post(
+  "/advanced/findings",
+  requireAuth,
+  requireCcdiPermission("ccdi.findings.manage"),
+  async (req: Request, res: Response) => {
+    try {
+      const parsed = advanced.validateDomainFinding(req.body);
+      if (!parsed.ok) {
+        res.status(400).json({ error: parsed.error });
+        return;
+      }
 
-    const finding = await advanced.recordDomainFinding({
-      organizationId: body.organizationId,
-      domain: body.domain,
-      assetId: body.assetId,
-      title: body.title,
-      severity: body.severity,
-      description: body.description,
-      remediation: body.remediation,
-      cveId: body.cveId,
-      category: body.category,
-      affectedComponent: body.affectedComponent,
-      evidenceSummary: body.evidenceSummary,
-      sourceConnector: body.sourceConnector,
-      jobId: body.jobId,
-      meta: body.meta,
-    });
+      const result = await advanced.recordDomainFinding(parsed.value);
+      if ("error" in result) {
+        res.status(httpStatus(result.status)).json({ error: result.error });
+        return;
+      }
 
-    res.status(201).json({ finding });
-  } catch (err) {
-    logger.error({ err }, "ccdi.advanced.findings failed");
-    res.status(500).json({ error: "Failed to record domain finding" });
-  }
-});
+      res.status(201).json({ finding: result.finding });
+    } catch (err) {
+      logger.error({ err }, "ccdi.advanced.findings failed");
+      res.status(500).json({ error: "Failed to record domain finding" });
+    }
+  },
+);
 
 /** Catalogue of Phase 5 engines (informational). */
-router.get("/advanced/engines", requireAuth, (_req: Request, res: Response) => {
-  res.json({
-    phase: 5,
-    engines: [
-      { key: "cloud_audit", name: "Cloud Security Assessment", domains: ["AWS", "Azure", "GCP", "multi-cloud"] },
-      { key: "server_audit", name: "Server / Host Security", domains: ["Linux", "Windows", "hardening"] },
-      { key: "container_scan", name: "Container & Kubernetes Security", domains: ["images", "K8s", "runtime"] },
-      { key: "mobile_scan", name: "Mobile Application Security", domains: ["Android", "iOS"] },
-      { key: "database_audit", name: "Database Security", domains: ["SQL", "NoSQL", "configuration"] },
-      { key: "iot_scan", name: "IoT & Industrial (OT) Security", domains: ["IoT", "ICS", "SCADA"] },
-      { key: "config_audit", name: "Configuration Audit", domains: ["baseline", "CIS"] },
-      { key: "dependency_scan", name: "Dependency / SCA Scan", domains: ["libraries", "SBOMs"] },
-    ],
-    connectorHints: advanced.ADVANCED_CONNECTOR_HINTS,
-    note: "All engines create draft jobs that require an approved scope and human approval. No live scanning occurs without those gates.",
-  });
-});
+router.get(
+  "/advanced/engines",
+  requireAuth,
+  requireCcdiPermission("ccdi.jobs.view"),
+  (_req: Request, res: Response) => {
+    const catalogue: Record<(typeof ADVANCED_ENGINE_TYPES)[number], { name: string; domains: string[] }> = {
+      cloud_audit: { name: "Cloud Security Assessment", domains: ["AWS", "Azure", "GCP", "multi-cloud"] },
+      server_audit: { name: "Server / Host Security", domains: ["Linux", "Windows", "hardening"] },
+      container_scan: { name: "Container & Kubernetes Security", domains: ["images", "K8s", "runtime"] },
+      mobile_scan: { name: "Mobile Application Security", domains: ["Android", "iOS"] },
+      database_audit: { name: "Database Security", domains: ["SQL", "NoSQL", "configuration"] },
+      iot_scan: { name: "IoT & Industrial (OT) Security", domains: ["IoT", "ICS", "SCADA"] },
+      config_audit: { name: "Configuration Audit", domains: ["baseline", "CIS"] },
+      dependency_scan: { name: "Dependency / SCA Scan", domains: ["libraries", "SBOMs"] },
+    };
+    res.json({
+      phase: 5,
+      engines: ADVANCED_ENGINE_TYPES.map((key) => ({ key, ...catalogue[key] })),
+      connectorHints: advanced.ADVANCED_CONNECTOR_HINTS,
+      note:
+        "Connector hints are registry suggestions only; they do not indicate a tool is installed, configured or validated. " +
+        "All engines create draft jobs requiring an approved scope and human approval. IoT/OT is passive by default.",
+    });
+  },
+);
 
 export default router;

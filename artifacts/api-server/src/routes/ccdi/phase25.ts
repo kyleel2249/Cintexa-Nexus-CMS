@@ -35,7 +35,7 @@ router.get("/schedules", requireAuth, async (req: Request, res: Response) => {
 router.post(
   "/schedules",
   requireAuth,
-  requireCcdiPermission("ccdi.job.approve"),
+  requireCcdiPermission("ccdi.jobs.approve"),
   mutationLimit,
   async (req: Request, res: Response) => {
     try {
@@ -68,7 +68,7 @@ router.post(
 router.post(
   "/schedules/:id/enable",
   requireAuth,
-  requireCcdiPermission("ccdi.job.approve"),
+  requireCcdiPermission("ccdi.jobs.approve"),
   mutationLimit,
   async (req: Request, res: Response) => {
     try {

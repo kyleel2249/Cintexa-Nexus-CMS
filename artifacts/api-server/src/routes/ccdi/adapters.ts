@@ -29,7 +29,7 @@ router.get("/adapters", requireAuth, async (_req: Request, res: Response) => {
 router.post(
   "/adapters/run-next",
   requireAuth,
-  requireCcdiPermission("ccdi.job.execute"),
+  requireCcdiPermission("ccdi.jobs.execute"),
   async (req: Request, res: Response) => {
     try {
       if (await orch.isKillSwitchActive()) {
