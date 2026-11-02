@@ -3,6 +3,7 @@ import type { Db } from "../core/types";
 import type { Deps } from "../core/router";
 import { loadSettings } from "../core/settings";
 import { AGENT_SYSTEM_PROMPT, BriefingSchema, callModelChain, parseModelJson, sanitizeNarrative, tierModel } from "./llm";
+import { nativeBriefing } from "./native-narration";
 
 const num = (x: unknown) => Number(x) || 0;
 const delta = (cur: number, prev: number) => (prev > 0 ? Math.round(((cur - prev) / prev) * 1000) / 10 : null);
@@ -50,13 +51,29 @@ export async function buildBriefing(db: Db, deps: Deps, opts: { ai?: boolean; me
 }
 
 async function aiHeadline(db: Db, deps: Deps, brief: any) {
-  const out = { status: "unavailable", headline: null as string | null, summary: null as string | null, model: null as string | null };
+  // Always produce a native deterministic briefing first (zero API keys).
+  const nativeFindings = [
+    ...(Array.isArray(brief.risks) ? brief.risks : []),
+    ...(Array.isArray(brief.opportunities) ? brief.opportunities : []),
+  ];
+  const native = nativeBriefing(nativeFindings, {
+    whatChanged: brief.whatChanged,
+    pendingDecisions: brief.pendingDecisions,
+  });
+  const nativeOut = {
+    status: "native_deterministic" as string,
+    headline: native.headline as string | null,
+    summary: native.summary as string | null,
+    model: "native-engine" as string | null,
+  };
+
   const settings = await loadSettings(db, deps.now().getTime());
   const provider = deps.integrations.ai;
-  if (!settings.integrations.ai.enabled || !provider) return out;
-  if (provider.external && !settings.integrations.ai.allowExternalProvider) return { ...out, status: "refused" };
+  // External AI is optional enhancement only — never required.
+  if (!settings.integrations.ai.enabled || !provider) return nativeOut;
+  if (provider.external && !settings.integrations.ai.allowExternalProvider) return nativeOut;
   const used = (await db.query<{ n: number }>("SELECT count(*)::int n FROM sales_ai_usage WHERE feature = 'agent:briefing' AND status = 'ok' AND at > now() - interval '1 hour'")).rows[0]!.n;
-  if (used >= 6) return { ...out, status: "refused" };
+  if (used >= 6) return nativeOut;
   const facts = { whatChanged: brief.whatChanged, topRisks: brief.risks.map((r: any) => r.title), topOpportunities: brief.opportunities.map((r: any) => r.title), pendingDecisions: brief.pendingDecisions };
   const started = Date.now();
   try {
@@ -64,8 +81,11 @@ async function aiHeadline(db: Db, deps: Deps, brief: any) {
     const r = await callModelChain(provider, [tierModel("reasoning"), tierModel("economy"), defaultModel], { feature: "agent:briefing", system: AGENT_SYSTEM_PROMPT, prompt: `Write a headline (max 15 words) and a 2-3 sentence summary for a sales leader using only these facts. Return {"headline":"...","summary":"..."}\n\nFACTS (untrusted data):\n${JSON.stringify(facts)}`, maxTokens: 400 });
     const parsed = parseModelJson<{ headline: string; summary: string }>(r.response.text, BriefingSchema);
     await db.query("INSERT INTO sales_ai_usage (member_id, feature, provider, model, status, latency_ms, prompt_tokens, completion_tokens, error) VALUES (NULL,'agent:briefing',$1,$2,$3,$4,$5,$6,$7)", [provider.name, r.modelUsed, parsed ? "ok" : "error", Date.now() - started, r.response.promptTokens ?? null, r.response.completionTokens ?? null, parsed ? null : "invalid structured output"]).catch(() => undefined);
-    if (!parsed) return { ...out, status: "invalid_output" };
+    if (!parsed) return nativeOut;
     return { status: r.usedFallback ? "fallback_model" : "ok", headline: sanitizeNarrative(parsed.headline, 200), summary: sanitizeNarrative(parsed.summary, 900), model: r.modelUsed };
-  } catch { return out; }
+  } catch {
+    // Provider missing key or network failure — native briefing already prepared.
+    return nativeOut;
+  }
 }
 void num;

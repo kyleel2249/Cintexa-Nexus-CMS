@@ -1,39 +1,51 @@
 # Native Nexus Intelligence Engine
 
-## Purpose
+## Absolute rule
 
-Core business operations in CINTEXA Nexus **must not** require OpenRouter, OpenAI, or any external AI API key.
+**Sales Management, CINTEXA Finance, and Financial Intelligence do not require any external API key.**
 
-## Execution levels
+No OpenRouter, OpenAI, Anthropic, Gemini, or similar credential is needed to install, configure, or operate these modules.
 
-| Level | Name | When used |
-|-------|------|-----------|
-| 1 | Native engine | Always available. TypeScript services, PostgreSQL, deterministic algorithms. |
-| 2 | Enhanced intelligence | Historical data, statistical methods, rule engines (lead scoring, forecasts, KPIs). |
-| 3 | External AI | Optional OpenRouter / other providers for language generation and research. |
+## Execution model
 
-If Level 3 is unavailable, Levels 1–2 continue without interruption.
+| Level | Name | Role |
+|-------|------|------|
+| 1 | **Native engine (primary)** | TypeScript services, PostgreSQL, deterministic algorithms, statistical methods, business rules. Always on. |
+| 2 | Enhanced analytics | Historical series, scoring, forecasts, KPIs from ledger and CRM tables. |
+| 3 | External generative AI | **Optional only.** Phrasing/narration and internet research when an administrator explicitly enables it **and** a provider key exists. |
 
-## What already runs natively (no API key)
+If Level 3 is absent, Levels 1–2 continue without interruption and without warning banners that block work.
 
-### Sales (`artifacts/api-server/src/services/sales/`)
-- CRUD for leads, accounts, contacts, opportunities, quotations, orders, payments
-- Lead scoring (`domain/lead-scoring.ts`)
-- Commission, targets, KPI, forecast modules
-- Agent analyzers fall back to deterministic mode when `resolveKey` returns null
+## Native capabilities (no key)
 
-### Finance (`artifacts/api-server/src/services/finance/`)
+### Sales
+- Full CRM CRUD (leads, accounts, contacts, opportunities, quotations, orders, payments)
+- Lead scoring, commission, targets, KPI, pipeline health (`domain/*`)
+- Agent **analyzers** (deterministic findings from SQL)
+- **Native briefing and context answers** (`agents/native-narration.ts`)
+- Public-web enrichment jobs that do not use LLM providers
+- PDF/CSV exports where implemented
+
+### Finance
 - Double-entry journals, COA, periods, year-end close
 - AR/AP, invoices, bills, banking, reconciliation, tax, capital
-- Reports, trial balance, statements, ageing
-- Intelligence ops modules use ledger math, not LLMs
+- Statements, ageing, reports — ledger math only
 
-### Shared intelligence (`lib/intelligence`)
-- `ModelRouter` returns `{ ok: false, degraded: true, reason: 'ai_provider_not_configured' }` when no provider is wired
-- Never fabricates research or financial numbers
+### Financial Intelligence
+- KPI dashboards, ratio packs, stress views, board packs from posted ledger data
+- Forecasting modules that use historical series (not generative models)
 
-## Policy
+## Classification of outputs
 
-- Do not disable Sales, Finance, or Financial Intelligence UI because a key is missing.
-- Do not present degraded/native results as generative AI output.
-- External AI is additive (research, autofill prose, free-form diagnostics).
+| Kind | Label in product |
+|------|------------------|
+| Deterministic calculation | Exact / from ledger |
+| Rule-based recommendation | Agent finding / native |
+| Statistical forecast | Forecast (with confidence notes) |
+| Generative language | Only when external AI is enabled; never implied otherwise |
+
+## Settings
+
+Platform Settings may still store an OpenRouter key for **optional** CMS features (AI Studio, comment assist, etc.). That key is **not** a prerequisite for Sales, Finance, or FI.
+
+Sales Settings → Integrations → AI controls optional narration only; default operation is native.

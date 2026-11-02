@@ -155,7 +155,7 @@ function AgentConfig({ agent }: { agent: any }) {
       <div className="grid gap-3 sm:grid-cols-2">
         <Field label="Autonomy level"><Select value={level} onChange={(e) => setLevel(e.target.value)}>{[1, 2, 3].filter((n) => n <= agent.maxLevel).map((n) => <option key={n} value={n}>L{n} · {LEVEL_LABEL[n]!.name}</option>)}</Select></Field>
         <Field label="Model tier"><Select value={tier} onChange={(e) => setTier(e.target.value)}><option value="economy">Economy (classification)</option><option value="standard">Standard</option><option value="reasoning">Reasoning (complex analysis)</option></Select></Field>
-        <Field label="Model override" hint="Optional OpenRouter model id"><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="e.g. openai/gpt-4o-mini" /></Field>
+        <Field label="Model override" hint="Optional — only used if external AI is enabled. Agents work fully without this."><Input value={model} onChange={(e) => setModel(e.target.value)} placeholder="Leave blank for native engine" /></Field>
         <Field label="Fallback model" hint="Used if the first model fails"><Input value={fallback} onChange={(e) => setFallback(e.target.value)} /></Field>
         <Field label="Run every (minutes)" hint="5–10080; blank = manual/event only"><Input inputMode="numeric" value={every} onChange={(e) => setEvery(e.target.value)} /></Field>
         <div className="flex items-end"><Checkbox label="Use AI to write plain-language narrative" checked={useAi} onChange={(e) => setUseAi(e.target.checked)} /></div>

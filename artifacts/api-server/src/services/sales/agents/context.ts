@@ -10,6 +10,7 @@ import { gatherFacts } from "../modules/assist";
 import { loadOwned } from "../modules/common";
 import type { Actor, Queryable } from "../core/types";
 import { AGENT_SYSTEM_PROMPT, callModelChain, sanitizeNarrative, tierModel } from "./llm";
+import { nativeContextAnswer } from "./native-narration";
 
 const TYPES = ["account", "contact", "opportunity", "lead", "quotation"] as const;
 const HOURLY = 30;
@@ -46,8 +47,16 @@ export const contextAssistRoutes: Route[] = [
       const fallback = { available: false, title, answer: evidenceBacked.length ? evidenceBacked.map((r: any, i: number) => `${i + 1}. ${r.title}${r.action ? ` → ${r.action}` : ""}`).join("\n") : null, recommendations: evidenceBacked, facts: f, extra, note: evidenceBacked.length ? "AI is not available. These are the agents' evidence-backed findings for this record." : "AI is not available and no agent finding exists for this record yet, so only the recorded facts are shown." };
       const provider = deps.integrations.ai;
       const log = (status: string, x: Record<string, unknown> = {}) => q.query("INSERT INTO sales_ai_usage (member_id, feature, provider, model, status, latency_ms, prompt_tokens, completion_tokens, error) VALUES ($1,'context_assist',$2,$3,$4,$5,$6,$7,$8)", [actor.memberId || null, provider?.name ?? "none", (x.model as string) ?? null, status, (x.latency as number) ?? null, (x.pt as number) ?? null, (x.ct as number) ?? null, (x.error as string) ?? null]).catch(() => undefined);
-      if (!settings.integrations.ai.enabled || !provider) { await log("unavailable"); return fallback; }
-      if (provider.external && !settings.integrations.ai.allowExternalProvider) { await log("refused"); return { ...fallback, note: "An administrator has not allowed sending record data to an external AI provider. Showing the agents' findings and recorded facts only." }; }
+      if (!settings.integrations.ai.enabled || !provider) {
+        await log("native");
+        const answer = nativeContextAnswer(b.question, f as Record<string, unknown>, evidenceBacked as any);
+        return { ...fallback, available: true, answer, model: "native-engine", note: "Answered from CRM facts and agent findings only (no external AI)." };
+      }
+      if (provider.external && !settings.integrations.ai.allowExternalProvider) {
+        await log("refused");
+        const answer = nativeContextAnswer(b.question, f as Record<string, unknown>, evidenceBacked as any);
+        return { ...fallback, available: true, answer, model: "native-engine", note: "External AI is disabled by policy. Answered from CRM facts and agent findings only." };
+      }
       const used = (await q.query<{ n: number }>("SELECT count(*)::int n FROM sales_ai_usage WHERE member_id = $1 AND status = 'ok' AND at > now() - interval '1 hour'", [actor.memberId || -1])).rows[0]!.n;
       if (used >= HOURLY) throw tooManyRequests(`AI assist limit reached (${HOURLY} per hour)`);
       const started = Date.now();
@@ -59,7 +68,10 @@ export const contextAssistRoutes: Route[] = [
         return { available: true, title, answer: sanitizeNarrative(r.response.text, 1500), model: r.modelUsed, recommendations: evidenceBacked, facts: f, extra, disclaimer: "AI-generated. Check against the record and the findings below before acting. Nothing was changed or sent." };
       } catch (err) {
         await log("error", { latency: Date.now() - started, error: err instanceof Error ? err.message.slice(0, 300) : "error" });
-        return { ...fallback, note: "The AI provider did not respond. Showing the agents' findings and recorded facts only." };
+        {
+          const answer = nativeContextAnswer(b.question, f as Record<string, unknown>, evidenceBacked as any);
+          return { ...fallback, available: true, answer, model: "native-engine", note: "External AI did not respond. Answered from CRM facts and agent findings only." };
+        }
       }
     },
   },

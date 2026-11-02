@@ -260,7 +260,7 @@ function AiStatus() {
       </div>
       <Panel title="How AI assist behaves">
         <p className="text-sm">{d.note}</p>
-        {d.blockedByPolicy && <p className="mt-2 text-sm text-amber-500">The configured provider is external and external providers are not allowed in Settings → Integrations, so AI is blocked.</p>}
+        {d.blockedByPolicy && <p className="mt-2 text-sm text-amber-500">External AI narration is off (policy). Native agents, scoring, CRM and reporting continue to work without any API key.</p>}
         {d.features.length > 0 && <ul className="mt-3 flex flex-wrap gap-2">{d.features.map((f) => <Tag key={f}>{titleCase(f)}</Tag>)}</ul>}
         <p className="mt-3 text-xs text-muted-foreground">AI output is always a suggestion for a person to review. It never changes records, sends messages or sets amounts on its own.</p>
       </Panel>
