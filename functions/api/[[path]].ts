@@ -191,7 +191,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     if (method === "PUT" || method === "POST") {
       const body = await readJson(request);
       if (typeof body.apiKey === "string" && body.apiKey.trim()) {
-        openRouterStore.apiKey = body.apiKey.trim();
+        let k = body.apiKey.trim();
+        if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) k = k.slice(1, -1).trim();
+        if (k.toLowerCase().startsWith("bearer ")) k = k.slice(7).trim();
+        openRouterStore.apiKey = k;
       }
       if (body.clearKey === true) {
         openRouterStore.apiKey = "";
@@ -209,23 +212,52 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   if (subpath === "settings/openrouter/test" && method === "POST") {
-    if (!openRouterStore.apiKey) {
-      return json({ ok: false, error: "No OpenRouter API key configured" }, 400);
+    const body = await readJson(request);
+    let key = "";
+    if (typeof body?.apiKey === "string" && body.apiKey.trim()) {
+      key = body.apiKey.trim();
+    } else {
+      key = openRouterStore.apiKey || "";
+    }
+    if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) key = key.slice(1, -1).trim();
+    if (key.toLowerCase().startsWith("bearer ")) key = key.slice(7).trim();
+    if (!key) {
+      return json({ ok: false, status: "not_configured", error: "No OpenRouter API key configured. Paste a key and click Test, or Save first." }, 400);
     }
     try {
-      // /models is public and accepts any key; /auth/key actually validates it.
       const r = await fetch("https://openrouter.ai/api/v1/auth/key", {
-        headers: { Authorization: `Bearer ${openRouterStore.apiKey}` },
+        headers: { Authorization: `Bearer ${key}` },
       });
       if (r.status === 401 || r.status === 403) {
-        return json({ ok: false, error: `OpenRouter rejected the key (${r.status})` }, 400);
+        return json({
+          ok: false,
+          status: "authentication_failed",
+          error: `OpenRouter rejected the key (HTTP ${r.status}). Check that it was copied in full and has not been revoked.`,
+          hint: "Create a new key at https://openrouter.ai/keys and paste it without a Bearer prefix.",
+        }, 400);
+      }
+      if (r.status === 402) {
+        return json({ ok: false, status: "insufficient_credits", error: "OpenRouter account has insufficient credits.", hint: "Add credits at https://openrouter.ai/settings/credits" }, 400);
+      }
+      if (r.status === 429) {
+        return json({ ok: false, status: "rate_limited", error: "OpenRouter rate-limited the validation request. Try again shortly." }, 400);
       }
       if (!r.ok) {
-        return json({ ok: false, error: `OpenRouter could not verify the key right now (${r.status})` }, 502);
+        const text = await r.text().catch(() => "");
+        return json({ ok: false, status: "provider_unavailable", error: `OpenRouter could not verify the key (HTTP ${r.status})`, detail: text.slice(0, 200) }, 502);
       }
-      return json({ ok: true, message: "OpenRouter API key is valid" });
+      const info: any = await r.json().catch(() => null);
+      const label = typeof info?.data?.label === "string" ? info.data.label : "";
+      // Keep successful key in this isolate so subsequent AI calls work without another Save
+      openRouterStore.apiKey = key;
+      return json({
+        ok: true,
+        status: "validated",
+        message: label ? `OpenRouter API key is valid (${label})` : "OpenRouter API key is valid",
+        ...maskKey(key),
+      });
     } catch (e: any) {
-      return json({ ok: false, error: e?.message || "Test failed" }, 500);
+      return json({ ok: false, status: "network_error", error: e?.message || "Test failed" }, 500);
     }
   }
 

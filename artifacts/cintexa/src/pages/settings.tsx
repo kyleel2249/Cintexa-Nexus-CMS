@@ -368,10 +368,25 @@ export default function SettingsPage() {
   async function testOpenRouter() {
     setOrBusy(true);
     try {
-      const data = await apiJson<any>("/settings/openrouter/test", { method: "POST" });
+      const body: Record<string, unknown> = {};
+      if (orKeyInput.trim()) body.apiKey = orKeyInput.trim();
+      const data = await apiJson<any>("/settings/openrouter/test", {
+        method: "POST",
+        body: JSON.stringify(body),
+      });
+      if (data?.ok || data?.configured || data?.status === "validated") {
+        setOpenRouter((prev) => ({
+          ...prev,
+          configured: true,
+          prefix: data.prefix ?? prev.prefix,
+          source: prev.source === "none" ? "settings" : prev.source,
+        }));
+      }
       toast({ title: "OpenRouter key is valid", description: data?.message });
     } catch (e: any) {
-      toast({ title: e?.message || "OpenRouter test failed", variant: "destructive" });
+      const detail = typeof e?.detail === "object" ? (e.detail as any) : null;
+      const desc = [detail?.detail, detail?.hint, detail?.status].filter(Boolean).join(" — ");
+      toast({ title: e?.message || "OpenRouter test failed", description: desc || undefined, variant: "destructive" });
     } finally {
       setOrBusy(false);
     }
@@ -499,7 +514,7 @@ export function verify(rawBody, headers, secret) {
                   </div>
                   <div className="flex flex-wrap gap-2 pt-2">
                     <Button onClick={() => void saveOpenRouter()} disabled={orBusy}>{orBusy ? "Saving…" : "Save OpenRouter settings"}</Button>
-                    <Button type="button" variant="outline" onClick={() => void testOpenRouter()} disabled={orBusy || !openRouter.configured}>Test key</Button>
+                    <Button type="button" variant="outline" onClick={() => void testOpenRouter()} disabled={orBusy || (!openRouter.configured && !orKeyInput.trim())}>Test key</Button>
                     {openRouter.configured && openRouter.source !== "environment" && (
                       <Button type="button" variant="ghost" className="text-destructive" onClick={() => void clearOpenRouterKey()} disabled={orBusy}>Remove key</Button>
                     )}

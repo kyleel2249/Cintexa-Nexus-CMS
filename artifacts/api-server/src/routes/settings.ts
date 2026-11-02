@@ -5,7 +5,9 @@ import {
   setOpenRouterSettings,
   maskApiKey,
   resolveOpenRouterApiKey,
+  normalizeApiKey,
 } from "../lib/openrouter";
+import { validateProviderKey } from "../lib/providers";
 import {
   DEFAULT_GENERAL,
   DEFAULT_SECURITY,
@@ -331,7 +333,7 @@ async function saveOpenRouterHandler(req: any, res: any) {
     const body = req.body ?? {};
     const patch: Record<string, string> = {};
     if (typeof body.apiKey === "string" && body.apiKey.trim()) {
-      patch.apiKey = body.apiKey.trim();
+      patch.apiKey = normalizeApiKey(body.apiKey);
     }
     if (body.clearKey === true) {
       patch.apiKey = "";
@@ -364,11 +366,19 @@ router.put("/openrouter", requireAdmin, saveOpenRouterHandler);
  * GET /auth/key requires a valid key and returns its label / limits, which makes it a real check.
  * Saving a key never depends on this test.
  */
-router.post("/openrouter/test", requireAdmin, async (_req, res) => {
+router.post("/openrouter/test", requireAdmin, async (req, res) => {
   try {
-    const key = await resolveOpenRouterApiKey();
+    const body = req.body ?? {};
+    // Prefer key from the request body so Test works before Save and across CF isolates.
+    let key = typeof body.apiKey === "string" && body.apiKey.trim()
+      ? normalizeApiKey(body.apiKey)
+      : (await resolveOpenRouterApiKey()) || "";
     if (!key) {
-      return res.status(400).json({ ok: false, error: "No OpenRouter API key configured" });
+      return res.status(400).json({
+        ok: false,
+        status: "not_configured",
+        error: "No OpenRouter API key configured. Paste a key and click Test, or Save first.",
+      });
     }
     const r = await fetch("https://openrouter.ai/api/v1/auth/key", {
       headers: { Authorization: `Bearer ${key}` },
@@ -377,22 +387,54 @@ router.post("/openrouter/test", requireAdmin, async (_req, res) => {
     if (r.status === 401 || r.status === 403) {
       return res.status(400).json({
         ok: false,
-        error: `OpenRouter rejected the key (${r.status}). Check that it was copied in full and has not been revoked.`,
+        status: "authentication_failed",
+        error: `OpenRouter rejected the key (HTTP ${r.status}). Check that it was copied in full and has not been revoked.`,
+        hint: "Create a new key at https://openrouter.ai/keys and paste it without a Bearer prefix.",
+      });
+    }
+    if (r.status === 402) {
+      return res.status(400).json({
+        ok: false,
+        status: "insufficient_credits",
+        error: "OpenRouter account has insufficient credits.",
+        hint: "Add credits at https://openrouter.ai/settings/credits",
+      });
+    }
+    if (r.status === 429) {
+      return res.status(400).json({
+        ok: false,
+        status: "rate_limited",
+        error: "OpenRouter rate-limited the validation request. Try again shortly.",
       });
     }
     if (!r.ok) {
       const text = await r.text().catch(() => "");
       return res.status(502).json({
         ok: false,
-        error: `OpenRouter could not verify the key right now (${r.status})`,
+        status: "provider_unavailable",
+        error: `OpenRouter could not verify the key right now (HTTP ${r.status})`,
         detail: text.slice(0, 200),
       });
     }
     const info: any = await r.json().catch(() => null);
     const label = typeof info?.data?.label === "string" ? info.data.label : "";
-    res.status(200).json({ ok: true, message: label ? `OpenRouter API key is valid (${label})` : "OpenRouter API key is valid" });
+    // Optionally persist a tested key when the client asks (Test-and-save UX)
+    if (typeof body.apiKey === "string" && body.apiKey.trim() && body.persist === true) {
+      await setOpenRouterSettings({ apiKey: key });
+    }
+    res.status(200).json({
+      ok: true,
+      status: "validated",
+      message: label ? `OpenRouter API key is valid (${label})` : "OpenRouter API key is valid",
+      ...maskApiKey(key),
+    });
   } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.name === "TimeoutError" ? "OpenRouter did not answer in time" : e?.message || "Test failed" });
+    const network = e?.name === "TimeoutError" || e?.code === "ENOTFOUND" || e?.cause?.code === "ENOTFOUND";
+    res.status(500).json({
+      ok: false,
+      status: network ? "network_error" : "error",
+      error: e?.name === "TimeoutError" ? "OpenRouter did not answer in time" : e?.message || "Test failed",
+    });
   }
 });
 

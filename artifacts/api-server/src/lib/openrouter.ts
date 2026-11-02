@@ -41,6 +41,17 @@ const defaults: OpenRouterSettings = {
   appName: "CINTEXA Nexus CMS",
 };
 
+/** Strip accidental Bearer prefix, surrounding quotes, and whitespace without altering a valid secret. */
+export function normalizeApiKey(raw: string | null | undefined): string {
+  let k = String(raw ?? "").trim();
+  if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) {
+    k = k.slice(1, -1).trim();
+  }
+  if (k.toLowerCase().startsWith("bearer ")) k = k.slice(7).trim();
+  return k;
+}
+
+
 /** Resolve OpenRouter API key: Settings store first, then process.env. */
 export async function resolveOpenRouterApiKey(): Promise<string | null> {
   try {
@@ -48,13 +59,13 @@ export async function resolveOpenRouterApiKey(): Promise<string | null> {
     const r = await pool.query(`SELECT value FROM platform_settings WHERE key = $1`, [SETTINGS_KEY]);
     if (r.rows[0]?.value) {
       const parsed = JSON.parse(r.rows[0].value) as Partial<OpenRouterSettings>;
-      const fromSettings = String(parsed.apiKey || "").trim();
+      const fromSettings = normalizeApiKey(parsed.apiKey);
       if (fromSettings) return fromSettings;
     }
   } catch (err) {
     console.warn("[openrouter] could not read settings key", err);
   }
-  const fromEnv = String(process.env.OPENROUTER_API_KEY || "").trim();
+  const fromEnv = normalizeApiKey(process.env.OPENROUTER_API_KEY);
   return fromEnv || null;
 }
 
@@ -84,7 +95,7 @@ export async function getOpenRouterSettings(): Promise<OpenRouterSettings> {
 export async function setOpenRouterSettings(patch: Partial<OpenRouterSettings>) {
   const current = await getOpenRouterSettings();
   const next: OpenRouterSettings = {
-    apiKey: patch.apiKey !== undefined ? String(patch.apiKey).trim() : current.apiKey,
+    apiKey: patch.apiKey !== undefined ? normalizeApiKey(patch.apiKey) : current.apiKey,
     model: patch.model !== undefined ? String(patch.model).trim() || defaults.model : current.model,
     siteUrl: patch.siteUrl !== undefined ? String(patch.siteUrl).trim() || defaults.siteUrl : current.siteUrl,
     appName: patch.appName !== undefined ? String(patch.appName).trim() || defaults.appName : current.appName,
@@ -117,11 +128,11 @@ export function maskApiKey(key: string | null | undefined) {
 
 export async function getOpenRouterClient(): Promise<OpenAI | null> {
   const settings = await getOpenRouterSettings();
-  const apiKey = settings.apiKey || process.env.OPENROUTER_API_KEY || "";
-  if (!apiKey.trim()) return null;
+  const apiKey = normalizeApiKey(settings.apiKey || process.env.OPENROUTER_API_KEY || "");
+  if (!apiKey) return null;
   return new OpenAI({
     baseURL: "https://openrouter.ai/api/v1",
-    apiKey: apiKey.trim(),
+    apiKey,
     defaultHeaders: {
       "HTTP-Referer": settings.siteUrl || "https://cintexa.com",
       "X-Title": settings.appName || "CINTEXA Nexus CMS",

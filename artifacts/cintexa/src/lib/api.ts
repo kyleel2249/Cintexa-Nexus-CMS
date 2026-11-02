@@ -4,7 +4,8 @@
  *  - API_BASE          : where the REST API lives (`/api` by default, or VITE_API_BASE_URL)
  *  - apiFetch / apiJson: small helpers that always return a readable Error (never "Unexpected end of JSON").
  *
- * There is no sign-in: requests carry no credentials.
+ * Auth: cookies (credentials: include) + optional Bearer from localStorage (cintexa_token).
+ * AUTH_MODE=open on the API treats requests as admin without a login UI.
  */
 
 export const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ||
@@ -34,11 +35,28 @@ export function explainStatus(status: number, serverMessage?: string): string {
   return `Request failed (${status}).`;
 }
 
+function readClientToken(): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const t =
+      localStorage.getItem("cintexa_token") ||
+      localStorage.getItem("cintexa-api-token") ||
+      sessionStorage.getItem("cintexa_token");
+    return t && t.trim() ? t.trim() : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const url = path.startsWith("http") ? path : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("content-type") && typeof init.body === "string") headers.set("content-type", "application/json");
   headers.set("accept", "application/json");
+  if (!headers.has("authorization")) {
+    const token = readClientToken();
+    if (token) headers.set("authorization", `Bearer ${token}`);
+  }
   return fetch(url, { credentials: "include", ...init, headers });
 }
 
