@@ -23,6 +23,7 @@ export const FI_NAV: FiNavItem[] = [
   { key: "dividends", label: "Dividends & Investor Returns", href: "/financial-intelligence/dividends", section: "Capital" },
   { key: "valuation", label: "Business Valuation", href: "/financial-intelligence/valuation", section: "Capital" },
   { key: "reports", label: "Financial Reports", href: "/financial-intelligence/reports", section: "Reports" },
+  { key: "integration", label: "Sales ↔ Finance Integration", href: "/financial-intelligence/integration", section: "Administration" },
   { key: "settings", label: "Financial Settings", href: "/financial-intelligence/settings", section: "Administration" },
 ];
 

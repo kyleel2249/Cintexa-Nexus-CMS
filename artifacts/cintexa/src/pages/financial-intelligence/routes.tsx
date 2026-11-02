@@ -14,6 +14,7 @@ const AnalysisPage = lazy(() => import("./analysis-page"));
 const CapitalPage = lazy(() => import("./capital-page"));
 const DividendsValuationPage = lazy(() => import("./dividends-valuation-page"));
 const BudgetHealthPage = lazy(() => import("./budget-health-page"));
+const SettingsIntegrationPage = lazy(() => import("./settings-integration-page"));
 
 const spinner = <div className="flex min-h-[300px] items-center justify-center"><Spinner className="h-6 w-6" /></div>;
 
@@ -129,7 +130,12 @@ export function FinancialIntelligenceRoutes() {
               <Guard perm="ledger:read"><Suspense fallback={spinner}><DividendsValuationPage mode="valuation" /></Suspense></Guard>
             </Route>
             <Route path="/financial-intelligence/reports"><AnalysisRoute kind="reports" /></Route>
-            <Route path="/financial-intelligence/settings"><AnalysisRoute kind="settings" /></Route>
+            <Route path="/financial-intelligence/settings">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><SettingsIntegrationPage mode="settings" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/integration">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><SettingsIntegrationPage mode="integration" /></Suspense></Guard>
+            </Route>
             <Route component={NotFound} />
           </Switch>
         </Suspense>

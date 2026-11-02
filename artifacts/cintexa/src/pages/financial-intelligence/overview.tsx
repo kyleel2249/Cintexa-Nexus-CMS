@@ -59,7 +59,7 @@ export default function FiOverview() {
                 {d.fiscal_year
                   ? `${d.fiscal_year.name}: ${d.fiscal_year.from} → ${d.as_of}`
                   : `As of ${d.as_of}`}
-                {integ.data ? ` · ${integ.data.partyLinks} party link(s) · sync events: ${JSON.stringify(integ.data.eventsByStatus ?? {})}` : ""}
+                {integ.data ? <> · <Link href="/financial-intelligence/integration" className="underline">{integ.data.partyLinks} party link(s)</Link> · sync events: {JSON.stringify(integ.data.eventsByStatus ?? {})}</> : ""}
               </p>
               <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
                 <Link href="/financial-intelligence/revenue"><KpiCard label="Revenue" value={money(k.revenue)} hint={k.revenue?.formula} /></Link>

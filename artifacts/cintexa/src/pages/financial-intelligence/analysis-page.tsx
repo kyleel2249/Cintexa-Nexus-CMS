@@ -69,7 +69,7 @@ const META: Record<AnalysisKind, { title: string; description: string }> = {
   dividends: { title: "Dividends & Investor Returns", description: "Use Dividends for declarations, approval, and payment tracking." },
   valuation: { title: "Business Valuation", description: "Use Business Valuation for book NAV and saved scenarios." },
   reports: { title: "Financial Reports", description: "Statements and exports via the analysis pages and CINTEXA Finance trial balance / ledger." },
-  settings: { title: "Financial Settings", description: "Organisation accounting settings remain under CINTEXA Finance → Company Settings." },
+  settings: { title: "Financial Settings", description: "Use Financial Settings for intelligence preferences and integration links." },
 };
 
 function fmtRatio(r: RV | undefined | null): string {
@@ -147,20 +147,30 @@ export default function AnalysisPage({ kind }: { kind: AnalysisKind }) {
       )}
 
       {kind === "reports" && (
-        <Panel title="Available reports">
-          <div className="p-4 grid gap-2 sm:grid-cols-2">
-            {[
-              { href: "/financial-intelligence/profit-loss", label: "Profit & Loss" },
-              { href: "/financial-intelligence/balance-sheet", label: "Balance Sheet" },
-              { href: "/financial-intelligence/cashflow", label: "Cash Flow" },
-              { href: "/financial-intelligence/ratios", label: "Ratios" },
-              { href: "/finance/trial-balance", label: "Trial Balance (Finance)" },
-              { href: "/finance/ledger", label: "General Ledger (Finance)" },
-            ].map((x) => (
-              <Link key={x.href} href={x.href}><Button variant="outline" className="w-full justify-start">{x.label}</Button></Link>
-            ))}
-          </div>
-        </Panel>
+        <div className="space-y-4">
+          <Panel title="Open interactive reports">
+            <div className="p-4 grid gap-2 sm:grid-cols-2">
+              {[
+                { href: "/financial-intelligence/profit-loss", label: "Profit & Loss" },
+                { href: "/financial-intelligence/balance-sheet", label: "Balance Sheet" },
+                { href: "/financial-intelligence/cashflow", label: "Cash Flow" },
+                { href: "/financial-intelligence/ratios", label: "Ratios" },
+                { href: "/finance/trial-balance", label: "Trial Balance (Finance)" },
+                { href: "/finance/ledger", label: "General Ledger (Finance)" },
+              ].map((x) => (
+                <Link key={x.href} href={x.href}><Button variant="outline" className="w-full justify-start">{x.label}</Button></Link>
+              ))}
+            </div>
+          </Panel>
+          <Panel title="CSV exports" description="Downloads use posted ledger data only">
+            <div className="p-4 flex flex-wrap gap-2">
+              <Button size="sm" variant="outline" onClick={() => void fin.download("/statements/profit-loss", {}, "profit-loss.csv")}>P&amp;L CSV</Button>
+              <Button size="sm" variant="outline" onClick={() => void fin.download("/statements/balance-sheet", {}, "balance-sheet.csv")}>Balance sheet CSV</Button>
+              <Button size="sm" variant="outline" onClick={() => void fin.download("/statements/cash-flow", {}, "cash-flow.csv")}>Cash flow CSV</Button>
+              <Button size="sm" variant="outline" onClick={() => void fin.download("/trial-balance", {}, "trial-balance.csv")}>Trial balance CSV</Button>
+            </div>
+          </Panel>
+        </div>
       )}
 
       {(kind === "ratios" || kind === "cac") && (
