@@ -15,6 +15,7 @@ const CapitalPage = lazy(() => import("./capital-page"));
 const DividendsValuationPage = lazy(() => import("./dividends-valuation-page"));
 const BudgetHealthPage = lazy(() => import("./budget-health-page"));
 const SettingsIntegrationPage = lazy(() => import("./settings-integration-page"));
+const OpsPage = lazy(() => import("./ops-page"));
 
 const spinner = <div className="flex min-h-[300px] items-center justify-center"><Spinner className="h-6 w-6" /></div>;
 
@@ -132,6 +133,34 @@ export function FinancialIntelligenceRoutes() {
             <Route path="/financial-intelligence/reports"><AnalysisRoute kind="reports" /></Route>
             <Route path="/financial-intelligence/settings">
               <Guard perm="ledger:read"><Suspense fallback={spinner}><SettingsIntegrationPage mode="settings" /></Suspense></Guard>
+            </Route>
+            
+            <Route path="/financial-intelligence/payment-bridge">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="payment-bridge" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/fx">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="fx" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/board-packs">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="board-packs" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/comparatives">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="comparatives" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/agents">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="agents" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/notifications">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="notifications" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/permissions">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="permissions" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/audit">
+              <Guard perm="audit:read"><Suspense fallback={spinner}><OpsPage mode="audit" /></Suspense></Guard>
+            </Route>
+            <Route path="/financial-intelligence/system-health">
+              <Guard perm="ledger:read"><Suspense fallback={spinner}><OpsPage mode="health" /></Suspense></Guard>
             </Route>
             <Route path="/financial-intelligence/integration">
               <Guard perm="ledger:read"><Suspense fallback={spinner}><SettingsIntegrationPage mode="integration" /></Suspense></Guard>

@@ -18,10 +18,11 @@ import { statementRoutes } from "./modules/statements";
 import { capitalRoutes } from "./modules/capital";
 import { dividendValuationRoutes } from "./modules/dividends-valuation";
 import { budgetHealthRoutes } from "./modules/budget-health";
+import { intelligenceOpsRoutes } from "./modules/intelligence-ops";
 import { logger } from "../../lib/logger";
 import type { Db, FinanceRequest, FinanceResponse } from "./core/types";
 
-export const financeRoutes = [...organisationRoutes, ...accountRoutes, ...periodRoutes, ...journalRoutes, ...reportRoutes, ...taxRoutes, ...partyRouteList, ...invoiceRoutes, ...billRoutes, ...ageingRoutes, ...bankRoutes, ...expenseRoutes, ...integrationRoutes, ...ratioRoutes, ...statementRoutes, ...capitalRoutes, ...dividendValuationRoutes, ...budgetHealthRoutes];
+export const financeRoutes = [...organisationRoutes, ...accountRoutes, ...periodRoutes, ...journalRoutes, ...reportRoutes, ...taxRoutes, ...partyRouteList, ...invoiceRoutes, ...billRoutes, ...ageingRoutes, ...bankRoutes, ...expenseRoutes, ...integrationRoutes, ...ratioRoutes, ...statementRoutes, ...capitalRoutes, ...dividendValuationRoutes, ...budgetHealthRoutes, ...intelligenceOpsRoutes];
 export const financeDeps: Deps = { now: () => new Date(), log: { error: (o, m) => logger.error(o as object, m) } };
 export { dispatch };
 
