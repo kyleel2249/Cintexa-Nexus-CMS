@@ -358,29 +358,41 @@ async function saveOpenRouterHandler(req: any, res: any) {
 router.post("/openrouter", requireAdmin, saveOpenRouterHandler);
 router.put("/openrouter", requireAdmin, saveOpenRouterHandler);
 
-/** Test that the stored key can reach OpenRouter */
+/**
+ * Test that the stored key is accepted by OpenRouter.
+ * NOTE: GET /models is a public endpoint and answers 200 for ANY key (even invalid ones), so it cannot validate a key.
+ * GET /auth/key requires a valid key and returns its label / limits, which makes it a real check.
+ */
 router.post("/openrouter/test", requireAdmin, async (_req, res) => {
   try {
     const key = await resolveOpenRouterApiKey();
     if (!key) {
       return res.status(400).json({ ok: false, error: "No OpenRouter API key configured" });
     }
-    const r = await fetch("https://openrouter.ai/api/v1/models", {
+    const r = await fetch("https://openrouter.ai/api/v1/auth/key", {
       headers: { Authorization: `Bearer ${key}` },
+      signal: AbortSignal.timeout(15_000),
     });
-    if (!r.ok) {
-      const text = await r.text().catch(() => "");
+    if (r.status === 401 || r.status === 403) {
       return res.status(400).json({
         ok: false,
-        error: `OpenRouter rejected the key (${r.status})`,
+        error: `OpenRouter rejected the key (${r.status}). Check that it was copied in full and has not been revoked.`,
+      });
+    }
+    if (!r.ok) {
+      const text = await r.text().catch(() => "");
+      return res.status(502).json({
+        ok: false,
+        error: `OpenRouter could not verify the key right now (${r.status})`,
         detail: text.slice(0, 200),
       });
     }
-    res.status(200).json({ ok: true, message: "OpenRouter API key is valid" });
+    const info: any = await r.json().catch(() => null);
+    const label = typeof info?.data?.label === "string" ? info.data.label : "";
+    res.status(200).json({ ok: true, message: label ? `OpenRouter API key is valid (${label})` : "OpenRouter API key is valid" });
   } catch (e: any) {
-    res.status(500).json({ ok: false, error: e?.message || "Test failed" });
+    res.status(500).json({ ok: false, error: e?.name === "TimeoutError" ? "OpenRouter did not answer in time" : e?.message || "Test failed" });
   }
 });
 
 export default router;
-
