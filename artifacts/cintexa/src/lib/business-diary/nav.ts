@@ -7,6 +7,7 @@ export interface BdNavItem {
 
 export const BD_NAV: BdNavItem[] = [
   { key: "overview", label: "Dashboard", href: "/business-diary", section: "Overview" },
+  { key: "email", label: "Email-to-Diary", href: "/business-diary/email-to-diary", section: "Overview" },
   { key: "entries", label: "Diary entries", href: "/business-diary/entries", section: "Records" },
   { key: "pitches", label: "Sales pitches", href: "/business-diary/pitches", section: "Records" },
   { key: "feedback", label: "Customer feedback", href: "/business-diary/feedback", section: "Records" },

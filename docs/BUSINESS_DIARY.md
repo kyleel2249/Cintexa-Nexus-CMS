@@ -20,3 +20,7 @@ Independent Nexus module for institutional business memory.
 
 ## Deploy
 Redeploy Cloudflare Pages including `functions/`. Optional: bind `DIARY_DB` and apply D1 migration.
+
+
+## Email-to-Diary
+See [EMAIL_TO_DIARY.md](./EMAIL_TO_DIARY.md). Route: `/business-diary/email-to-diary`.

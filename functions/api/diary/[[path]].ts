@@ -102,7 +102,56 @@ interface Store {
   feedback: Feedback[];
   decisions: Decision[];
   cases: CaseStudy[];
+  opportunities: Opportunity[];
+  commitments: Commitment[];
+  organizations: OrgProfile[];
+  correspondence: Correspondence[];
 }
+
+type Opportunity = {
+  id: string;
+  diaryEntryId?: string;
+  title: string;
+  organization?: string;
+  category: string;
+  description: string;
+  stage: string;
+  estimatedValue: string;
+  status: string;
+  createdAt: string;
+};
+
+type Commitment = {
+  id: string;
+  diaryEntryId?: string;
+  title: string;
+  description: string;
+  party: string;
+  priority: string;
+  status: string;
+  dueDate?: string;
+  createdAt: string;
+};
+
+type OrgProfile = {
+  id: string;
+  name: string;
+  website?: string;
+  industry?: string;
+  relationshipStatus: string;
+  lastEngagement?: string;
+  createdAt: string;
+};
+
+type Correspondence = {
+  id: string;
+  subject?: string;
+  body: string;
+  extraction?: unknown;
+  diaryEntryId?: string;
+  status: string;
+  createdAt: string;
+};
 
 let memory: Store = {
   entries: [],
@@ -111,6 +160,10 @@ let memory: Store = {
   feedback: [],
   decisions: [],
   cases: [],
+  opportunities: [],
+  commitments: [],
+  organizations: [],
+  correspondence: [],
 };
 
 const CORS = {
@@ -197,6 +250,10 @@ function dashboard() {
       feedback: memory.feedback.length,
       decisions: memory.decisions.length,
       caseStudies: memory.cases.length,
+      opportunities: memory.opportunities.length,
+      commitments: memory.commitments.filter((c) => c.status !== "completed").length,
+      organizations: memory.organizations.length,
+      correspondence: memory.correspondence.length,
       pitchConversionPct: conversion,
     },
     recent: active.slice().sort((a, b) => b.activityDate.localeCompare(a.activityDate)).slice(0, 8),
@@ -285,6 +342,110 @@ function answerQuestion(q: string) {
     method: "unsupported_query_map",
   };
 }
+
+
+function nativeExtract(input: { body: string; subject?: string; activityDate?: string; sender?: string }): any {
+  const body = (input.body || "").trim();
+  const subject = (input.subject || "").trim();
+  const text = `${subject}\n${body}`.toLowerCase();
+  const raw = `${subject}\n${body}`;
+  const partnership = /partnership|collaborat|joint venture|revenue shar/.test(text);
+  const orgMatch = raw.match(/Get Remote Ready/i) || raw.match(/(?:to|for|with)\s+([A-Z][A-Za-z0-9&.\s]{2,40})/);
+  const orgName = /get remote ready/i.test(raw) ? "Get Remote Ready" : (orgMatch && orgMatch[1] ? orgMatch[1].trim() : undefined);
+  const emails = raw.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g) || [];
+  const urls = raw.match(/https?:\/\/[^\s<>"')\]]+/gi) || [];
+  let category = "General Business";
+  let subcategory = "Miscellaneous business events";
+  if (partnership) {
+    category = "Collaboration and Partnerships";
+    subcategory = "Strategic Partnership Development";
+  } else if (/quotat|proposal|pricing|order/.test(text)) {
+    category = "Sales and Business Development";
+    subcategory = "Client Enquiry";
+  }
+  const title = orgName && partnership
+    ? `Partnership Proposal to ${orgName}`
+    : orgName
+      ? `Business correspondence — ${orgName}`
+      : "Business correspondence record";
+  const opportunities: any[] = [];
+  const addOpp = (title: string, category: string, description: string) =>
+    opportunities.push({ title, category, description, stage: "Identified", estimatedValue: "Value Not Yet Established", confidence: "suggested" });
+  if (/software|application/.test(text)) addOpp(`Software development for ${orgName || "organisation"}`, "Software Development", "Suggested from text");
+  if (/website|web development/.test(text)) addOpp(`Website development for ${orgName || "organisation"}`, "Website Development", "Suggested from text");
+  if (/automat/.test(text)) addOpp(`Business automation services for ${orgName || "organisation"}`, "Business Automation", "Suggested from text");
+  if (/train|course/.test(text)) addOpp(`Technology training / course development with ${orgName || "organisation"}`, "Training", "Suggested from text");
+  if (/recruit|talent|placement/.test(text)) addOpp(`Recruitment / talent placement with ${orgName || "organisation"}`, "Recruitment", "Suggested from text");
+  if (/support|maintenance/.test(text)) addOpp(`Ongoing technical support for ${orgName || "organisation"}`, "Maintenance", "Suggested from text");
+  if (partnership && /revenue/.test(text)) addOpp(`Training revenue-sharing arrangement with ${orgName || "organisation"}`, "Partnership Revenue Sharing", "Terms not confirmed");
+  const tags = ["Client Engagement"];
+  if (orgName) tags.unshift(orgName);
+  if (partnership) tags.push("Strategic Partnership", "Business Development");
+  if (/software/.test(text)) tags.push("Software Development");
+  if (/website/.test(text)) tags.push("Website Development");
+  if (/automat/.test(text)) tags.push("Business Automation");
+  if (/train/.test(text)) tags.push("Technology Training");
+  if (/talent|recruit/.test(text)) tags.push("Talent Acquisition");
+  if (/revenue shar/.test(text)) tags.push("Revenue Sharing");
+  tags.push("Follow-up Required");
+  const contacts: any[] = [];
+  if (/elsie/i.test(raw)) contacts.push({ name: { value: "Elsie and the Get Remote Ready Team", confidence: "extracted" } });
+  for (const e of [...new Set(emails)].slice(0, 3)) contacts.push({ email: { value: e, confidence: "extracted" } });
+  return {
+    title: { value: title, confidence: "extracted" },
+    category: { value: category, confidence: partnership ? "extracted" : "suggested" },
+    subcategory: { value: subcategory, confidence: "extracted" },
+    organization: {
+      name: orgName ? { value: orgName, confidence: "extracted" } : undefined,
+      website: urls.find((u) => /getremoteready/i.test(u)) ? { value: "https://getremoteready.co/", confidence: "extracted" } : (urls[0] ? { value: urls[0], confidence: "extracted" } : undefined),
+      industry: /remote|train/i.test(text) ? { value: "Remote employment / technology training", confidence: "inferred" } : undefined,
+    },
+    contacts,
+    activityDate: { value: input.activityDate || (raw.match(/20\d{2}-\d{2}-\d{2}/) || [])[0] || "", confidence: input.activityDate ? "confirmed" : "extracted" },
+    priority: { value: partnership ? "high" : "normal", confidence: "inferred" },
+    status: { value: "Awaiting Response", confidence: "suggested" },
+    successStatus: { value: "Pending", confidence: "suggested" },
+    followUpRequired: { value: "yes", confidence: "inferred" },
+    verification: "Proposal or correspondence captured. Commercial terms and partnership agreement not confirmed. Outcome pending.",
+    executiveSummary: `${title}. Review extracted fields before approval. Native extraction only — no external AI.`,
+    description: body.slice(0, 4000),
+    objectives: partnership ? ["Explore strategic partnership", "Discuss mutual capabilities"] : [],
+    opportunities,
+    commitments: [
+      { title: "Await external response", description: "Awaiting feedback from the other party", party: "external", priority: "high", confidence: "extracted" },
+      { title: "Schedule introductory discussion", description: "Arrange meeting if interest is confirmed", party: "unclear", priority: "normal", confidence: "suggested" },
+    ],
+    suggestedFollowUp: { value: orgName ? `Contact ${orgName} to request feedback and arrange an introductory partnership meeting` : "Confirm next contact action", confidence: "suggested" },
+    tags: [...new Set(tags)].slice(0, 16),
+    risks: ["Commercial terms not agreed", "Partnership not active until confirmed"],
+    method: "native-regex-keyword-v1",
+  };
+}
+
+const GRR_FIXTURE = `Subject: Strategic Partnership Proposal — CINTEXA x Get Remote Ready
+
+Dear Elsie and the Get Remote Ready Team,
+
+We are writing from CINTEXA (https://cintexa.com/) to propose a strategic partnership with Get Remote Ready (https://getremoteready.co/).
+
+Get Remote Ready focuses on remote employment readiness, technology training and talent pathways. CINTEXA can support complementary capabilities including:
+
+- Website and software development
+- Business automation services
+- Technology training and course development
+- Training revenue-sharing arrangements
+- Recruitment and technology talent placement
+- Ongoing technical support and maintenance
+
+We would welcome the opportunity to discuss mutual objectives, explore collaboration models and agree next steps. Commercial terms, revenue sharing and formal partnership agreements are not yet defined and would need joint discussion.
+
+Please reply with your feedback or a suitable time for an introductory partnership meeting.
+
+Kind regards,
+CINTEXA Team
+Date: 2026-11-03
+`;
+
 
 type Env = { DIARY_DB?: D1Database };
 
@@ -558,6 +719,162 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     });
     return json({ ok: true, message: "Demo diary data loaded (tagged DEMO)." });
   }
+
+
+  // --- Email-to-Diary: process (native extraction, no external AI) ---
+  if (path === "email/process" && request.method === "POST") {
+    const body = await readJson(request);
+    const text = String(body.body || body.text || "");
+    if (!text.trim()) return json({ error: "body required" }, 400);
+    const extraction = nativeExtract({
+      body: text,
+      subject: body.subject ? String(body.subject) : undefined,
+      activityDate: body.activityDate ? String(body.activityDate) : undefined,
+      sender: body.sender ? String(body.sender) : undefined,
+    });
+    const corr: Correspondence = {
+      id: crypto.randomUUID(),
+      subject: body.subject ? String(body.subject).slice(0, 300) : undefined,
+      body: text.slice(0, 100000),
+      extraction,
+      status: "processed",
+      createdAt: new Date().toISOString(),
+    };
+    memory.correspondence.push(corr);
+    return json({ correspondenceId: corr.id, extraction, method: extraction.method, apiKeysRequired: false }, 201);
+  }
+
+  if (path === "email/approve" && request.method === "POST") {
+    const body = await readJson(request);
+    const extraction = body.extraction || {};
+    const now = new Date().toISOString();
+    const title = String(body.title || extraction.title?.value || "Business correspondence").slice(0, 300);
+    const category = String(body.category || extraction.category?.value || "General Business");
+    const activityDate = String(body.activityDate || extraction.activityDate?.value || now.slice(0, 10)).slice(0, 10);
+    const orgName = String(body.organization || extraction.organization?.name?.value || "").slice(0, 200);
+
+    let orgId: string | undefined;
+    if (orgName) {
+      let org = memory.organizations.find((o) => o.name.toLowerCase() === orgName.toLowerCase());
+      if (!org) {
+        org = {
+          id: crypto.randomUUID(),
+          name: orgName,
+          website: extraction.organization?.website?.value,
+          industry: extraction.organization?.industry?.value,
+          relationshipStatus: "Contacted",
+          lastEngagement: activityDate,
+          createdAt: now,
+        };
+        memory.organizations.push(org);
+      } else {
+        org.lastEngagement = activityDate;
+      }
+      orgId = org.id;
+    }
+
+    const entry: Entry = {
+      id: crypto.randomUUID(),
+      title,
+      description: String(body.description || extraction.executiveSummary || extraction.description || "").slice(0, 5000),
+      category,
+      subcategory: body.subcategory || extraction.subcategory?.value,
+      activityDate,
+      recordedAt: now,
+      clientName: orgName || undefined,
+      outcome: extraction.verification,
+      successStatus: String(body.successStatus || extraction.successStatus?.value || "Pending"),
+      priority: String(body.priority || extraction.priority?.value || "normal"),
+      tags: Array.isArray(body.tags) ? body.tags.map(String) : (extraction.tags || []),
+      lessons: undefined,
+      followUpRequired: (body.followUpRequired ?? extraction.followUpRequired?.value) === "yes",
+      followUpDeadline: body.followUpDeadline ? String(body.followUpDeadline).slice(0, 10) : undefined,
+      status: "active",
+      updatedAt: now,
+    };
+    memory.entries.push(entry);
+
+    const opps = Array.isArray(body.opportunities) ? body.opportunities : extraction.opportunities || [];
+    for (const o of opps) {
+      memory.opportunities.push({
+        id: crypto.randomUUID(),
+        diaryEntryId: entry.id,
+        title: String(o.title || "Opportunity").slice(0, 300),
+        organization: orgName || undefined,
+        category: String(o.category || "Other"),
+        description: String(o.description || ""),
+        stage: String(o.stage || "Identified"),
+        estimatedValue: String(o.estimatedValue || "Value Not Yet Established"),
+        status: "open",
+        createdAt: now,
+      });
+    }
+
+    const commits = Array.isArray(body.commitments) ? body.commitments : extraction.commitments || [];
+    for (const c of commits) {
+      memory.commitments.push({
+        id: crypto.randomUUID(),
+        diaryEntryId: entry.id,
+        title: String(c.title || "Commitment").slice(0, 300),
+        description: String(c.description || ""),
+        party: String(c.party || "unclear"),
+        priority: String(c.priority || "normal"),
+        status: "pending",
+        dueDate: c.dueDate ? String(c.dueDate).slice(0, 10) : undefined,
+        createdAt: now,
+      });
+    }
+
+    if (entry.followUpRequired) {
+      const fuTitle = String(body.suggestedFollowUp || extraction.suggestedFollowUp?.value || `Follow up: ${title}`).slice(0, 300);
+      memory.followups.push({
+        id: crypto.randomUUID(),
+        entryId: entry.id,
+        title: fuTitle,
+        description: "Generated from Email-to-Diary approval",
+        priority: entry.priority,
+        dueDate: entry.followUpDeadline,
+        status: "pending",
+        createdAt: now,
+      });
+    }
+
+    if (body.correspondenceId) {
+      const corr = memory.correspondence.find((c) => c.id === body.correspondenceId);
+      if (corr) {
+        corr.diaryEntryId = entry.id;
+        corr.status = "approved";
+      }
+    }
+
+    return json({
+      entry,
+      organizationId: orgId,
+      opportunities: memory.opportunities.filter((o) => o.diaryEntryId === entry.id),
+      commitments: memory.commitments.filter((c) => c.diaryEntryId === entry.id),
+      followUps: memory.followups.filter((f) => f.entryId === entry.id),
+    }, 201);
+  }
+
+  if (path === "opportunities" && request.method === "GET") return json({ items: memory.opportunities });
+  if (path === "commitments" && request.method === "GET") return json({ items: memory.commitments });
+  if (path === "organizations" && request.method === "GET") return json({ items: memory.organizations });
+  if (path === "correspondence" && request.method === "GET") return json({ items: memory.correspondence.map((c) => ({ id: c.id, subject: c.subject, status: c.status, diaryEntryId: c.diaryEntryId, createdAt: c.createdAt })) });
+
+  if (path === "email/fixture-grr" && request.method === "POST") {
+    // Get Remote Ready end-to-end fixture
+    const body = GRR_FIXTURE;
+    const extraction = nativeExtract({ body, activityDate: "2026-11-03" });
+    return json({ body, extraction, expected: {
+      title: "Partnership Proposal to Get Remote Ready",
+      category: "Collaboration and Partnerships",
+      organization: "Get Remote Ready",
+      activityDate: "2026-11-03",
+      successStatus: "Pending",
+      note: "Partnership not marked won or active partner",
+    }});
+  }
+
 
   return json({ error: "Not found", path }, 404);
 };

@@ -4,6 +4,7 @@ import NotFound from "@/pages/not-found";
 
 const Overview = lazy(() => import("./overview"));
 const BdPage = lazy(() => import("./page"));
+const EmailToDiary = lazy(() => import("./email-to-diary"));
 const spin = <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">Loading Business Diary…</div>;
 
 export function BusinessDiaryRoutes() {
@@ -11,6 +12,7 @@ export function BusinessDiaryRoutes() {
     <Suspense fallback={spin}>
       <Switch>
         <Route path="/business-diary" component={Overview} />
+        <Route path="/business-diary/email-to-diary" component={EmailToDiary} />
         <Route path="/business-diary/entries">{() => <BdPage mode="entries" />}</Route>
         <Route path="/business-diary/pitches">{() => <BdPage mode="pitches" />}</Route>
         <Route path="/business-diary/feedback">{() => <BdPage mode="feedback" />}</Route>
