@@ -1,11 +1,20 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { finGet, finPost, formatMinor } from "@/lib/finance/api";
+import { AccountSelect, type AccountOption } from "@/components/finance/AccountSelect";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "audit";
+
+interface DraftLine {
+  key: string;
+  account: AccountOption | null;
+  memo: string;
+  debit: string;
+  credit: string;
+}
 
 export default function FinancePage({ mode }: { mode: Mode }) {
   const qc = useQueryClient();
@@ -14,13 +23,44 @@ export default function FinancePage({ mode }: { mode: Mode }) {
 
   if (mode === "accounts") {
     const q = useQuery({ queryKey: ["fin", "acc"], queryFn: () => finGet<{ items: any[] }>("/accounts") });
+    const [code, setCode] = useState("");
+    const [name, setName] = useState("");
+    const [type, setType] = useState("revenue");
+    const create = useMutation({
+      mutationFn: () => finPost("/accounts", { code, name, type }),
+      onSuccess: () => {
+        inv();
+        setCode("");
+        setName("");
+        qc.invalidateQueries({ queryKey: ["fin", "acc-search"] });
+      },
+    });
     return (
-      <Shell title="Chart of Accounts" desc="Template structure — no fabricated balances">
-        <div className="space-y-1 text-sm">
+      <Shell title="Chart of Accounts" desc="Authoritative account list for all journal dropdowns · new accounts appear immediately">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Input placeholder="Code e.g. 4500" value={code} onChange={(e) => setCode(e.target.value)} className="w-28" />
+          <Input placeholder="Account name" value={name} onChange={(e) => setName(e.target.value)} className="min-w-[180px]" />
+          <select className="h-9 rounded-md border bg-background px-2 text-sm" value={type} onChange={(e) => setType(e.target.value)}>
+            {["asset", "liability", "equity", "revenue", "expense"].map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+          <Button disabled={!code || !name || create.isPending} onClick={() => create.mutate()}>Add account</Button>
+        </div>
+        {create.isError && <p className="text-sm text-rose-600 mb-2">Could not create (duplicate code?).</p>}
+        <div className="space-y-1 text-sm max-h-[60vh] overflow-auto">
           {(q.data?.items || []).map((a) => (
-            <div key={a.id} className="flex justify-between border-b py-2">
+            <div key={a.id} className="flex justify-between gap-2 border-b py-2">
               <span><code className="text-xs">{a.code}</code> {a.name}</span>
-              <span className="text-xs text-muted-foreground">{a.type}</span>
+              <span className="flex items-center gap-2 text-xs text-muted-foreground capitalize">
+                {a.type}
+                {a.active === false && <span className="text-rose-500">inactive</span>}
+                {a.active !== false && (
+                  <Button size="sm" variant="ghost" className="h-6 text-xs" onClick={() => finPost(`/accounts/${a.id}/deactivate`, {}).then(inv)}>
+                    Deactivate
+                  </Button>
+                )}
+              </span>
             </div>
           ))}
         </div>
@@ -29,51 +69,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
   }
 
   if (mode === "journals") {
-    const q = useQuery({ queryKey: ["fin", "je"], queryFn: () => finGet<{ items: any[] }>("/journals") });
-    const [desc, setDesc] = useState("Manual journal");
-    const [dCode, setDCode] = useState("5500");
-    const [cCode, setCCode] = useState("1010");
-    const [amount, setAmount] = useState("10000");
-    const create = useMutation({
-      mutationFn: () =>
-        finPost("/journals", {
-          description: desc,
-          journalType: "general",
-          post: true,
-          lines: [
-            { accountCode: dCode, debit: Number(amount), credit: 0 },
-            { accountCode: cCode, debit: 0, credit: Number(amount) },
-          ],
-        }),
-      onSuccess: inv,
-    });
-    return (
-      <Shell title="Journal Entries" desc="Must balance · posted entries immutable (use reverse)">
-        <div className="flex flex-wrap gap-2 mb-4">
-          <Input value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Description" className="min-w-[160px]" />
-          <Input value={dCode} onChange={(e) => setDCode(e.target.value)} placeholder="Debit acct" className="w-24" />
-          <Input value={cCode} onChange={(e) => setCCode(e.target.value)} placeholder="Credit acct" className="w-24" />
-          <Input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="Minor units" className="w-28" />
-          <Button disabled={create.isPending} onClick={() => create.mutate()}>Post balanced journal</Button>
-        </div>
-        {create.isError && <p className="text-sm text-rose-600 mb-2">Rejected (check balance / accounts).</p>}
-        <div className="space-y-2 text-sm">
-          {(q.data?.items || []).map((j) => (
-            <Card key={j.id}><CardContent className="py-3">
-              <div className="flex justify-between gap-2">
-                <span className="font-medium">{j.number} · {j.status}</span>
-                <span className="text-xs text-muted-foreground">{j.entryDate}</span>
-              </div>
-              <p className="text-muted-foreground">{j.description}</p>
-              <p className="text-xs">Dr {j.totals?.debit} / Cr {j.totals?.credit} {j.totals?.balanced ? "✓" : "UNBALANCED"}</p>
-              {j.status === "posted" && !j.reversedBy && (
-                <Button size="sm" variant="outline" className="mt-2" onClick={() => finPost(`/journals/${j.id}/reverse`, {}).then(inv)}>Reverse</Button>
-              )}
-            </CardContent></Card>
-          ))}
-        </div>
-      </Shell>
-    );
+    return <JournalWorkspace onPosted={inv} />;
   }
 
   if (mode === "tb") {
@@ -93,6 +89,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
                   <span className="tabular-nums text-right">{r.credit || ""}</span>
                 </div>
               ))}
+              {!(q.data.rows || []).length && <p className="text-muted-foreground">No posted activity yet.</p>}
             </div>
           </>
         )}
@@ -137,22 +134,29 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     const q = useQuery({ queryKey: ["fin", "inv"], queryFn: () => finGet<{ items: any[] }>("/invoices") });
     const [name, setName] = useState("");
     const [amount, setAmount] = useState("1500000");
+    const [rev, setRev] = useState<AccountOption | null>(null);
     const create = useMutation({
-      mutationFn: () => finPost("/invoices", { customerName: name, amountMinor: Number(amount), revenueAccountCode: "4000" }),
+      mutationFn: () =>
+        finPost("/invoices", {
+          customerName: name,
+          amountMinor: Number(amount),
+          revenueAccountCode: rev?.code || "4020",
+        }),
       onSuccess: inv,
     });
     return (
-      <Shell title="Invoices / AR" desc="Creates balanced AR + revenue journal · amount in minor units">
-        <div className="flex flex-wrap gap-2 mb-4">
+      <Shell title="Invoices / AR" desc="Posts Dr 1050 AR / Cr selected revenue · minor units">
+        <div className="grid gap-2 mb-4 sm:grid-cols-2">
           <Input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input placeholder="Amount (minor)" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-36" />
+          <Input placeholder="Amount (minor)" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <AccountSelect value={rev} onChange={setRev} placeholder="Revenue account (search)…" />
           <Button disabled={!name || create.isPending} onClick={() => create.mutate()}>Issue invoice</Button>
         </div>
         <div className="space-y-2 text-sm">
           {(q.data?.items || []).map((i) => (
             <Card key={i.id}><CardContent className="py-3">
               <p className="font-medium">{i.number} · {i.customerName}</p>
-              <p className="text-xs text-muted-foreground">{i.issueDate} · {i.status} · {formatMinor(i.amountMinor, i.currency)} · bal {formatMinor(i.balanceMinor ?? i.amountMinor - i.amountPaidMinor, i.currency)}</p>
+              <p className="text-xs text-muted-foreground">{i.issueDate} · {i.status} · {formatMinor(i.amountMinor, i.currency)}</p>
             </CardContent></Card>
           ))}
         </div>
@@ -166,11 +170,11 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     const [invoiceId, setInvoiceId] = useState("");
     const [amount, setAmount] = useState("");
     const create = useMutation({
-      mutationFn: () => finPost("/payments", { invoiceId, amountMinor: Number(amount) }),
+      mutationFn: () => finPost("/payments", { invoiceId, amountMinor: Number(amount), bankAccountCode: "1030" }),
       onSuccess: () => { inv(); setAmount(""); },
     });
     return (
-      <Shell title="Customer payments" desc="Allocates to invoice · posts bank Dr / AR Cr">
+      <Shell title="Customer payments" desc="Dr Bank 1030 / Cr AR 1050 · no double revenue">
         <div className="flex flex-wrap gap-2 mb-4">
           <select className="h-9 rounded-md border bg-background px-2 text-sm" value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}>
             <option value="">Select invoice</option>
@@ -181,7 +185,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
           <Input placeholder="Amount minor" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-32" />
           <Button disabled={!invoiceId || !amount || create.isPending} onClick={() => create.mutate()}>Record payment</Button>
         </div>
-        {create.isError && <p className="text-sm text-rose-600 mb-2">Payment rejected (over-allocation or error).</p>}
+        {create.isError && <p className="text-sm text-rose-600 mb-2">Payment rejected.</p>}
         <div className="space-y-2 text-sm">
           {(pays.data?.items || []).map((p) => (
             <Card key={p.id}><CardContent className="py-3">{p.paymentDate}: {formatMinor(p.amountMinor, p.currency)} — {p.customerName}</CardContent></Card>
@@ -192,13 +196,15 @@ export default function FinancePage({ mode }: { mode: Mode }) {
   }
 
   if (mode === "ledger") {
-    const [code, setCode] = useState("1100");
-    const q = useQuery({ queryKey: ["fin", "led", code], queryFn: () => finGet<any>("/ledger", { account: code }), enabled: !!code });
+    const [acc, setAcc] = useState<AccountOption | null>(null);
+    const q = useQuery({
+      queryKey: ["fin", "led", acc?.code],
+      queryFn: () => finGet<any>("/ledger", { account: acc!.code }),
+      enabled: !!acc?.code,
+    });
     return (
-      <Shell title="General Ledger" desc="Account movement from posted journals">
-        <div className="flex gap-2 mb-4">
-          <Input value={code} onChange={(e) => setCode(e.target.value)} className="w-28" placeholder="Account code" />
-        </div>
+      <Shell title="General Ledger" desc="Pick any COA account — movements from posted journals">
+        <AccountSelect value={acc} onChange={setAcc} className="mb-4 max-w-md" />
         {q.data && (
           <>
             <p className="text-sm mb-2">Balance: {formatMinor(q.data.balance, cur)}</p>
@@ -216,15 +222,157 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     );
   }
 
-  // audit
   const q = useQuery({ queryKey: ["fin", "audit"], queryFn: () => finGet<{ items: any[] }>("/audit") });
   return (
-    <Shell title="Audit trail" desc="Immutable event log for finance actions">
+    <Shell title="Audit trail" desc="Finance action log">
       <div className="space-y-1 text-sm">
         {(q.data?.items || []).map((a) => (
           <div key={a.id} className="border-b py-2 text-xs">
-            <span className="text-muted-foreground">{a.createdAt}</span> · {a.action} · {a.entityType}/{a.entityId.slice(0, 8)} {a.detail}
+            <span className="text-muted-foreground">{a.createdAt}</span> · {a.action} · {a.entityType}/{String(a.entityId).slice(0, 8)} {a.detail}
           </div>
+        ))}
+      </div>
+    </Shell>
+  );
+}
+
+function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
+  const qc = useQueryClient();
+  const list = useQuery({ queryKey: ["fin", "je"], queryFn: () => finGet<{ items: any[] }>("/journals") });
+  const [desc, setDesc] = useState("");
+  const [journalType, setJournalType] = useState("general");
+  const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
+  const [lines, setLines] = useState<DraftLine[]>([
+    { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
+    { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
+  ]);
+
+  const totals = useMemo(() => {
+    let d = 0, c = 0;
+    for (const l of lines) {
+      d += Math.round(Number(l.debit) || 0);
+      c += Math.round(Number(l.credit) || 0);
+    }
+    return { debit: d, credit: c, difference: d - c, balanced: d === c && d > 0 };
+  }, [lines]);
+
+  const post = useMutation({
+    mutationFn: () =>
+      finPost("/journals", {
+        description: desc || `${journalType} journal`,
+        journalType,
+        entryDate,
+        post: true,
+        lines: lines
+          .filter((l) => l.account && (Number(l.debit) || Number(l.credit)))
+          .map((l) => ({
+            accountCode: l.account!.code,
+            memo: l.memo,
+            debit: Math.round(Number(l.debit) || 0),
+            credit: Math.round(Number(l.credit) || 0),
+          })),
+      }),
+    onSuccess: () => {
+      onPosted();
+      qc.invalidateQueries({ queryKey: ["fin", "je"] });
+      setDesc("");
+      setLines([
+        { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
+        { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
+      ]);
+    },
+  });
+
+  const updateLine = (key: string, patch: Partial<DraftLine>) => {
+    setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
+  };
+
+  return (
+    <Shell title="General Journal / Journal Entries" desc="Searchable Chart of Accounts on every line · posts only when balanced">
+      <div className="mb-4 grid gap-2 sm:grid-cols-3">
+        <div>
+          <label className="text-xs text-muted-foreground">Journal type</label>
+          <select className="mt-1 h-9 w-full rounded-md border bg-background px-2 text-sm" value={journalType} onChange={(e) => setJournalType(e.target.value)}>
+            {["general", "sales", "purchase", "cash_receipt", "cash_payment", "bank", "payroll", "adjustment", "depreciation", "reversal"].map((t) => (
+              <option key={t} value={t}>{t}</option>
+            ))}
+          </select>
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Entry date</label>
+          <Input type="date" className="mt-1" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
+        </div>
+        <div>
+          <label className="text-xs text-muted-foreground">Description</label>
+          <Input className="mt-1" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Narration" />
+        </div>
+      </div>
+
+      <div className="mb-2 hidden grid-cols-12 gap-2 text-[11px] uppercase text-muted-foreground sm:grid">
+        <div className="col-span-5">Account</div>
+        <div className="col-span-3">Memo</div>
+        <div className="col-span-1 text-right">Debit</div>
+        <div className="col-span-1 text-right">Credit</div>
+        <div className="col-span-2" />
+      </div>
+
+      <div className="space-y-3 mb-4">
+        {lines.map((l) => (
+          <div key={l.key} className="grid gap-2 sm:grid-cols-12 items-start">
+            <div className="sm:col-span-5">
+              <AccountSelect value={l.account} onChange={(a) => updateLine(l.key, { account: a })} />
+            </div>
+            <div className="sm:col-span-3">
+              <Input placeholder="Line memo" value={l.memo} onChange={(e) => updateLine(l.key, { memo: e.target.value })} />
+            </div>
+            <div className="sm:col-span-1">
+              <Input className="text-right" placeholder="0" value={l.debit} onChange={(e) => updateLine(l.key, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} />
+            </div>
+            <div className="sm:col-span-1">
+              <Input className="text-right" placeholder="0" value={l.credit} onChange={(e) => updateLine(l.key, { credit: e.target.value, debit: e.target.value ? "" : l.debit })} />
+            </div>
+            <div className="sm:col-span-2">
+              <Button type="button" variant="ghost" size="sm" onClick={() => setLines((p) => p.filter((x) => x.key !== l.key))}>Remove</Button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+        <Button type="button" variant="outline" size="sm" onClick={() => setLines((p) => [...p, { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" }])}>
+          Add line
+        </Button>
+        <div className="text-sm tabular-nums">
+          Dr <strong>{totals.debit}</strong> · Cr <strong>{totals.credit}</strong> · Diff{" "}
+          <strong className={totals.difference === 0 ? "text-emerald-600" : "text-rose-600"}>{totals.difference}</strong>
+        </div>
+        <Button disabled={!totals.balanced || post.isPending} onClick={() => post.mutate()}>
+          {post.isPending ? "Posting…" : "Post balanced journal"}
+        </Button>
+      </div>
+      {post.isError && <p className="text-sm text-rose-600 mb-4">Post rejected — check balance and accounts.</p>}
+
+      <h2 className="text-sm font-semibold mb-2">Posted / draft journals</h2>
+      <div className="space-y-2 text-sm">
+        {(list.data?.items || []).map((j) => (
+          <Card key={j.id}><CardContent className="py-3">
+            <div className="flex justify-between gap-2">
+              <span className="font-medium">{j.number} · {j.journalType} · {j.status}</span>
+              <span className="text-xs text-muted-foreground">{j.entryDate}</span>
+            </div>
+            <p className="text-muted-foreground">{j.description}</p>
+            <p className="text-xs">Dr {j.totals?.debit} / Cr {j.totals?.credit}</p>
+            <ul className="mt-1 text-xs text-muted-foreground">
+              {(j.lines || []).map((ln: any) => (
+                <li key={ln.id}>{ln.accountCode} Dr {ln.debit} Cr {ln.credit}</li>
+              ))}
+            </ul>
+            {j.status === "posted" && !j.reversedBy && (
+              <Button size="sm" variant="outline" className="mt-2" onClick={() => finPost(`/journals/${j.id}/reverse`, {}).then(() => { onPosted(); qc.invalidateQueries({ queryKey: ["fin", "je"] }); })}>
+                Reverse
+              </Button>
+            )}
+          </CardContent></Card>
         ))}
       </div>
     </Shell>
@@ -234,11 +382,22 @@ export default function FinancePage({ mode }: { mode: Mode }) {
 function Shell({ title, desc, children }: { title: string; desc: string; children: import("react").ReactNode }) {
   return (
     <div className="space-y-4 p-4 md:p-6">
-      <div><h1 className="text-xl font-semibold">{title}</h1><p className="text-sm text-muted-foreground">{desc}</p></div>
+      <div>
+        <h1 className="text-xl font-semibold">{title}</h1>
+        <p className="text-sm text-muted-foreground">{desc}</p>
+      </div>
       {children}
     </div>
   );
 }
+
 function Metric({ label, value }: { label: string; value: string }) {
-  return <Card><CardContent className="pt-4"><p className="text-xs uppercase text-muted-foreground">{label}</p><p className="text-lg font-semibold tabular-nums">{value}</p></CardContent></Card>;
+  return (
+    <Card>
+      <CardContent className="pt-4">
+        <p className="text-xs uppercase text-muted-foreground">{label}</p>
+        <p className="text-lg font-semibold tabular-nums">{value}</p>
+      </CardContent>
+    </Card>
+  );
 }

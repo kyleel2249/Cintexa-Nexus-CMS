@@ -18,3 +18,12 @@ Without binding, store is isolate memory (lost on redeploy).
 
 ## UI
 `/finance` and sidebar **CINTEXA Finance**.
+
+## Chart of Accounts integration (v1.1)
+
+- Expanded CINTEXA technology-services COA template (assets, liabilities, equity, revenue, COS, opex, tax controls).
+- `GET /api/finance/accounts/search?q=` — searchable active accounts for journal dropdowns.
+- `POST /api/finance/accounts` — create account; immediately available in search (no redeploy).
+- `POST /api/finance/accounts/:id/deactivate` — hide from new postings; historical lines retain codes.
+- UI `AccountSelect` component used on General Journal lines, ledger picker, and invoice revenue account.
+- Multi-line journal grid with live debit/credit totals; post only when balanced.

@@ -141,33 +141,85 @@ function audit(entityType: string, entityId: string, action: string, detail?: st
 function ensureCoa() {
   if (store.seededCoa && store.accounts.length) return;
   const rows: [string, string, AccountType, string?][] = [
-    ["1000", "Cash", "asset", "cash"],
-    ["1010", "Bank", "asset", "bank"],
-    ["1100", "Accounts Receivable", "asset", "ar"],
-    ["1500", "Equipment", "asset", "fixed"],
-    ["1600", "Accumulated Depreciation", "asset", "contra"],
-    ["2000", "Accounts Payable", "liability", "ap"],
-    ["2100", "Taxes Payable", "liability", "tax"],
-    ["2200", "Deferred Revenue", "liability"],
-    ["3000", "Owner Capital", "equity"],
-    ["3100", "Retained Earnings", "equity"],
-    ["4000", "Website Development Revenue", "revenue"],
-    ["4010", "Software Development Revenue", "revenue"],
-    ["4020", "Business Automation Revenue", "revenue"],
-    ["4030", "Consulting Revenue", "revenue"],
-    ["4040", "Technical Support Revenue", "revenue"],
-    ["4050", "Training Revenue", "revenue"],
-    ["4090", "Other Service Revenue", "revenue"],
-    ["5000", "Salaries and Wages", "expense"],
-    ["5100", "Contractor Payments", "expense"],
-    ["5200", "Software Subscriptions", "expense"],
-    ["5300", "Hosting and Infrastructure", "expense"],
-    ["5400", "Marketing", "expense"],
-    ["5500", "Office Expenses", "expense"],
-    ["5600", "Bank Charges", "expense"],
-    ["5700", "Depreciation Expense", "expense"],
-    ["5900", "Other Operating Expenses", "expense"],
-  ];
+    ["1010", "Cash on Hand", "asset", "cash"],
+    ["1020", "Petty Cash", "asset", "cash"],
+    ["1030", "Bank Accounts", "asset", "bank"],
+    ["1040", "Mobile Money Accounts", "asset", "cash"],
+    ["1050", "Accounts Receivable", "asset", "ar"],
+    ["1070", "Employee Advances", "asset"],
+    ["1080", "Prepaid Expenses", "asset"],
+    ["1090", "Inventory", "asset"],
+    ["1120", "Work in Progress", "asset"],
+    ["1130", "Unbilled Contract Assets", "asset"],
+    ["1140", "Recoverable Input Tax", "asset", "tax"],
+    ["1150", "Withholding Tax Receivable", "asset", "tax"],
+    ["1210", "Computers and Laptops", "asset", "fixed"],
+    ["1220", "Servers and Networking Equipment", "asset", "fixed"],
+    ["1230", "Office Equipment", "asset", "fixed"],
+    ["1240", "Furniture and Fixtures", "asset", "fixed"],
+    ["1270", "Capitalized Software Assets", "asset", "fixed"],
+    ["1280", "Accumulated Depreciation", "asset", "contra"],
+    ["1310", "Acquired Software", "asset", "intangible"],
+    ["2010", "Accounts Payable", "liability", "ap"],
+    ["2030", "Accrued Expenses", "liability"],
+    ["2040", "Salaries Payable", "liability", "payroll"],
+    ["2060", "Payroll Tax Payable", "liability", "tax"],
+    ["2080", "Output Tax Payable", "liability", "tax"],
+    ["2090", "Withholding Tax Payable", "liability", "tax"],
+    ["2100", "Customer Advances", "liability"],
+    ["2110", "Deferred Revenue", "liability"],
+    ["2120", "Unearned Subscription Revenue", "liability"],
+    ["2140", "Short-term Loans", "liability"],
+    ["2150", "Long-term Loans", "liability"],
+    ["3010", "Share Capital", "equity"],
+    ["3030", "Owner Contributions", "equity"],
+    ["3040", "Retained Earnings", "equity"],
+    ["3050", "Current Year Earnings", "equity"],
+    ["3060", "Owner Drawings", "equity"],
+    ["4010", "Website Design Revenue", "revenue"],
+    ["4020", "Website Development Revenue", "revenue"],
+    ["4030", "Custom Software Development Revenue", "revenue"],
+    ["4040", "Software Engineering Revenue", "revenue"],
+    ["4050", "Software Implementation Revenue", "revenue"],
+    ["4060", "Software Licensing Revenue", "revenue"],
+    ["4070", "SaaS Subscription Revenue", "revenue"],
+    ["4080", "Software Renewal Revenue", "revenue"],
+    ["4090", "Software Maintenance Revenue", "revenue"],
+    ["4100", "IT Consulting Revenue", "revenue"],
+    ["4110", "Technical Support Revenue", "revenue"],
+    ["4120", "IT Training Revenue", "revenue"],
+    ["4130", "Workflow Automation Revenue", "revenue"],
+    ["4140", "Digital Transformation Services Revenue", "revenue"],
+    ["4150", "Hosting and Infrastructure Revenue", "revenue"],
+    ["4160", "Hardware Sales Revenue", "revenue"],
+    ["4190", "Other Technology Services Revenue", "revenue"],
+    ["4200", "Interest Income", "revenue"],
+    ["4210", "Foreign Exchange Gain", "revenue"],
+    ["5010", "Direct Developer Salaries", "expense", "cos"],
+    ["5020", "Freelance Developer Costs", "expense", "cos"],
+    ["5030", "Software Development Subcontracting", "expense", "cos"],
+    ["5040", "Project-specific Hosting Costs", "expense", "cos"],
+    ["5100", "Technical Delivery Costs", "expense", "cos"],
+    ["6010", "Employee Salaries", "expense"],
+    ["6060", "Office Rent", "expense"],
+    ["6080", "Internet and Telecommunications", "expense"],
+    ["6090", "Cloud Hosting", "expense"],
+    ["6130", "Domain Registration", "expense"],
+    ["6140", "SSL Certificates", "expense"],
+    ["6150", "Software Subscriptions", "expense"],
+    ["6200", "Marketing and Advertising", "expense"],
+    ["6220", "Professional Services", "expense"],
+    ["6290", "Bank Charges", "expense"],
+    ["6300", "Payment Processing Fees", "expense"],
+    ["6310", "Depreciation Expense", "expense"],
+    ["6380", "Bad Debt Expense", "expense"],
+    ["6390", "Foreign Exchange Loss", "expense"],
+    ["6400", "Miscellaneous Operating Expenses", "expense"],
+    ["7010", "Interest Expense", "expense"],
+    ["7080", "Income Tax Expense", "expense"],
+    ["8010", "Output VAT Control", "liability", "tax"],
+    ["8020", "Input VAT Control", "asset", "tax"],
+    ];
   for (const [code, name, type, subtype] of rows) {
     if (store.accounts.some((a) => a.code === code)) continue;
     store.accounts.push({
@@ -313,8 +365,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const tb = trialBalance();
     const p = pnl();
     const bs = balanceSheet();
-    const ar = accountBalance("1100");
-    const cash = accountBalance("1000") + accountBalance("1010");
+    const ar = accountBalance("1050");
+    const cash = accountBalance("1010") + accountBalance("1020") + accountBalance("1030") + accountBalance("1040");
     return json({
       currency: "GHS",
       revenue: p.revenue,
@@ -484,7 +536,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const issueDate = String(body.issueDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
     const revenueCode = String(body.revenueAccountCode || "4090");
     const rev = byCode(revenueCode) || byCode("4090")!;
-    const ar = byCode("1100")!;
+    const ar = byCode("1050")!;
     const inv: Invoice = {
       id: crypto.randomUUID(),
       number: `INV-${String(store.invoiceSeq++).padStart(5, "0")}`,
@@ -580,8 +632,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       const existing = store.payments.find((p) => p.sourceModule === body.sourceModule && p.sourceId === body.sourceId)!;
       return json({ payment: existing, duplicate: true });
     }
-    const bank = byCode(String(body.bankAccountCode || "1010")) || byCode("1000")!;
-    const ar = byCode("1100")!;
+    const bank = byCode(String(body.bankAccountCode || "1010")) || byCode("1010")!;
+    const ar = byCode("1050")!;
     const paymentDate = String(body.paymentDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
     const customerName = String(body.customerName || inv?.customerName || "Customer");
     const pay: Payment = {
@@ -641,7 +693,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         const issueDate = String(body.issueDate || new Date().toISOString().slice(0, 10));
         const revenueCode = String(body.revenueAccountCode || "4000");
         const rev = byCode(revenueCode) || byCode("4090")!;
-        const ar = byCode("1100")!;
+        const ar = byCode("1050")!;
         const inv: Invoice = {
           id: crypto.randomUUID(),
           number: `INV-${String(store.invoiceSeq++).padStart(5, "0")}`,
@@ -706,6 +758,67 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
     }
     return json({ account: code, balance: accountBalance(code), lines, currency: "GHS" });
+  }
+
+
+  if (path === "accounts/search" && request.method === "GET") {
+    const q = (url.searchParams.get("q") || "").toLowerCase().trim();
+    const type = url.searchParams.get("type") || "";
+    const includeInactive = url.searchParams.get("inactive") === "1";
+    let items = store.accounts.filter((a) => includeInactive || a.active);
+    if (type) items = items.filter((a) => a.type === type);
+    if (q) {
+      items = items.filter((a) =>
+        a.code.toLowerCase().includes(q) ||
+        a.name.toLowerCase().includes(q) ||
+        (a.subtype || "").toLowerCase().includes(q) ||
+        a.type.toLowerCase().includes(q)
+      );
+    }
+    items = items.slice(0, 50).map((a) => ({
+      id: a.id,
+      code: a.code,
+      name: a.name,
+      type: a.type,
+      subtype: a.subtype,
+      currency: a.currency,
+      active: a.active,
+      normalBalance: a.type === "asset" || a.type === "expense" ? "debit" : "credit",
+      label: `${a.code} — ${a.name} — ${a.type}`,
+    }));
+    return json({ items, q });
+  }
+
+  if (path === "accounts" && request.method === "POST") {
+    const body = await readJson(request);
+    const code = String(body.code || "").trim();
+    const name = String(body.name || "").trim();
+    const type = String(body.type || "").trim() as AccountType;
+    if (!code || !name || !["asset","liability","equity","revenue","expense"].includes(type)) {
+      return json({ error: "code, name, type required" }, 400);
+    }
+    if (store.accounts.some((a) => a.code === code)) return json({ error: "Duplicate account code" }, 409);
+    const acc: Account = {
+      id: crypto.randomUUID(),
+      code,
+      name,
+      type,
+      subtype: body.subtype ? String(body.subtype) : undefined,
+      currency: String(body.currency || "GHS"),
+      active: true,
+    };
+    store.accounts.push(acc);
+    audit("account", acc.id, "created", code);
+    return json({ account: acc }, 201);
+  }
+
+  if (path.startsWith("accounts/") && path.endsWith("/deactivate") && request.method === "POST") {
+    const id = path.split("/")[1];
+    const acc = store.accounts.find((a) => a.id === id || a.code === id);
+    if (!acc) return json({ error: "Not found" }, 404);
+    acc.active = false;
+    audit("account", acc.id, "deactivated", acc.code);
+    return json({ account: acc });
   }
 
   return json({ error: "Not found", path }, 404);
