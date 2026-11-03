@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { finGet, finPost, formatMinor } from "@/lib/finance/api";
+import { finGet, finPost, formatMinor, formatCurrency } from "@/lib/finance/api";
+
 import { AccountSelect, type AccountOption } from "@/components/finance/AccountSelect";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -103,12 +104,13 @@ export default function FinancePage({ mode }: { mode: Mode }) {
       <Shell title="Profit & Loss" desc={q.data?.note || ""}>
         {q.data && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Metric label="Gross revenue" value={formatMinor(q.data.grossRevenue ?? q.data.revenue, cur)} />
-            <Metric label="Discount Allowed" value={formatMinor(q.data.discountAllowed || 0, cur)} />
-            <Metric label="Net revenue" value={formatMinor(q.data.netRevenue ?? q.data.revenue, cur)} />
-            <Metric label="Expenses" value={formatMinor(q.data.expense, cur)} />
-            <Metric label="Discount Received" value={formatMinor(q.data.discountReceived || 0, cur)} />
-            <Metric label="Net profit" value={formatMinor(q.data.netProfit, cur)} />
+            <Metric label="Gross revenue" value={formatCurrency(q.data.grossRevenue ?? q.data.revenue, cur)} />
+            <Metric label="Discount Allowed" value={formatCurrency(q.data.discountAllowed || 0, cur)} />
+            <Metric label="Net revenue" value={formatCurrency(q.data.netRevenue ?? q.data.revenue, cur)} />
+            <Metric label="Expenses" value={formatCurrency(q.data.expense, cur)} />
+            <Metric label="Discount Received" value={formatCurrency(q.data.discountReceived || 0, cur)} />
+            <Metric label="Net profit" value={formatCurrency(q.data.netProfit, cur)} />
+
           </div>
         )}
       </Shell>
@@ -122,9 +124,10 @@ export default function FinancePage({ mode }: { mode: Mode }) {
         {q.data && (
           <>
             <div className="grid gap-3 sm:grid-cols-3 mb-2">
-              <Metric label="Assets" value={formatMinor(q.data.assets, cur)} />
-              <Metric label="Liabilities" value={formatMinor(q.data.liabilities, cur)} />
-              <Metric label="Equity" value={formatMinor(q.data.equity, cur)} />
+              <Metric label="Assets" value={formatCurrency(q.data.assets, cur)} />
+              <Metric label="Liabilities" value={formatCurrency(q.data.liabilities, cur)} />
+              <Metric label="Equity" value={formatCurrency(q.data.equity, cur)} />
+
             </div>
             <p className={`text-sm ${q.data.balanced ? "text-emerald-600" : "text-rose-600"}`}>{q.data.equation}</p>
           </>

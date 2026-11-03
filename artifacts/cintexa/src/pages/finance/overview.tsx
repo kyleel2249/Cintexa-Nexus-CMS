@@ -81,13 +81,21 @@ export default function FinanceOverview() {
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">CINTEXA Finance</h1>
-        <p className="text-sm text-muted-foreground">
-          Double-entry · {d.engine} · storage: {d.storage}
-          {d.d1Configured === false ? " (bind FIN_DB)" : ""} · API keys: none
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">CINTEXA Finance</h1>
+          <p className="text-sm text-muted-foreground">
+            Double-entry · {d.engine} · storage: {d.storage}
+            {d.d1Configured === false ? " (bind FIN_DB)" : ""} · API keys: none
+          </p>
+        </div>
+        <Link href="/financial-intelligence">
+          <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20 cursor-pointer">
+            Financial Intelligence →
+          </span>
+        </Link>
       </div>
+
       {d.schemaError && (
         <Card className="border-amber-500/30 bg-amber-500/5">
           <CardContent className="py-3 text-xs text-muted-foreground">
