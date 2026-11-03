@@ -53,3 +53,22 @@ npx wrangler d1 migrations apply cintexa-finance-db --remote
 
 ### Amount display
 `lib/finance/money.ts`: full values, no K/M abbreviation; whole numbers without forced `.00`; excess decimals rejected with validation error.
+
+## Availability repair (2026-11)
+
+### Root causes of "Finance unavailable"
+1. `FIN_DB` bound but tables missing → hydrate threw → **all** requests 503.
+2. Frontend showed a generic message without the API error body.
+
+### Fixes
+- Auto `CREATE TABLE IF NOT EXISTS` bootstrap on every D1 request (`ensureSchema`).
+- Soft-fail hydrate: dashboard still loads with memory COA if schema temporarily fails.
+- `GET /api/finance/health` reports binding, connection, schema status.
+- Overview UI shows HTTP status and health details.
+
+### Cloudflare checklist
+1. Pages project has Function `functions/api/finance/[[path]].ts`.
+2. D1 binding **FIN_DB** → `cintexa-finance-db` (`ed7ed00b-05e7-4c28-96fc-536ccad3e89e`).
+3. Redeploy after push.
+4. Open `/api/finance/health` — expect `"api":"operational"`.
+5. Open `/api/finance/dashboard` — expect JSON with `engine` and `storage`.

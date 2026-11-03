@@ -438,7 +438,99 @@ function requireDb(env: Env): { mode: DbMode; db?: D1Database; error?: string } 
   };
 }
 
+
+const FINANCE_SCHEMA_SQL = [
+  `CREATE TABLE IF NOT EXISTS fin_accounts (
+    id TEXT PRIMARY KEY,
+    code TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    type TEXT NOT NULL,
+    subtype TEXT,
+    currency TEXT NOT NULL DEFAULT 'GHS',
+    active INTEGER NOT NULL DEFAULT 1,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_journals (
+    id TEXT PRIMARY KEY,
+    number TEXT NOT NULL UNIQUE,
+    journal_type TEXT NOT NULL,
+    entry_date TEXT NOT NULL,
+    posting_date TEXT,
+    description TEXT,
+    source_module TEXT,
+    source_id TEXT,
+    currency TEXT NOT NULL DEFAULT 'GHS',
+    status TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    posted_at TEXT,
+    reversed_by TEXT
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_journal_lines (
+    id TEXT PRIMARY KEY,
+    journal_id TEXT NOT NULL,
+    account_id TEXT NOT NULL,
+    account_code TEXT NOT NULL,
+    memo TEXT,
+    debit INTEGER NOT NULL DEFAULT 0,
+    credit INTEGER NOT NULL DEFAULT 0
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_fin_lines_journal ON fin_journal_lines(journal_id)`,
+  `CREATE INDEX IF NOT EXISTS idx_fin_lines_account ON fin_journal_lines(account_code)`,
+  `CREATE TABLE IF NOT EXISTS fin_customers (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    email TEXT,
+    source_module TEXT,
+    source_id TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_invoices (
+    id TEXT PRIMARY KEY,
+    number TEXT NOT NULL UNIQUE,
+    customer_id TEXT,
+    customer_name TEXT,
+    issue_date TEXT NOT NULL,
+    due_date TEXT,
+    currency TEXT NOT NULL DEFAULT 'GHS',
+    amount_minor INTEGER NOT NULL,
+    amount_paid_minor INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    source_module TEXT,
+    source_id TEXT,
+    journal_id TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_payments (
+    id TEXT PRIMARY KEY,
+    invoice_id TEXT,
+    customer_name TEXT,
+    payment_date TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL,
+    currency TEXT NOT NULL DEFAULT 'GHS',
+    method TEXT,
+    journal_id TEXT,
+    source_module TEXT,
+    source_id TEXT,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_audit (
+    id TEXT PRIMARY KEY,
+    entity_type TEXT NOT NULL,
+    entity_id TEXT NOT NULL,
+    action TEXT NOT NULL,
+    detail TEXT,
+    created_at TEXT NOT NULL
+  )`,
+];
+
+async function ensureSchema(db: D1Database): Promise<void> {
+  for (const sql of FINANCE_SCHEMA_SQL) {
+    await db.prepare(sql).run();
+  }
+}
+
 async function d1EnsureCoa(db: D1Database) {
+  await ensureSchema(db);
   const row = await db.prepare("SELECT COUNT(*) AS c FROM fin_accounts").first<{ c: number }>();
   if (row && row.c > 0) return;
   // Seed from memory template after ensureCoa() fills store.accounts
@@ -611,15 +703,16 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const access = requireDb(env);
   const storageMode = access.mode;
   // Hydrate from D1 when bound so reads/writes share one store view for calculation helpers
+  let schemaError: string | null = null;
   if (access.db) {
     try {
+      await ensureSchema(access.db);
       await hydrateFromD1(access.db);
     } catch (e: any) {
-      return json({
-        error: "FIN_DB schema not ready or query failed",
-        detail: String(e?.message || e),
-        hint: "Run: npx wrangler d1 migrations apply cintexa-finance-db --remote",
-      }, 503);
+      schemaError = String(e?.message || e);
+      // Soft-fail: still serve dashboard/meta with in-memory COA so UI is not dead
+      ensureCoa();
+      console.error("FIN_DB hydrate failed, using memory fallback for this request", schemaError);
     }
   } else {
     ensureCoa();
@@ -658,6 +751,28 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const path = parts.join("/");
   const url = new URL(request.url);
 
+  if (path === "health") {
+    const connected = Boolean(env.FIN_DB) && !schemaError;
+    return json({
+      success: connected || Boolean(env.FIN_ALLOW_MEMORY === "1"),
+      service: "CINTEXA Finance",
+      api: "operational",
+      apiKeysRequired: false,
+      database: {
+        provider: "Cloudflare D1",
+        binding: "FIN_DB",
+        configured: Boolean(env.FIN_DB),
+        connected,
+        schema: schemaError ? "error" : (env.FIN_DB ? "ready" : "not-bound"),
+        schemaError: schemaError || null,
+        mode: storageMode,
+      },
+      hint: env.FIN_DB
+        ? (schemaError ? "Schema bootstrap failed — check FIN_DB permissions" : null)
+        : "Bind FIN_DB in Cloudflare Pages → Settings → Functions → D1 bindings",
+    }, connected || env.FIN_ALLOW_MEMORY === "1" ? 200 : 503);
+  }
+
   if (path === "" || path === "dashboard") {
     const tb = trialBalance();
     const p = pnl();
@@ -684,6 +799,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       apiKeysRequired: false,
       storage: storageMode === "d1" ? "d1" : (env.FIN_ALLOW_MEMORY === "1" ? "isolate-memory-dev" : "isolate-memory"),
       d1Configured: Boolean(env.FIN_DB),
+      schemaError: schemaError || null,
       engine: "cintexa-finance-double-entry-v1",
     });
   }
