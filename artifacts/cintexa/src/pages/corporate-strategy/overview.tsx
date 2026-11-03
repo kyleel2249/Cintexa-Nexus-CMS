@@ -5,12 +5,26 @@ import { CSI_NAV } from "@/lib/csi/nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { AnimatedKpiCard } from "@/components/financial-intelligence/AnimatedKpiCard";
+import { exportCsiOverviewPdf } from "@/lib/csi/pdf";
+import { Button } from "@/components/ui/button";
 
 export default function CsiOverview() {
   const q = useQuery({
     queryKey: ["csi", "dashboard"],
     queryFn: () => csiGet<any>("/dashboard"),
     staleTime: 15_000,
+  });
+  const bva = useQuery({
+    queryKey: ["csi", "bva"],
+    queryFn: () => csiGet<any>("/budget-vs-actual"),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const perf = useQuery({
+    queryKey: ["csi", "prod-perf"],
+    queryFn: () => csiGet<any>("/product-performance"),
+    staleTime: 30_000,
+    retry: false,
   });
 
   if (q.isLoading) {
@@ -50,11 +64,28 @@ export default function CsiOverview() {
             {d.profile?.legalName || "CINTEXA"} · management planning, products, budgets and risks · connected to live Finance when available
           </p>
         </div>
-        <Link href="/finance">
-          <span className="inline-flex rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary cursor-pointer">
-            Open Finance →
-          </span>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={!q.data}
+            onClick={() =>
+              exportCsiOverviewPdf({
+                profile: q.data?.profile,
+                dashboard: q.data,
+                budgetVsActual: bva.data,
+                productPerformance: perf.data,
+              })
+            }
+          >
+            Export PDF
+          </Button>
+          <Link href="/finance">
+            <span className="inline-flex rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary cursor-pointer">
+              Open Finance →
+            </span>
+          </Link>
+        </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

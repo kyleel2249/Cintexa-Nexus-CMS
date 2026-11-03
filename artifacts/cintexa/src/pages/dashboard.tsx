@@ -7,6 +7,7 @@ import { FiDashboardWidget } from "@/components/financial-intelligence/FiDashboa
 import { BdDashboardWidget } from "@/components/business-diary/BdDashboardWidget";
 import { SyncStatusWidget } from "@/components/nexus-sync/SyncStatusWidget";
 import { FinanceDashboardWidget } from "@/components/finance/FinanceDashboardWidget";
+import { CsiDashboardWidget } from "@/components/csi/CsiDashboardWidget";
 import { useEffect, useState } from "react";
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
@@ -292,6 +293,18 @@ export default function Dashboard() {
 
       <motion.div variants={fadeUp}>
         <SalesOverviewWidget compact />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <FinanceDashboardWidget />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <CsiDashboardWidget />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <BdDashboardWidget />
       </motion.div>
 
       <motion.div variants={fadeUp}>
