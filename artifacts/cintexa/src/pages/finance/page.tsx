@@ -1,11 +1,12 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { finGet, finPost, formatMinor, formatCurrency } from "@/lib/finance/api";
+import { finGet, finPost, formatMinor, formatCurrency, majorToMinor, minorToMajor } from "@/lib/finance/api";
 import {
   generateDocumentation,
   explainAccount,
   type DocumentationResult,
 } from "@/lib/finance/documentation-engine";
+
 
 import { AccountSelect, type AccountOption } from "@/components/finance/AccountSelect";
 import { Button } from "@/components/ui/button";
@@ -145,22 +146,23 @@ export default function FinancePage({ mode }: { mode: Mode }) {
   if (mode === "invoices") {
     const q = useQuery({ queryKey: ["fin", "inv"], queryFn: () => finGet<{ items: any[] }>("/invoices") });
     const [name, setName] = useState("");
-    const [amount, setAmount] = useState("1500000");
+    // Major units in the form (15000 = GH₵ 15,000.00); converted to minor on post
+    const [amount, setAmount] = useState("15000");
     const [rev, setRev] = useState<AccountOption | null>(null);
     const create = useMutation({
       mutationFn: () =>
         finPost("/invoices", {
           customerName: name,
-          amountMinor: Number(amount),
+          amountMinor: majorToMinor(Number(amount) || 0),
           revenueAccountCode: rev?.code || "4020",
         }),
       onSuccess: inv,
     });
     return (
-      <Shell title="Invoices / AR" desc="Posts Dr 1050 AR / Cr selected revenue · minor units">
+      <Shell title="Invoices / AR" desc="Posts Dr 1050 AR / Cr selected revenue · enter major units (e.g. 5000 = GH₵ 5,000.00)">
         <div className="grid gap-2 mb-4 sm:grid-cols-2">
           <Input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input placeholder="Amount (minor)" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <Input placeholder="Amount (GHS major units)" value={amount} onChange={(e) => setAmount(e.target.value)} />
           <AccountSelect value={rev} onChange={setRev} placeholder="Revenue account (search)…" />
           <Button disabled={!name || create.isPending} onClick={() => create.mutate()}>Issue invoice</Button>
         </div>
@@ -168,7 +170,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
           {(q.data?.items || []).map((i) => (
             <Card key={i.id}><CardContent className="py-3">
               <p className="font-medium">{i.number} · {i.customerName}</p>
-              <p className="text-xs text-muted-foreground">{i.issueDate} · {i.status} · {formatMinor(i.amountMinor, i.currency)}</p>
+              <p className="text-xs text-muted-foreground">{i.issueDate} · {i.status} · {formatCurrency(i.amountMinor, i.currency)}</p>
             </CardContent></Card>
           ))}
         </div>
@@ -182,30 +184,36 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     const [invoiceId, setInvoiceId] = useState("");
     const [amount, setAmount] = useState("");
     const create = useMutation({
-      mutationFn: () => finPost("/payments", { invoiceId, amountMinor: Number(amount), bankAccountCode: "1030" }),
+      mutationFn: () =>
+        finPost("/payments", {
+          invoiceId,
+          amountMinor: majorToMinor(Number(amount) || 0),
+          bankAccountCode: "1030",
+        }),
       onSuccess: () => { inv(); setAmount(""); },
     });
     return (
-      <Shell title="Customer payments" desc="Dr Bank 1030 / Cr AR 1050 · no double revenue">
+      <Shell title="Customer payments" desc="Dr Bank 1030 / Cr AR 1050 · enter major units (e.g. 5000 = GH₵ 5,000.00)">
         <div className="flex flex-wrap gap-2 mb-4">
           <select className="h-9 rounded-md border bg-background px-2 text-sm" value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}>
             <option value="">Select invoice</option>
             {(invs.data?.items || []).filter((i) => i.status !== "paid").map((i) => (
-              <option key={i.id} value={i.id}>{i.number} — {i.customerName}</option>
+              <option key={i.id} value={i.id}>{i.number} — {i.customerName} · {formatCurrency(i.amountMinor, i.currency)}</option>
             ))}
           </select>
-          <Input placeholder="Amount minor" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-32" />
+          <Input placeholder="Amount (GHS)" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-36" />
           <Button disabled={!invoiceId || !amount || create.isPending} onClick={() => create.mutate()}>Record payment</Button>
         </div>
         {create.isError && <p className="text-sm text-rose-600 mb-2">Payment rejected.</p>}
         <div className="space-y-2 text-sm">
           {(pays.data?.items || []).map((p) => (
-            <Card key={p.id}><CardContent className="py-3">{p.paymentDate}: {formatMinor(p.amountMinor, p.currency)} — {p.customerName}</CardContent></Card>
+            <Card key={p.id}><CardContent className="py-3">{p.paymentDate}: {formatCurrency(p.amountMinor, p.currency)} — {p.customerName}</CardContent></Card>
           ))}
         </div>
       </Shell>
     );
   }
+
 
   if (mode === "ledger") {
     const [acc, setAcc] = useState<AccountOption | null>(null);
@@ -266,13 +274,28 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
   ]);
   const [docsOpen, setDocsOpen] = useState(true);
 
+  /**
+   * Journal form amounts are MAJOR currency units (e.g. 5000 = GHS 5,000.00).
+   * Storage and API require INTEGER MINOR units (5000 major → 500000 minor).
+   * Converting only at the post boundary prevents the 100× display understatement.
+   */
   const totals = useMemo(() => {
     let d = 0, c = 0;
     for (const l of lines) {
-      d += Math.round(Number(l.debit) || 0);
-      c += Math.round(Number(l.credit) || 0);
+      d += Number(l.debit) || 0;
+      c += Number(l.credit) || 0;
     }
-    return { debit: d, credit: c, difference: d - c, balanced: d === c && d > 0 };
+    // Compare in minor space for exact balance (avoids float noise)
+    const dMin = majorToMinor(d);
+    const cMin = majorToMinor(c);
+    return {
+      debitMajor: d,
+      creditMajor: c,
+      debit: dMin,
+      credit: cMin,
+      difference: dMin - cMin,
+      balanced: dMin === cMin && dMin > 0,
+    };
   }, [lines]);
 
   const docs: DocumentationResult = useMemo(
@@ -294,12 +317,14 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
               }
             : null,
           memo: l.memo,
-          debit: Math.round(Number(l.debit) || 0),
-          credit: Math.round(Number(l.credit) || 0),
+          // Engine expects minor units for formatCurrency
+          debit: majorToMinor(Number(l.debit) || 0),
+          credit: majorToMinor(Number(l.credit) || 0),
         })),
       }),
     [lines, journalType, entryDate, desc, descTouched],
   );
+
 
   // Auto-fill description from engine when user has not manually edited it
   useEffect(() => {
@@ -332,6 +357,8 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
         journalType,
         entryDate,
         post: true,
+        // Explicit contract: debit/credit are integer MINOR units
+        amountUnit: "minor",
         lines: lines
           .filter((l) => l.account && (Number(l.debit) || Number(l.credit)))
           .map((l) => {
@@ -339,11 +366,13 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
             return {
               accountCode: l.account!.code,
               memo: l.memo || auto?.autoNote || "",
-              debit: Math.round(Number(l.debit) || 0),
-              credit: Math.round(Number(l.credit) || 0),
+              // Convert major form values → minor for storage (5000 GHS → 500000)
+              debit: majorToMinor(Number(l.debit) || 0),
+              credit: majorToMinor(Number(l.credit) || 0),
             };
           }),
       }),
+
     onSuccess: () => {
       onPosted();
       qc.invalidateQueries({ queryKey: ["fin", "je"] });
@@ -412,13 +441,19 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
       </div>
 
 
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        Enter amounts in <strong className="text-foreground">major units</strong> (e.g. type{" "}
+        <code className="text-xs">5000</code> for GH₵ 5,000.00). Values are converted to minor units on post so the
+        ledger and dashboard stay consistent.
+      </p>
       <div className="mb-2 hidden grid-cols-12 gap-2 text-[11px] uppercase text-muted-foreground sm:grid">
         <div className="col-span-5">Account</div>
         <div className="col-span-3">Memo</div>
-        <div className="col-span-1 text-right">Debit</div>
-        <div className="col-span-1 text-right">Credit</div>
+        <div className="col-span-1 text-right">Debit (GHS)</div>
+        <div className="col-span-1 text-right">Credit (GHS)</div>
         <div className="col-span-2" />
       </div>
+
 
       <div className="space-y-3 mb-4">
         {lines.map((l) => (
@@ -447,9 +482,12 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
           Add line
         </Button>
         <div className="text-sm tabular-nums">
-          Dr <strong>{formatMinor(totals.debit)}</strong> · Cr <strong>{formatMinor(totals.credit)}</strong> · Diff{" "}
-          <strong className={totals.difference === 0 ? "text-emerald-600" : "text-rose-600"}>{formatMinor(Math.abs(totals.difference))}</strong>
+          Dr <strong>{formatCurrency(totals.debit)}</strong> · Cr <strong>{formatCurrency(totals.credit)}</strong> · Diff{" "}
+          <strong className={totals.difference === 0 ? "text-emerald-600" : "text-rose-600"}>
+            {formatCurrency(Math.abs(totals.difference))}
+          </strong>
         </div>
+
         <Button disabled={!totals.balanced || post.isPending} onClick={() => post.mutate()}>
           {post.isPending ? "Posting…" : "Post balanced journal"}
         </Button>

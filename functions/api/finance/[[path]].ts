@@ -1414,5 +1414,74 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({ journal: j, gross, discount, net, method: "net" }, 201);
   }
 
+  /**
+   * Controlled one-time scale: multiply amounts by 100.
+   * Use ONLY when historical data was entered as major units but stored without
+   * conversion (GHS 5,000 stored as 5000 → displayed as 50.00).
+   *
+   * POST /api/finance/admin/scale-to-minor
+   * body: { confirm: "SCALE_JOURNALS_X100", dryRun?: boolean }
+   * Default dryRun=true. Pass dryRun:false to apply.
+   */
+  if (path === "admin/scale-to-minor" && request.method === "POST") {
+    const body = await readJson(request);
+    if (String(body.confirm || "") !== "SCALE_JOURNALS_X100") {
+      return json({
+        error: "Confirmation required",
+        hint: 'Pass { "confirm": "SCALE_JOURNALS_X100", "dryRun": true } first',
+      }, 400);
+    }
+    const dryRun = body.dryRun !== false;
+    const report: { journals: number; lines: number; invoices: number; payments: number; samples: any[] } = {
+      journals: 0, lines: 0, invoices: 0, payments: 0, samples: [],
+    };
+    for (const j of store.journals) {
+      report.journals++;
+      for (const l of j.lines) {
+        const before = { debit: l.debit, credit: l.credit };
+        if (!dryRun) {
+          l.debit = Math.round(l.debit * 100);
+          l.credit = Math.round(l.credit * 100);
+        }
+        report.lines++;
+        if (report.samples.length < 5) {
+          report.samples.push({
+            journal: j.number,
+            account: l.accountCode,
+            before,
+            after: dryRun
+              ? { debit: Math.round(before.debit * 100), credit: Math.round(before.credit * 100) }
+              : { debit: l.debit, credit: l.credit },
+          });
+        }
+      }
+      if (!dryRun && access.db) await persistJournal(j);
+    }
+    for (const inv of store.invoices) {
+      report.invoices++;
+      if (!dryRun) {
+        inv.amountMinor = Math.round(inv.amountMinor * 100);
+        inv.amountPaidMinor = Math.round(inv.amountPaidMinor * 100);
+        if (access.db) await persistInvoice(inv);
+      }
+    }
+    for (const pay of store.payments) {
+      report.payments++;
+      if (!dryRun) {
+        pay.amountMinor = Math.round(pay.amountMinor * 100);
+        if (access.db) await persistPayment(pay);
+      }
+    }
+    audit("admin", "scale-to-minor", dryRun ? "dry_run" : "applied", JSON.stringify({ lines: report.lines }));
+    return json({
+      ok: true,
+      dryRun,
+      report,
+      note: dryRun
+        ? "Dry run only — no data changed. Re-post with dryRun:false to apply."
+        : "Applied ×100 so storage matches true minor units. Display uses minor÷100.",
+    });
+  }
+
   return json({ error: "Not found", path }, 404);
 };

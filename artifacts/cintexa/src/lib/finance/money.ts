@@ -1,19 +1,27 @@
 /**
- * CINTEXA Finance — centralized monetary formatting engine.
+ * CINTEXA Finance — centralized monetary handling engine.
  *
- * Storage contract (unchanged):
- *   All ledger amounts, API payloads and calculations use integer minor units
- *   (e.g. pesewas / cents). 1 GHS = 100 minor units.
+ * STORAGE CONTRACT (authoritative):
+ *   Ledger, API and D1 columns store INTEGER MINOR units.
+ *   1 GHS (major) = 100 minor units (pesewas).
+ *   Example: GHS 5,000.00 is stored as 500000.
  *
- * Display contract (corrected):
- *   Ordinary currency amounts always render with exactly two decimal places
- *   and optional thousands separators. This permanently resolves the
- *   "missing two zeros" presentation defect without altering any stored value
- *   or calculation.
+ * INPUT CONTRACT (forms):
+ *   Users type MAJOR units (5000 means GHS 5,000.00).
+ *   Call majorToMinor() at the write boundary before posting.
+ *   Never store major units in debit/credit/amountMinor fields.
  *
- * Never multiply/divide stored values by 100 to "fix" display. The root
- * cause was the previous default of forceDecimals: false.
+ * DISPLAY CONTRACT:
+ *   formatMinor / formatCurrency always interpret the number as MINOR units
+ *   and show two decimal places + grouping: 500000 → "5,000.00" / "GH₵ 5,000.00".
+ *
+ * 100× understatement root cause (fixed at form boundary):
+ *   Journal/invoice forms previously posted major units without ×100, so
+ *   GHS 5,000 was stored as 5000 and displayed as 50.00. Forms now convert
+ *   with majorToMinor on post. Existing mis-scaled data can be corrected via
+ *   POST /api/finance/admin/scale-to-minor (controlled, dry-run by default).
  */
+
 
 export type CurrencyMeta = { code: string; decimals: number; symbol?: string };
 
