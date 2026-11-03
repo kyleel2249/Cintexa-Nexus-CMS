@@ -23,19 +23,11 @@ const navGroups = [
   { title: "Intelligence", items: [
     { name: "AI Agents", href: "/agents", icon: Bot },
     { name: "Command Centre", href: "/intelligence", icon: BrainCircuit },
-    { name: "Cyber Defense (CCDI)", href: "/ccdi", icon: Shield },
     { name: "Business Diagnostic", href: "/diagnostics", icon: Activity },
     { name: "Diagnostic History", href: "/diagnostics?history=1", icon: History },
     { name: "Website Intelligence", href: "/website-intelligence", icon: Radar },
   ] },
-  { title: "Content", items: [
-    { name: "Sites", href: "/sites", icon: Globe }, { name: "Pages", href: "/pages", icon: FileText },
-    { name: "Posts", href: "/posts", icon: PenTool }, { name: "Calendar", href: "/calendar", icon: CalendarDays },
-    { name: "Pipeline", href: "/pipeline", icon: Kanban },
-  ]},
-  { title: "Media", items: [{ name: "Library", href: "/media", icon: ImageIcon }] },
   { title: "Audience", items: [{ name: "Subscribers", href: "/subscribers", icon: Mail }, { name: "Users", href: "/users", icon: Users }] },
-  { title: "Taxonomy", items: [{ name: "Categories", href: "/categories", icon: Tags }, { name: "Menus", href: "/menus", icon: MenuSquare }, { name: "Forms", href: "/forms", icon: FormInput }] },
   { title: "System", items: [{ name: "SEO", href: "/seo", icon: Search }, { name: "AI Studio", href: "/ai", icon: Wand2 }, { name: "Sentinel Key", href: "/sentinel-key", icon: ShieldCheck }, { name: "Secure Vault", href: "/sentinel-key/vault", icon: LockKeyhole }, { name: "Generation History", href: "/sentinel-key/history", icon: ScrollText }, { name: "Alias Manager", href: "/sentinel-key/aliases", icon: Tag }, { name: "Plugins", href: "/plugins", icon: Puzzle }, { name: "Settings", href: "/settings", icon: Settings }] },
 ];
 

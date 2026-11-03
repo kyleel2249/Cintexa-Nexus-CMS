@@ -28,21 +28,10 @@ function lazyWithRecovery<T extends ComponentType<unknown>>(loader: () => Promis
 }
 
 const Dashboard = lazyWithRecovery(() => import("@/pages/dashboard"));
-const Sites = lazyWithRecovery(() => import("@/pages/sites"));
-const Pages = lazyWithRecovery(() => import("@/pages/pages"));
-const PageEditor = lazyWithRecovery(() => import("@/pages/pages/editor"));
-const Posts = lazyWithRecovery(() => import("@/pages/posts"));
-const PostEditor = lazyWithRecovery(() => import("@/pages/posts/editor"));
-const Media = lazyWithRecovery(() => import("@/pages/media"));
 const Users = lazyWithRecovery(() => import("@/pages/users"));
-const Categories = lazyWithRecovery(() => import("@/pages/categories"));
-const Menus = lazyWithRecovery(() => import("@/pages/menus"));
-const Forms = lazyWithRecovery(() => import("@/pages/forms"));
 const Seo = lazyWithRecovery(() => import("@/pages/seo"));
 const AiStudio = lazyWithRecovery(() => import("@/pages/ai"));
 const Settings = lazyWithRecovery(() => import("@/pages/settings"));
-const ContentCalendar = lazyWithRecovery(() => import("@/pages/calendar"));
-const ContentPipeline = lazyWithRecovery(() => import("@/pages/pipeline"));
 const Plugins = lazyWithRecovery(() => import("@/pages/plugins"));
 const SentinelKey = lazyWithRecovery(() => import("@/pages/sentinel-key"));
 const Subscribers = lazyWithRecovery(() => import("@/pages/subscribers"));
@@ -64,7 +53,6 @@ const FinanceRoutes = lazyWithRecovery(() =>
 );
 const PublicQuotation = lazyWithRecovery(() => import("@/pages/sales/public-quotation"));
 const PublicLeadForm = lazyWithRecovery(() => import("@/pages/sales/public-lead-form"));
-const CcdiCommandCentre = lazyWithRecovery(() => import("@/pages/ccdi"));
 
 const queryClient = new QueryClient();
 
@@ -119,22 +107,7 @@ function AppRoutes() {
             <Route path="/website-intelligence/audits/:auditId/recommendations" component={WebsiteIntelligence} />
             <Route path="/website-intelligence/audits/:auditId/report" component={WebsiteIntelligence} />
             <Route path="/website-intelligence/settings" component={WebsiteIntelligence} />
-            <Route path="/ccdi" component={CcdiCommandCentre} />
-            <Route path="/ccdi/*" component={CcdiCommandCentre} />
-            <Route path="/sites" component={Sites} />
-            <Route path="/pages" component={Pages} />
-            <Route path="/pages/new" component={PageEditor} />
-            <Route path="/pages/:id/edit" component={PageEditor} />
-            <Route path="/posts" component={Posts} />
-            <Route path="/posts/new" component={PostEditor} />
-            <Route path="/posts/:id/edit" component={PostEditor} />
-            <Route path="/media" component={Media} />
             <Route path="/users" component={Users} />
-            <Route path="/categories" component={Categories} />
-            <Route path="/menus" component={Menus} />
-            <Route path="/forms" component={Forms} />
-            <Route path="/calendar" component={ContentCalendar} />
-            <Route path="/pipeline" component={ContentPipeline} />
             <Route path="/seo" component={Seo} />
             <Route path="/ai" component={AiStudio} />
             <Route path="/settings" component={Settings} />

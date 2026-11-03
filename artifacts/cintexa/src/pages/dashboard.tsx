@@ -1,6 +1,5 @@
 import { CintexaLogo } from "@/components/SplashScreen";
 import { WebsiteIntelligenceCard } from "@/components/website-intelligence-card";
-import { CcdiDashboardCard } from "@/components/ccdi-dashboard-card";
 import { SentinelKeyCard } from "@/components/sentinel-key-card";
 import { SalesOverviewWidget } from "@/components/sales/SalesOverviewWidget";
 import { Link } from "wouter";
@@ -174,7 +173,6 @@ export default function Dashboard() {
       ? [
           { label: "Total Pages", value: Number(summary.totalPages) || 0, icon: FileText, trend: "+12%", sparkKey: "pages" },
           { label: "Total Posts", value: Number(summary.totalPosts) || 0, icon: PenTool, trend: "+4%", sparkKey: "posts" },
-          { label: "Media Assets", value: Number(summary.totalMedia) || 0, icon: ImageIcon, trend: "+24%", sparkKey: "media" },
           { label: "Active Users", value: Number(summary.totalUsers) || 0, icon: Users, trend: "+2%", sparkKey: "users" },
           { label: "Connected Sites", value: Number(summary.totalSites) || 0, icon: Globe, trend: "0%", sparkKey: "sites" },
           { label: "Form Submissions", value: Number(summary.totalForms) || 0, icon: FormInput, trend: "+18%", sparkKey: "forms" },
@@ -282,7 +280,6 @@ export default function Dashboard() {
       </motion.div>
 
       <motion.div variants={fadeUp}>
-        <CcdiDashboardCard />
       </motion.div>
 
       <motion.div variants={fadeUp}>

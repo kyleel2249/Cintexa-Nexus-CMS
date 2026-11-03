@@ -27,6 +27,7 @@ const FIREBASE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/ser
  *                      unconditionally (scopes and the settings/users restriction are not applied).
  *  - "enforced"       : every non-public route needs a valid credential (original behaviour).
  */
+/** Direct-access Nexus: default open (no login). Set AUTH_MODE=enforced only if you intentionally re-enable auth. */
 const AUTH_MODE: "open" | "enforced" = (process.env.AUTH_MODE ?? "open").trim().toLowerCase() === "enforced" ? "enforced" : "open";
 const OPEN_ACCESS_EMAIL = (process.env.OPEN_ACCESS_EMAIL ?? "open-access@cintexa.local").trim();
 if (AUTH_MODE === "open") {
