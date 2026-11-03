@@ -1,8 +1,8 @@
 /**
  * CINTEXA Finance — double-entry accounting API (/api/finance/*)
  * Zero third-party API keys. Integer minor units. Balanced journals only.
- * Persist via DIARY_DB/FI_DB-style binding FIN_DB when configured; else isolate memory
- * (production should bind D1 — memory is not authoritative across isolates).
+ * Authoritative store: context.env.FIN_DB (Cloudflare D1).
+ * Isolate memory is only used when FIN_ALLOW_MEMORY=1 for local/dev — never production.
  */
 
 type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
@@ -415,12 +415,243 @@ function postJournal(j: Journal) {
   audit("journal", j.id, "posted", j.number);
 }
 
-type Env = { FIN_DB?: D1Database };
+
+type Env = {
+  FIN_DB?: D1Database;
+  FIN_ALLOW_MEMORY?: string;
+};
+
+type DbMode = "d1" | "memory";
+
+function dbMode(env: Env): DbMode {
+  if (env.FIN_DB) return "d1";
+  return "memory";
+}
+
+function requireDb(env: Env): { mode: DbMode; db?: D1Database; error?: string } {
+  if (env.FIN_DB) return { mode: "d1", db: env.FIN_DB };
+  if (env.FIN_ALLOW_MEMORY === "1") return { mode: "memory" };
+  return {
+    mode: "memory",
+    error:
+      "FIN_DB D1 binding is not configured. Bind cintexa-finance-db as FIN_DB in wrangler.toml / Pages settings. Set FIN_ALLOW_MEMORY=1 only for local development.",
+  };
+}
+
+async function d1EnsureCoa(db: D1Database) {
+  const row = await db.prepare("SELECT COUNT(*) AS c FROM fin_accounts").first<{ c: number }>();
+  if (row && row.c > 0) return;
+  // Seed from memory template after ensureCoa() fills store.accounts
+  ensureCoa();
+  const now = new Date().toISOString();
+  const stmts = store.accounts.map((a) =>
+    db.prepare(
+      "INSERT OR IGNORE INTO fin_accounts (id, code, name, type, subtype, currency, active, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    ).bind(a.id, a.code, a.name, a.type, a.subtype || null, a.currency, a.active ? 1 : 0, now),
+  );
+  // batch in chunks of 25
+  for (let i = 0; i < stmts.length; i += 25) {
+    await db.batch(stmts.slice(i, i + 25));
+  }
+}
+
+async function d1LoadAccounts(db: D1Database): Promise<Account[]> {
+  await d1EnsureCoa(db);
+  const { results } = await db.prepare("SELECT * FROM fin_accounts ORDER BY code").all();
+  return (results || []).map((r: any) => ({
+    id: r.id,
+    code: r.code,
+    name: r.name,
+    type: r.type,
+    subtype: r.subtype || undefined,
+    currency: r.currency || "GHS",
+    active: Number(r.active) === 1,
+  }));
+}
+
+async function d1InsertJournal(db: D1Database, j: Journal) {
+  await db.batch([
+    db.prepare(
+      `INSERT INTO fin_journals (id, number, journal_type, entry_date, posting_date, description, source_module, source_id, currency, status, created_at, posted_at, reversed_by)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(
+      j.id, j.number, j.journalType, j.entryDate, j.postingDate || null, j.description,
+      j.sourceModule || null, j.sourceId || null, j.currency, j.status, j.createdAt, j.postedAt || null, j.reversedBy || null,
+    ),
+    ...j.lines.map((l) =>
+      db.prepare(
+        `INSERT INTO fin_journal_lines (id, journal_id, account_id, account_code, memo, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      ).bind(l.id, j.id, l.accountId, l.accountCode, l.memo || null, l.debit, l.credit),
+    ),
+  ]);
+}
+
+async function d1ListJournals(db: D1Database): Promise<Journal[]> {
+  const { results: journals } = await db.prepare("SELECT * FROM fin_journals ORDER BY created_at DESC").all();
+  const out: Journal[] = [];
+  for (const r of journals || []) {
+    const { results: lines } = await db.prepare("SELECT * FROM fin_journal_lines WHERE journal_id = ?").bind(r.id).all();
+    out.push({
+      id: r.id as string,
+      number: r.number as string,
+      journalType: r.journal_type as string,
+      entryDate: r.entry_date as string,
+      postingDate: (r.posting_date as string) || undefined,
+      description: (r.description as string) || "",
+      sourceModule: (r.source_module as string) || undefined,
+      sourceId: (r.source_id as string) || undefined,
+      currency: (r.currency as string) || "GHS",
+      status: r.status as Journal["status"],
+      lines: (lines || []).map((l: any) => ({
+        id: l.id,
+        accountId: l.account_id,
+        accountCode: l.account_code,
+        memo: l.memo || undefined,
+        debit: Number(l.debit),
+        credit: Number(l.credit),
+      })),
+      createdAt: r.created_at as string,
+      postedAt: (r.posted_at as string) || undefined,
+      reversedBy: (r.reversed_by as string) || undefined,
+    });
+  }
+  return out;
+}
+
+async function d1InsertInvoice(db: D1Database, inv: Invoice) {
+  await db.prepare(
+    `INSERT INTO fin_invoices (id, number, customer_id, customer_name, issue_date, due_date, currency, amount_minor, amount_paid_minor, status, source_module, source_id, journal_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    inv.id, inv.number, null, inv.customerName, inv.issueDate, inv.dueDate || null, inv.currency,
+    inv.amountMinor, inv.amountPaidMinor, inv.status, inv.sourceModule || null, inv.sourceId || null, inv.journalId || null, inv.createdAt,
+  ).run();
+}
+
+async function d1ListInvoices(db: D1Database): Promise<Invoice[]> {
+  const { results } = await db.prepare("SELECT * FROM fin_invoices ORDER BY created_at DESC").all();
+  return (results || []).map((r: any) => ({
+    id: r.id,
+    number: r.number,
+    customerName: r.customer_name,
+    issueDate: r.issue_date,
+    dueDate: r.due_date || undefined,
+    currency: r.currency,
+    amountMinor: Number(r.amount_minor),
+    amountPaidMinor: Number(r.amount_paid_minor),
+    status: r.status,
+    sourceModule: r.source_module || undefined,
+    sourceId: r.source_id || undefined,
+    journalId: r.journal_id || undefined,
+    createdAt: r.created_at,
+  }));
+}
+
+async function d1InsertPayment(db: D1Database, pay: Payment) {
+  await db.prepare(
+    `INSERT INTO fin_payments (id, invoice_id, customer_name, payment_date, amount_minor, currency, method, journal_id, source_module, source_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(
+    pay.id, pay.invoiceId || null, pay.customerName, pay.paymentDate, pay.amountMinor, pay.currency,
+    pay.method || null, pay.journalId || null, pay.sourceModule || null, pay.sourceId || null, pay.createdAt,
+  ).run();
+}
+
+async function d1ListPayments(db: D1Database): Promise<Payment[]> {
+  const { results } = await db.prepare("SELECT * FROM fin_payments ORDER BY created_at DESC").all();
+  return (results || []).map((r: any) => ({
+    id: r.id,
+    invoiceId: r.invoice_id || undefined,
+    customerName: r.customer_name,
+    paymentDate: r.payment_date,
+    amountMinor: Number(r.amount_minor),
+    currency: r.currency,
+    method: r.method || undefined,
+    journalId: r.journal_id || undefined,
+    sourceModule: r.source_module || undefined,
+    sourceId: r.source_id || undefined,
+    createdAt: r.created_at,
+  }));
+}
+
+async function d1Audit(db: D1Database, entityType: string, entityId: string, action: string, detail?: string) {
+  await db.prepare(
+    "INSERT INTO fin_audit (id, entity_type, entity_id, action, detail, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+  ).bind(crypto.randomUUID(), entityType, entityId, action, detail || null, new Date().toISOString()).run();
+}
+
+async function d1NextSeq(db: D1Database, kind: "journal" | "invoice"): Promise<number> {
+  const table = kind === "journal" ? "fin_journals" : "fin_invoices";
+  const col = kind === "journal" ? "number" : "number";
+  const prefix = kind === "journal" ? "JE-" : "INV-";
+  const row = await db.prepare(`SELECT ${col} AS n FROM ${table} ORDER BY created_at DESC LIMIT 1`).first<{ n: string }>();
+  if (!row?.n) return 1;
+  const m = String(row.n).replace(prefix, "");
+  const num = parseInt(m, 10);
+  return Number.isFinite(num) ? num + 1 : 1;
+}
+
+async function hydrateFromD1(db: D1Database) {
+  store.accounts = await d1LoadAccounts(db);
+  store.journals = await d1ListJournals(db);
+  store.invoices = await d1ListInvoices(db);
+  store.payments = await d1ListPayments(db);
+  store.seededCoa = true;
+  const jn = await d1NextSeq(db, "journal");
+  const inv = await d1NextSeq(db, "invoice");
+  store.journalSeq = jn;
+  store.invoiceSeq = inv;
+}
+
 
 export const onRequest: PagesFunction<Env> = async (context) => {
-  const { request, params } = context;
+  const { request, params, env } = context;
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
-  ensureCoa();
+
+  const access = requireDb(env);
+  const storageMode = access.mode;
+  // Hydrate from D1 when bound so reads/writes share one store view for calculation helpers
+  if (access.db) {
+    try {
+      await hydrateFromD1(access.db);
+    } catch (e: any) {
+      return json({
+        error: "FIN_DB schema not ready or query failed",
+        detail: String(e?.message || e),
+        hint: "Run: npx wrangler d1 migrations apply cintexa-finance-db --remote",
+      }, 503);
+    }
+  } else {
+    ensureCoa();
+  }
+
+  if (access.error && request.method !== "GET" && request.method !== "OPTIONS" && request.method !== "HEAD") {
+    // Allow GET meta/dashboard to report misconfiguration; block mutations
+    const url0 = new URL(request.url);
+    if (!url0.pathname.endsWith("/meta") && !url0.pathname.endsWith("/dashboard") && url0.pathname.replace(/\/$/, "") !== "/api/finance") {
+      return json({ error: access.error, code: "FIN_DB_REQUIRED" }, 503);
+    }
+  }
+
+  async function persistJournal(j: Journal) {
+    if (access.db) {
+      await d1InsertJournal(access.db, j);
+      await d1Audit(access.db, "journal", j.id, j.status, j.number);
+    }
+  }
+  async function persistInvoice(inv: Invoice) {
+    if (access.db) {
+      await d1InsertInvoice(access.db, inv);
+      await d1Audit(access.db, "invoice", inv.id, "created", inv.number);
+    }
+  }
+  async function persistPayment(pay: Payment) {
+    if (access.db) {
+      await d1InsertPayment(access.db, pay);
+      await d1Audit(access.db, "payment", pay.id, "created", String(pay.amountMinor));
+    }
+  }
+
 
   const raw = params.path;
   const parts = Array.isArray(raw) ? raw : raw ? [raw] : [];
@@ -451,7 +682,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       invoiceCount: store.invoices.length,
       openInvoices: store.invoices.filter((i) => i.status !== "paid" && i.status !== "void").length,
       apiKeysRequired: false,
-      storage: context.env.FIN_DB ? "d1" : "isolate-memory",
+      storage: storageMode === "d1" ? "d1" : (env.FIN_ALLOW_MEMORY === "1" ? "isolate-memory-dev" : "isolate-memory"),
+      d1Configured: Boolean(env.FIN_DB),
       engine: "cintexa-finance-double-entry-v1",
     });
   }
@@ -464,7 +696,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       firebase: false,
       doubleEntry: true,
       baseCurrency: "GHS",
-      storage: context.env.FIN_DB ? "d1" : "isolate-memory",
+      storage: storageMode === "d1" ? "d1" : (env.FIN_ALLOW_MEMORY === "1" ? "isolate-memory-dev" : "isolate-memory"),
+      d1Configured: Boolean(env.FIN_DB),
       warning: context.env.FIN_DB ? null : "Bind FIN_DB (D1) for persistence across isolates",
     });
   }
@@ -529,7 +762,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
     store.journals.push(j);
     audit("journal", j.id, j.status === "posted" ? "created_posted" : "created_draft", j.number);
-    return json({ journal: { ...j, totals: t } }, 201);
+    await persistJournal(j);
+    return json({ journal: { ...j, totals: t }, storage: storageMode }, 201);
   }
 
   if (path.startsWith("journals/") && path.endsWith("/post") && request.method === "POST") {
@@ -646,6 +880,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     inv.journalId = j.id;
     store.invoices.push(inv);
     audit("invoice", inv.id, "created_posted", inv.number);
+    await persistInvoice(inv);
+    if (inv.journalId) { const jj = store.journals.find((x) => x.id === inv.journalId); if (jj) await persistJournal(jj); }
+    await persistInvoice(inv);
+    if (inv.journalId) {
+      const jj = store.journals.find((x) => x.id === inv.journalId);
+      if (jj) await persistJournal(jj);
+    }
 
     // Best-effort diary + sync
     const origin = url.origin;
@@ -737,6 +978,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     store.journals.push(j);
     pay.journalId = j.id;
     store.payments.push(pay);
+    await persistPayment(pay);
+    if (pay.journalId) { const jj = store.journals.find((x) => x.id === pay.journalId); if (jj) await persistJournal(jj); }
     if (inv) {
       inv.amountPaidMinor += amount;
       inv.status = inv.amountPaidMinor >= inv.amountMinor ? "paid" : "partial";

@@ -1,3 +1,11 @@
 name = "cintexa-nexus-cms"
 compatibility_date = "2024-09-01"
 pages_build_output_dir = "artifacts/cintexa/dist/public"
+
+# CINTEXA Finance — permanent Cloudflare D1 storage
+[[d1_databases]]
+binding = "FIN_DB"
+database_name = "cintexa-finance-db"
+database_id = "ed7ed00b-05e7-4c28-96fc-536ccad3e89e"
+# Finance-only migrations (do not apply diary/sync schemas to this database)
+migrations_dir = "migrations/finance"

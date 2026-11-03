@@ -16,11 +16,4 @@ export function finPost<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-export function formatMinor(minor: number, currency = "GHS", digits = 2): string {
-  const v = minor / 10 ** digits;
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: digits }).format(v);
-  } catch {
-    return `${currency} ${v.toFixed(digits)}`;
-  }
-}
+export { formatMinor, formatMoney, parseToMinor } from "./money";

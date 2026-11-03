@@ -26,13 +26,13 @@ export default function FinanceOverview() {
       <div>
         <h1 className="text-2xl font-semibold">CINTEXA Finance</h1>
         <p className="text-sm text-muted-foreground">
-          Double-entry · {d.engine} · storage: {d.storage} · API keys: none
+          Double-entry · {d.engine} · storage: {d.storage}{d.d1Configured === false ? " (bind FIN_DB)" : ""} · API keys: none
         </p>
       </div>
       {d.storage === "isolate-memory" && (
         <Card className="border-amber-500/30 bg-amber-500/5">
           <CardContent className="py-3 text-xs text-muted-foreground">
-            FIN_DB (D1) is not bound — balances live in function isolate memory and reset on redeploy. Bind D1 and apply migrations/d1/0005_cintexa_finance.sql for production persistence.
+            Authoritative store is Cloudflare D1 (FIN_DB). If storage is not d1, bind FIN_DB and run: npx wrangler d1 migrations apply cintexa-finance-db --remote
           </CardContent>
         </Card>
       )}

@@ -27,3 +27,29 @@ Without binding, store is isolate memory (lost on redeploy).
 - `POST /api/finance/accounts/:id/deactivate` — hide from new postings; historical lines retain codes.
 - UI `AccountSelect` component used on General Journal lines, ledger picker, and invoice revenue account.
 - Multi-line journal grid with live debit/credit totals; post only when balanced.
+
+## FIN_DB (Cloudflare D1) persistence
+
+### wrangler.toml
+```toml
+[[d1_databases]]
+binding = "FIN_DB"
+database_name = "cintexa-finance-db"
+database_id = "ed7ed00b-05e7-4c28-96fc-536ccad3e89e"
+migrations_dir = "migrations/finance"
+```
+
+`migrations/finance/` contains only Finance SQL (`0001_cintexa_finance.sql`, `0002_amount_precision.sql`) so diary/sync migrations are **not** applied to this database.
+
+### Apply remote migration (Cloudflare account required)
+```bash
+npx wrangler d1 migrations apply cintexa-finance-db --remote
+```
+
+### Runtime
+- When `FIN_DB` is bound: accounts, journals, lines, invoices, payments, audit hydrate from D1; writes persist via prepared statements / batch.
+- When missing: mutations return **503 FIN_DB_REQUIRED** unless `FIN_ALLOW_MEMORY=1` (local/dev only).
+- Dashboard `storage` field reports `d1` | `isolate-memory-dev` | `isolate-memory`.
+
+### Amount display
+`lib/finance/money.ts`: full values, no K/M abbreviation; whole numbers without forced `.00`; excess decimals rejected with validation error.
