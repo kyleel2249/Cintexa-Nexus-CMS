@@ -16,4 +16,14 @@ export function finPost<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-export { formatMinor, formatMoney, parseToMinor } from "./money";
+export {
+  formatMinor,
+  formatMoney,
+  formatCurrency,
+  formatMinorPlain,
+  parseToMinor,
+  majorToMinor,
+  minorToMajor,
+  currencyMeta,
+} from "./money";
+

@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { finGet, formatMinor } from "@/lib/finance/api";
+import { finGet, formatCurrency, formatMinor } from "@/lib/finance/api";
+
 import { FINANCE_NAV } from "@/lib/finance/nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -73,7 +74,10 @@ export default function FinanceOverview() {
   }
 
   const d = q.data;
-  const m = (n: number) => formatMinor(n, d.currency || "GHS");
+  const currency = d.currency || "GHS";
+  // KPI cards use formatCurrency (symbol + forced two decimals + grouping).
+  // formatMinor remains available for dense tables and remains correct after the engine fix.
+  const m = (n: number) => formatCurrency(Number(n) || 0, currency);
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -113,11 +117,12 @@ export default function FinanceOverview() {
           <Card key={l as string}>
             <CardContent className="pt-4">
               <p className="text-[11px] uppercase text-muted-foreground">{l}</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums">{v}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">{v}</p>
             </CardContent>
           </Card>
         ))}
       </div>
+
       <p className="text-xs text-muted-foreground">
         Metrics from posted journals only. Empty books show zeros — no fabricated demo balances.
       </p>

@@ -24,13 +24,17 @@ export function fiPut<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-export function formatMinor(minor: number, currency = "GHS", digits = 2): string {
-  const v = minor / 10 ** digits;
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: digits }).format(v);
-  } catch {
-    return `${currency} ${v.toFixed(digits)}`;
-  }
-}
+// Re-export the single source of truth so FI and Finance never diverge on display rules.
+export {
+  formatMinor,
+  formatMoney,
+  formatCurrency,
+  formatMinorPlain,
+  parseToMinor,
+  majorToMinor,
+  minorToMajor,
+  currencyMeta,
+} from "@/lib/finance/money";
 
 export { API_BASE };
+
