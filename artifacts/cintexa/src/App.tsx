@@ -59,6 +59,9 @@ const FinancialIntelligenceRoutes = lazyWithRecovery(() =>
 const BusinessDiaryRoutes = lazyWithRecovery(() =>
   import("@/pages/business-diary/routes").then((m) => ({ default: m.BusinessDiaryRoutes })),
 );
+const FinanceRoutes = lazyWithRecovery(() =>
+  import("@/pages/finance/routes").then((m) => ({ default: m.FinanceRoutes })),
+);
 const PublicQuotation = lazyWithRecovery(() => import("@/pages/sales/public-quotation"));
 const PublicLeadForm = lazyWithRecovery(() => import("@/pages/sales/public-lead-form"));
 const CcdiCommandCentre = lazyWithRecovery(() => import("@/pages/ccdi"));
@@ -141,6 +144,7 @@ function AppRoutes() {
             <Route path="/sales/*?" component={SalesRoutes} />
             <Route path="/financial-intelligence/*?" component={FinancialIntelligenceRoutes} />
             <Route path="/business-diary/*?" component={BusinessDiaryRoutes} />
+            <Route path="/finance/*?" component={FinanceRoutes} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>

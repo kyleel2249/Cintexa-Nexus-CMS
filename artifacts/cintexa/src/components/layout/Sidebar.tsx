@@ -3,10 +3,11 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, LineChart, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Sparkles, Shield,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, LineChart, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Landmark, Sparkles, Shield,
 } from "lucide-react";
 import { FI_NAV, activeFiKey } from "@/lib/financial-intelligence/nav";
 import { BD_NAV, activeBdKey } from "@/lib/business-diary/nav";
+import { FINANCE_NAV, activeFinanceKey } from "@/lib/finance/nav";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
@@ -153,6 +154,33 @@ function BusinessDiaryGroup({ location, onNavigate }: { location: string; onNavi
   );
 }
 
+
+function CintexaFinanceGroup({ location, onNavigate }: { location: string; onNavigate?: () => void }) {
+  const onF = location === "/finance" || location.startsWith("/finance/");
+  const [open, setOpen] = useState(onF);
+  const active = activeFinanceKey(location);
+  const sections = [...new Set(FINANCE_NAV.map((i) => i.section))];
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center gap-2 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+        <Landmark className="h-3.5 w-3.5" /><span>CINTEXA Finance</span><ChevronDown className={cn("ml-auto h-3.5 w-3.5 transition-transform", open || onF ? "rotate-180" : "")} />
+      </button>
+      {(open || onF) && (
+        <nav aria-label="CINTEXA Finance" className="space-y-1">
+          {sections.map((sec) => (
+            <div key={sec} className="space-y-1">
+              <p className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{sec}</p>
+              {FINANCE_NAV.filter((i) => i.section === sec).map((i) => (
+                <NavLink key={i.key} href={i.href} label={i.label} Icon={Landmark} active={active === i.key} onNavigate={onNavigate} />
+              ))}
+            </div>
+          ))}
+        </nav>
+      )}
+    </div>
+  );
+}
+
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -162,6 +190,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         {navGroups.slice(0, 1).map((group) => <Group key={group.title} group={group} location={location} onNavigate={onNavigate} />)}
         <SalesGroup location={location} onNavigate={onNavigate} />
         <FinancialIntelligenceGroup location={location} onNavigate={onNavigate} />
+        <CintexaFinanceGroup location={location} onNavigate={onNavigate} />
         <BusinessDiaryGroup location={location} onNavigate={onNavigate} />
         {navGroups.slice(1).map((group) => <Group key={group.title} group={group} location={location} onNavigate={onNavigate} />)}
       </div>
