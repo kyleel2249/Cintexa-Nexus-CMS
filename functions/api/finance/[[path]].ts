@@ -564,12 +564,13 @@ async function d1LoadAccounts(db: D1Database): Promise<Account[]> {
 async function d1InsertJournal(db: D1Database, j: Journal) {
   await db.batch([
     db.prepare(
-      `INSERT INTO fin_journals (id, number, journal_type, entry_date, posting_date, description, source_module, source_id, currency, status, created_at, posted_at, reversed_by)
+      `INSERT OR REPLACE INTO fin_journals (id, number, journal_type, entry_date, posting_date, description, source_module, source_id, currency, status, created_at, posted_at, reversed_by)
        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     ).bind(
       j.id, j.number, j.journalType, j.entryDate, j.postingDate || null, j.description,
       j.sourceModule || null, j.sourceId || null, j.currency, j.status, j.createdAt, j.postedAt || null, j.reversedBy || null,
     ),
+    db.prepare(`DELETE FROM fin_journal_lines WHERE journal_id = ?`).bind(j.id),
     ...j.lines.map((l) =>
       db.prepare(
         `INSERT INTO fin_journal_lines (id, journal_id, account_id, account_code, memo, debit, credit) VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -612,7 +613,7 @@ async function d1ListJournals(db: D1Database): Promise<Journal[]> {
 
 async function d1InsertInvoice(db: D1Database, inv: Invoice) {
   await db.prepare(
-    `INSERT INTO fin_invoices (id, number, customer_id, customer_name, issue_date, due_date, currency, amount_minor, amount_paid_minor, status, source_module, source_id, journal_id, created_at)
+    `INSERT OR REPLACE INTO fin_invoices (id, number, customer_id, customer_name, issue_date, due_date, currency, amount_minor, amount_paid_minor, status, source_module, source_id, journal_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     inv.id, inv.number, null, inv.customerName, inv.issueDate, inv.dueDate || null, inv.currency,
@@ -641,7 +642,7 @@ async function d1ListInvoices(db: D1Database): Promise<Invoice[]> {
 
 async function d1InsertPayment(db: D1Database, pay: Payment) {
   await db.prepare(
-    `INSERT INTO fin_payments (id, invoice_id, customer_name, payment_date, amount_minor, currency, method, journal_id, source_module, source_id, created_at)
+    `INSERT OR REPLACE INTO fin_payments (id, invoice_id, customer_name, payment_date, amount_minor, currency, method, journal_id, source_module, source_id, created_at)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   ).bind(
     pay.id, pay.invoiceId || null, pay.customerName, pay.paymentDate, pay.amountMinor, pay.currency,
@@ -664,6 +665,11 @@ async function d1ListPayments(db: D1Database): Promise<Payment[]> {
     sourceId: r.source_id || undefined,
     createdAt: r.created_at,
   }));
+}
+
+async function d1ApplyInvoicePaid(db: D1Database, inv: Invoice) {
+  await db.prepare("UPDATE fin_invoices SET amount_paid_minor = ?, status = ? WHERE id = ?")
+    .bind(inv.amountPaidMinor, inv.status, inv.id).run();
 }
 
 async function d1Audit(db: D1Database, entityType: string, entityId: string, action: string, detail?: string) {
@@ -888,6 +894,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     } catch (e: any) {
       return json({ error: e.message }, 400);
     }
+    await persistJournal(j);
     return json({ journal: j });
   }
 
@@ -920,6 +927,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     store.journals.push(rev);
     j.reversedBy = rev.id;
     audit("journal", j.id, "reversed", rev.number);
+    await persistJournal(rev);
+    await persistJournal(j);
     return json({ original: j, reversal: rev });
   }
 
@@ -997,13 +1006,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     inv.journalId = j.id;
     store.invoices.push(inv);
     audit("invoice", inv.id, "created_posted", inv.number);
-    await persistInvoice(inv);
+    // journal first, then invoice (upserts are idempotent)
     if (inv.journalId) { const jj = store.journals.find((x) => x.id === inv.journalId); if (jj) await persistJournal(jj); }
     await persistInvoice(inv);
-    if (inv.journalId) {
-      const jj = store.journals.find((x) => x.id === inv.journalId);
-      if (jj) await persistJournal(jj);
-    }
 
     // Best-effort diary + sync
     const origin = url.origin;
@@ -1102,6 +1107,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     if (inv) {
       inv.amountPaidMinor += amount;
       inv.status = inv.amountPaidMinor >= inv.amountMinor ? "paid" : "partial";
+      if (access.db) await d1ApplyInvoicePaid(access.db, inv);
     }
     audit("payment", pay.id, "created_posted", String(amount));
     return json({ payment: pay, journal: j, invoice: inv }, 201);
@@ -1159,6 +1165,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         inv.journalId = j.id;
         store.invoices.push(inv);
         audit("invoice", inv.id, "from_sales", inv.number);
+        await persistJournal(j);
+        await persistInvoice(inv);
         return { invoice: inv, journal: j };
       })(),
     );
@@ -1316,6 +1324,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     inv.journalId = j.id;
     store.invoices.push(inv);
     audit("invoice", inv.id, "created_with_discount", `${inv.number} disc=${discount}`);
+    await persistJournal(j);
+    await persistInvoice(inv);
     return json({ invoice: inv, journal: j, gross, discount, net }, 201);
   }
 
@@ -1384,6 +1394,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     };
     store.payments.push(pay);
     audit("payment", pay.id, "settlement_discount", `disc=${discount}`);
+    await persistJournal(j);
+    await persistPayment(pay);
+    if (access.db) await d1ApplyInvoicePaid(access.db, inv);
     return json({ payment: pay, journal: j, invoice: inv, discount }, 201);
   }
 
@@ -1418,6 +1431,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     postJournal(j);
     store.journals.push(j);
     audit("expense", j.id, "purchase_with_discount", `gross=${gross} disc=${discount} net=${net}`);
+    await persistJournal(j);
     return json({ journal: j, gross, discount, net, method: "net" }, 201);
   }
 
@@ -1432,61 +1446,90 @@ export const onRequest: PagesFunction<Env> = async (context) => {
    */
   if (path === "admin/scale-to-minor" && request.method === "POST") {
     const body = await readJson(request);
+    const direction = String(body.direction || "up"); // "up" = x100, "down" = rollback (/100)
     if (String(body.confirm || "") !== "SCALE_JOURNALS_X100") {
       return json({
         error: "Confirmation required",
         hint: 'Pass { "confirm": "SCALE_JOURNALS_X100", "dryRun": true } first',
       }, 400);
     }
+    if (direction !== "up" && direction !== "down") return json({ error: "direction must be up or down" }, 400);
     const dryRun = body.dryRun !== false;
-    const report: { journals: number; lines: number; invoices: number; payments: number; samples: any[] } = {
-      journals: 0, lines: 0, invoices: 0, payments: 0, samples: [],
+    const factor = (n: number) => (direction === "up" ? Math.round(n * 100) : Math.round(n / 100));
+
+    // Guard: refuse to scale up twice (would produce a 10,000x error).
+    const applied = store.audit.length ? store.audit : [];
+    let alreadyApplied = applied.some((a) => a.entityId === "scale-to-minor" && a.action === "applied_up");
+    let alreadyRolledBack = applied.some((a) => a.entityId === "scale-to-minor" && a.action === "applied_down");
+    if (access.db) {
+      const rows = await access.db.prepare(
+        "SELECT action FROM fin_audit WHERE entity_id = 'scale-to-minor' ORDER BY created_at DESC LIMIT 1",
+      ).all();
+      const last = (rows.results?.[0] as any)?.action as string | undefined;
+      alreadyApplied = last === "applied_up";
+      alreadyRolledBack = last === "applied_down" || !last;
+    }
+    if (direction === "up" && alreadyApplied) {
+      return json({ error: "Already scaled up. Roll back with direction:\"down\" first.", code: "ALREADY_SCALED" }, 409);
+    }
+    if (direction === "down" && !alreadyApplied) {
+      return json({ error: "Nothing to roll back — no applied scale-up is recorded.", code: "NOTHING_TO_ROLL_BACK" }, 409);
+    }
+    void alreadyRolledBack;
+
+    const sumBefore = store.journals.reduce((s2, j) => s2 + j.lines.reduce((a, l) => a + l.debit, 0), 0);
+    const report: { journals: number; lines: number; invoices: number; payments: number; debitTotalBefore: number; debitTotalAfter: number; samples: any[] } = {
+      journals: 0, lines: 0, invoices: 0, payments: 0, debitTotalBefore: sumBefore, debitTotalAfter: 0, samples: [],
     };
-    for (const j of store.journals) {
+    // Compute the result first; apply only when not a dry run.
+    const plan = store.journals.map((j) => ({
+      j,
+      lines: j.lines.map((l) => ({ l, debit: factor(l.debit), credit: factor(l.credit) })),
+    }));
+    for (const { j, lines } of plan) {
       report.journals++;
-      for (const l of j.lines) {
-        const before = { debit: l.debit, credit: l.credit };
-        if (!dryRun) {
-          l.debit = Math.round(l.debit * 100);
-          l.credit = Math.round(l.credit * 100);
-        }
+      for (const x of lines) {
         report.lines++;
+        report.debitTotalAfter += x.debit;
         if (report.samples.length < 5) {
-          report.samples.push({
-            journal: j.number,
-            account: l.accountCode,
-            before,
-            after: dryRun
-              ? { debit: Math.round(before.debit * 100), credit: Math.round(before.credit * 100) }
-              : { debit: l.debit, credit: l.credit },
-          });
+          report.samples.push({ journal: j.number, account: x.l.accountCode, before: { debit: x.l.debit, credit: x.l.credit }, after: { debit: x.debit, credit: x.credit } });
         }
       }
-      if (!dryRun && access.db) await persistJournal(j);
+      // A scaled journal must still balance exactly.
+      const d = lines.reduce((a, x) => a + x.debit, 0);
+      const c = lines.reduce((a, x) => a + x.credit, 0);
+      if (d !== c) return json({ error: `Scaling would unbalance ${j.number}; nothing changed`, debit: d, credit: c }, 409);
     }
-    for (const inv of store.invoices) {
-      report.invoices++;
-      if (!dryRun) {
-        inv.amountMinor = Math.round(inv.amountMinor * 100);
-        inv.amountPaidMinor = Math.round(inv.amountPaidMinor * 100);
+    report.invoices = store.invoices.length;
+    report.payments = store.payments.length;
+
+    if (!dryRun) {
+      for (const { j, lines } of plan) {
+        for (const x of lines) { x.l.debit = x.debit; x.l.credit = x.credit; }
+        if (access.db) await persistJournal(j);
+      }
+      for (const inv of store.invoices) {
+        inv.amountMinor = factor(inv.amountMinor);
+        inv.amountPaidMinor = factor(inv.amountPaidMinor);
         if (access.db) await persistInvoice(inv);
       }
-    }
-    for (const pay of store.payments) {
-      report.payments++;
-      if (!dryRun) {
-        pay.amountMinor = Math.round(pay.amountMinor * 100);
+      for (const pay of store.payments) {
+        pay.amountMinor = factor(pay.amountMinor);
         if (access.db) await persistPayment(pay);
       }
+      audit("admin", "scale-to-minor", direction === "up" ? "applied_up" : "applied_down", JSON.stringify({ lines: report.lines }));
+      if (access.db) await d1Audit(access.db, "admin", "scale-to-minor", direction === "up" ? "applied_up" : "applied_down", JSON.stringify({ lines: report.lines }));
     }
-    audit("admin", "scale-to-minor", dryRun ? "dry_run" : "applied", JSON.stringify({ lines: report.lines }));
     return json({
       ok: true,
       dryRun,
+      direction,
       report,
       note: dryRun
         ? "Dry run only — no data changed. Re-post with dryRun:false to apply."
-        : "Applied ×100 so storage matches true minor units. Display uses minor÷100.",
+        : direction === "up"
+          ? "Applied ×100 so storage matches true minor units. Roll back with direction:\"down\" if wrong."
+          : "Rolled back ÷100.",
     });
   }
 

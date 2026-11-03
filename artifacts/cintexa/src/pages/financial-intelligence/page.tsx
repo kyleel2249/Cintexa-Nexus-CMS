@@ -252,32 +252,28 @@ export default function FiPage({ mode }: { mode: Mode }) {
 
   if (mode === "entries") {
     const q = useQuery({ queryKey: ["fi", "entries"], queryFn: () => fiGet<any>("/entries") });
-    const [date, setDate] = useState(new Date().toISOString().slice(0, 10));
-    const post = useMutation({
-      mutationFn: () =>
-        fiPost("/entries", {
-          date,
-          lines: [
-            { accountCode: "1000", accountName: "Cash", type: "asset", debit: 10000, credit: 0 },
-            { accountCode: "4000", accountName: "Sales", type: "revenue", debit: 0, credit: 10000 },
-          ],
-          memo: "Quick cash sale (minor units)",
-        }),
-      onSuccess: () => qc.invalidateQueries({ queryKey: ["fi"] }),
-    });
     return (
-      <Shell title="Journal entries" desc="Debits must equal credits (minor units)">
-        <div className="flex flex-wrap gap-2 mb-4">
-          <Input type="date" value={date} onChange={(e) => setDate(e.target.value)} className="w-44" />
-          <Button onClick={() => post.mutate()} disabled={post.isPending}>Post sample balanced entry</Button>
+      <Shell title="Journal entries" desc="Read from the CINTEXA Finance ledger — one set of books, amounts in minor units">
+        <div className="flex flex-wrap items-center gap-2 mb-4">
+          <p className="text-sm text-muted-foreground">
+            Financial Intelligence has no ledger of its own. Post entries in Finance → General Journal and they appear here, in every statement and on the dashboard.
+          </p>
+          <a href="/finance/journals"><Button>Open Finance General Journal</Button></a>
         </div>
+        {q.data?.ledger?.error && (
+          <p className="text-sm text-destructive mb-3">Ledger unavailable: {q.data.ledger.error}</p>
+        )}
         <div className="space-y-2 text-sm">
-          {(q.data?.items || []).map((e: any) => (
-            <Card key={e.id}><CardContent className="py-3">
-              <div className="flex justify-between gap-2"><span>{e.date} · {e.status}</span><span className="text-xs text-muted-foreground">{e.id.slice(0, 8)}</span></div>
-              {e.memo && <p className="text-xs text-muted-foreground">{e.memo}</p>}
-            </CardContent></Card>
-          ))}
+          {(q.data?.items || []).length === 0 && <p className="text-muted-foreground">No posted Finance journals yet.</p>}
+          {(q.data?.items || []).map((e: any) => {
+            const dr = (e.lines || []).reduce((t: number, l: any) => t + (Number(l.debit) || 0), 0);
+            return (
+              <Card key={e.id}><CardContent className="py-3">
+                <div className="flex justify-between gap-2"><span>{e.date} · {e.status}</span><span className="tabular-nums">{formatCurrency(dr, e.currency || "GHS")}</span></div>
+                {e.memo && <p className="text-xs text-muted-foreground">{e.memo}</p>}
+              </CardContent></Card>
+            );
+          })}
         </div>
       </Shell>
     );
