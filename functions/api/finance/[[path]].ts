@@ -971,19 +971,24 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       const existing = store.invoices.find((x) => x.sourceModule === inv.sourceModule && x.sourceId === inv.sourceId)!;
       return json({ invoice: existing, duplicate: true });
     }
+    const invDesc = body.description
+      ? String(body.description).slice(0, 500)
+      : `Invoice ${inv.number} — ${customerName}: recognition of revenue and accounts receivable.`;
+    const arMemo = body.arMemo ? String(body.arMemo).slice(0, 300) : inv.number;
+    const revMemo = body.revenueMemo ? String(body.revenueMemo).slice(0, 300) : inv.number;
     const j: Journal = {
       id: crypto.randomUUID(),
       number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
       journalType: "sales",
       entryDate: issueDate,
-      description: `Invoice ${inv.number} — ${customerName}`,
+      description: invDesc,
       sourceModule: inv.sourceModule,
       sourceId: inv.id,
       currency: inv.currency,
       status: "draft",
       lines: [
-        { id: crypto.randomUUID(), accountId: ar.id, accountCode: ar.code, memo: inv.number, debit: amount, credit: 0 },
-        { id: crypto.randomUUID(), accountId: rev.id, accountCode: rev.code, memo: inv.number, debit: 0, credit: amount },
+        { id: crypto.randomUUID(), accountId: ar.id, accountCode: ar.code, memo: arMemo, debit: amount, credit: 0 },
+        { id: crypto.randomUUID(), accountId: rev.id, accountCode: rev.code, memo: revMemo, debit: 0, credit: amount },
       ],
       createdAt: new Date().toISOString(),
     };
@@ -1075,14 +1080,16 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
       journalType: "cash_receipt",
       entryDate: paymentDate,
-      description: `Payment from ${customerName}${inv ? ` for ${inv.number}` : ""}`,
+      description: body.description
+        ? String(body.description).slice(0, 500)
+        : `Payment from ${customerName}${inv ? ` for ${inv.number}` : ""}: cash increases, receivable decreases.`,
       sourceModule: pay.sourceModule,
       sourceId: pay.id,
       currency: pay.currency,
       status: "draft",
       lines: [
-        { id: crypto.randomUUID(), accountId: bank.id, accountCode: bank.code, memo: "Receipt", debit: amount, credit: 0 },
-        { id: crypto.randomUUID(), accountId: ar.id, accountCode: ar.code, memo: inv?.number || "AR", debit: 0, credit: amount },
+        { id: crypto.randomUUID(), accountId: bank.id, accountCode: bank.code, memo: body.bankMemo ? String(body.bankMemo).slice(0, 300) : "Receipt", debit: amount, credit: 0 },
+        { id: crypto.randomUUID(), accountId: ar.id, accountCode: ar.code, memo: body.arMemo ? String(body.arMemo).slice(0, 300) : (inv?.number || "AR"), debit: 0, credit: amount },
       ],
       createdAt: new Date().toISOString(),
     };

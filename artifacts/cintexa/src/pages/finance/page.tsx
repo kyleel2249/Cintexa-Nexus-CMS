@@ -6,6 +6,11 @@ import {
   explainAccount,
   type DocumentationResult,
 } from "@/lib/finance/documentation-engine";
+import {
+  narrativeForFinanceInvoice,
+  narrativeForFinancePayment,
+} from "@/lib/finance/sales-narratives";
+
 
 
 import { AccountSelect, type AccountOption } from "@/components/finance/AccountSelect";
@@ -149,12 +154,26 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     // Major units in the form (15000 = GH₵ 15,000.00); converted to minor on post
     const [amount, setAmount] = useState("15000");
     const [rev, setRev] = useState<AccountOption | null>(null);
+    const amountMinor = majorToMinor(Number(amount) || 0);
+    const invNarrative = useMemo(
+      () =>
+        narrativeForFinanceInvoice({
+          customerName: name || "Customer",
+          amountMinor,
+          revenueAccountCode: rev?.code,
+          revenueAccountName: rev?.name,
+        }),
+      [name, amountMinor, rev?.code, rev?.name],
+    );
     const create = useMutation({
       mutationFn: () =>
         finPost("/invoices", {
           customerName: name,
-          amountMinor: majorToMinor(Number(amount) || 0),
+          amountMinor,
           revenueAccountCode: rev?.code || "4020",
+          description: invNarrative.description,
+          arMemo: invNarrative.arMemo,
+          revenueMemo: invNarrative.revenueMemo,
         }),
       onSuccess: inv,
     });
@@ -166,6 +185,16 @@ export default function FinancePage({ mode }: { mode: Mode }) {
           <AccountSelect value={rev} onChange={setRev} placeholder="Revenue account (search)…" />
           <Button disabled={!name || create.isPending} onClick={() => create.mutate()}>Issue invoice</Button>
         </div>
+        {name && amountMinor > 0 && (
+          <Card className="mb-4 border-primary/20 bg-primary/5">
+            <CardContent className="py-3 text-xs space-y-1">
+              <p className="font-medium text-sm">Auto documentation</p>
+              <p>{invNarrative.description}</p>
+              <p className="text-muted-foreground">{invNarrative.documentation.financialImpact.summary}</p>
+              <p className="text-muted-foreground">Completeness: {invNarrative.documentation.completenessScore}%</p>
+            </CardContent>
+          </Card>
+        )}
         <div className="space-y-2 text-sm">
           {(q.data?.items || []).map((i) => (
             <Card key={i.id}><CardContent className="py-3">
@@ -178,17 +207,32 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     );
   }
 
+
   if (mode === "payments") {
     const invs = useQuery({ queryKey: ["fin", "inv"], queryFn: () => finGet<{ items: any[] }>("/invoices") });
     const pays = useQuery({ queryKey: ["fin", "pay"], queryFn: () => finGet<{ items: any[] }>("/payments") });
     const [invoiceId, setInvoiceId] = useState("");
     const [amount, setAmount] = useState("");
+    const selectedInv = (invs.data?.items || []).find((i) => i.id === invoiceId);
+    const payMinor = majorToMinor(Number(amount) || 0);
+    const payNarrative = useMemo(
+      () =>
+        narrativeForFinancePayment({
+          customerName: selectedInv?.customerName || "Customer",
+          amountMinor: payMinor,
+          invoiceNumber: selectedInv?.number,
+        }),
+      [selectedInv?.customerName, selectedInv?.number, payMinor],
+    );
     const create = useMutation({
       mutationFn: () =>
         finPost("/payments", {
           invoiceId,
-          amountMinor: majorToMinor(Number(amount) || 0),
+          amountMinor: payMinor,
           bankAccountCode: "1030",
+          description: payNarrative.description,
+          bankMemo: payNarrative.bankMemo,
+          arMemo: payNarrative.arMemo,
         }),
       onSuccess: () => { inv(); setAmount(""); },
     });
@@ -204,6 +248,15 @@ export default function FinancePage({ mode }: { mode: Mode }) {
           <Input placeholder="Amount (GHS)" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-36" />
           <Button disabled={!invoiceId || !amount || create.isPending} onClick={() => create.mutate()}>Record payment</Button>
         </div>
+        {invoiceId && payMinor > 0 && (
+          <Card className="mb-4 border-primary/20 bg-primary/5">
+            <CardContent className="py-3 text-xs space-y-1">
+              <p className="font-medium text-sm">Auto documentation</p>
+              <p>{payNarrative.description}</p>
+              <p className="text-muted-foreground">{payNarrative.documentation.financialImpact.summary}</p>
+            </CardContent>
+          </Card>
+        )}
         {create.isError && <p className="text-sm text-rose-600 mb-2">Payment rejected.</p>}
         <div className="space-y-2 text-sm">
           {(pays.data?.items || []).map((p) => (
@@ -213,6 +266,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
       </Shell>
     );
   }
+
 
 
   if (mode === "ledger") {
