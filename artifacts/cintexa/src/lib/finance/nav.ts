@@ -7,6 +7,7 @@ export const FINANCE_NAV = [
   { key: "pnl", label: "Profit & Loss", href: "/finance/profit-loss", section: "Reports" },
   { key: "bs", label: "Balance Sheet", href: "/finance/balance-sheet", section: "Reports" },
   { key: "invoices", label: "Invoices / AR", href: "/finance/invoices", section: "Receivables" },
+  { key: "discounts", label: "Discounts & Prof. Services", href: "/finance/discounts", section: "Receivables" },
   { key: "payments", label: "Payments", href: "/finance/payments", section: "Receivables" },
   { key: "audit", label: "Audit Trail", href: "/finance/audit", section: "System" },
 ] as const;

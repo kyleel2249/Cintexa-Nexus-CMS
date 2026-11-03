@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "audit";
+type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "discounts" | "audit";
 
 interface DraftLine {
   key: string;
@@ -102,9 +102,12 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     return (
       <Shell title="Profit & Loss" desc={q.data?.note || ""}>
         {q.data && (
-          <div className="grid gap-3 sm:grid-cols-3">
-            <Metric label="Revenue" value={formatMinor(q.data.revenue, cur)} />
+          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <Metric label="Gross revenue" value={formatMinor(q.data.grossRevenue ?? q.data.revenue, cur)} />
+            <Metric label="Discount Allowed" value={formatMinor(q.data.discountAllowed || 0, cur)} />
+            <Metric label="Net revenue" value={formatMinor(q.data.netRevenue ?? q.data.revenue, cur)} />
             <Metric label="Expenses" value={formatMinor(q.data.expense, cur)} />
+            <Metric label="Discount Received" value={formatMinor(q.data.discountReceived || 0, cur)} />
             <Metric label="Net profit" value={formatMinor(q.data.netProfit, cur)} />
           </div>
         )}
@@ -220,6 +223,11 @@ export default function FinancePage({ mode }: { mode: Mode }) {
         )}
       </Shell>
     );
+  }
+
+
+  if (mode === "discounts") {
+    return <DiscountsWorkspace onDone={inv} />;
   }
 
   const q = useQuery({ queryKey: ["fin", "audit"], queryFn: () => finGet<{ items: any[] }>("/audit") });
@@ -375,6 +383,77 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
           </CardContent></Card>
         ))}
       </div>
+    </Shell>
+  );
+}
+
+
+function DiscountsWorkspace({ onDone }: { onDone: () => void }) {
+  const [customer, setCustomer] = useState("");
+  const [gross, setGross] = useState("1000000");
+  const [disc, setDisc] = useState("50000");
+  const [revAcc, setRevAcc] = useState<AccountOption | null>(null);
+  const [discAcc, setDiscAcc] = useState<AccountOption | null>(null);
+  const [msg, setMsg] = useState("");
+  const invDisc = useMutation({
+    mutationFn: () =>
+      finPost<any>("/invoices/with-discount", {
+        customerName: customer,
+        grossMinor: Number(gross),
+        discountMinor: Number(disc),
+        revenueAccountCode: revAcc?.code || "4230",
+        discountAccountCode: discAcc?.code || "4320",
+      }),
+    onSuccess: (r) => {
+      setMsg(`Invoice ${r.invoice?.number}: gross ${r.gross} disc ${r.discount} net ${r.net}`);
+      onDone();
+    },
+    onError: () => setMsg("Invoice with discount failed"),
+  });
+  const [expGross, setExpGross] = useState("500000");
+  const [expDisc, setExpDisc] = useState("25000");
+  const [expAcc, setExpAcc] = useState<AccountOption | null>(null);
+  const expMut = useMutation({
+    mutationFn: () =>
+      finPost<any>("/expenses/with-discount", {
+        grossMinor: Number(expGross),
+        discountMinor: Number(expDisc),
+        expenseAccountCode: expAcc?.code || "6410",
+        description: "Professional services purchase net of discount received",
+      }),
+    onSuccess: (r) => {
+      setMsg(`Purchase JE ${r.journal?.number}: gross ${r.gross} disc received ${r.discount} net ${r.net}`);
+      onDone();
+    },
+  });
+  return (
+    <Shell title="Discounts & Professional Services" desc="Discount Allowed reduces revenue; Discount Received reduces purchase cost · COA-backed">
+      <Card className="mb-4"><CardContent className="pt-4 space-y-3">
+        <p className="text-sm font-medium">Customer invoice with Discount Allowed</p>
+        <p className="text-xs text-muted-foreground">Dr AR (net) + Dr 4320 Discount Allowed / Cr Revenue (gross)</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input placeholder="Customer" value={customer} onChange={(e) => setCustomer(e.target.value)} />
+          <Input placeholder="Gross (minor)" value={gross} onChange={(e) => setGross(e.target.value)} />
+          <Input placeholder="Discount Allowed (minor)" value={disc} onChange={(e) => setDisc(e.target.value)} />
+          <AccountSelect value={revAcc} onChange={setRevAcc} placeholder="Revenue account (e.g. 4230)…" />
+          <AccountSelect value={discAcc} onChange={setDiscAcc} placeholder="Discount Allowed account (4320)…" />
+          <Button disabled={!customer || invDisc.isPending} onClick={() => invDisc.mutate()}>Post discounted invoice</Button>
+        </div>
+      </CardContent></Card>
+      <Card className="mb-4"><CardContent className="pt-4 space-y-3">
+        <p className="text-sm font-medium">Supplier bill with Discount Received (net method)</p>
+        <p className="text-xs text-muted-foreground">Dr expense (net) / Cr AP (net) — discount reduces cost, not revenue</p>
+        <div className="grid gap-2 sm:grid-cols-2">
+          <Input placeholder="Gross (minor)" value={expGross} onChange={(e) => setExpGross(e.target.value)} />
+          <Input placeholder="Discount Received (minor)" value={expDisc} onChange={(e) => setExpDisc(e.target.value)} />
+          <AccountSelect value={expAcc} onChange={setExpAcc} placeholder="Expense account (e.g. 6410)…" />
+          <Button disabled={expMut.isPending} onClick={() => expMut.mutate()}>Post purchase with discount</Button>
+        </div>
+      </CardContent></Card>
+      {msg && <p className="text-sm text-emerald-700 dark:text-emerald-400">{msg}</p>}
+      <p className="text-xs text-muted-foreground">
+        Accounts 432x, 516x, 423x, 641x are in the central Chart of Accounts and appear in every journal AccountSelect search.
+      </p>
     </Shell>
   );
 }

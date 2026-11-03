@@ -19,6 +19,7 @@ export function FinanceRoutes() {
         <Route path="/finance/balance-sheet">{() => <FinancePage mode="bs" />}</Route>
         <Route path="/finance/invoices">{() => <FinancePage mode="invoices" />}</Route>
         <Route path="/finance/payments">{() => <FinancePage mode="payments" />}</Route>
+        <Route path="/finance/discounts">{() => <FinancePage mode="discounts" />}</Route>
         <Route path="/finance/audit">{() => <FinancePage mode="audit" />}</Route>
         <Route component={NotFound} />
       </Switch>

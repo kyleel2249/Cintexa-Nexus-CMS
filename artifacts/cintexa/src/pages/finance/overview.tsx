@@ -38,7 +38,8 @@ export default function FinanceOverview() {
       )}
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         {[
-          ["Revenue (posted)", m(d.revenue)],
+          ["Gross / net revenue", m(d.grossRevenue ?? d.revenue)],
+          ["Discount Allowed", m(d.discountAllowed || 0)],
           ["Expenses (posted)", m(d.expense)],
           ["Net profit", m(d.netProfit)],
           ["Cash + bank", m(d.cash)],

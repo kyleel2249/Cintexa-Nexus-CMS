@@ -219,6 +219,47 @@ function ensureCoa() {
     ["7080", "Income Tax Expense", "expense"],
     ["8010", "Output VAT Control", "liability", "tax"],
     ["8020", "Input VAT Control", "asset", "tax"],
+    // Discount Allowed — revenue contra (debit normal)
+    ["4320", "Discount Allowed", "expense", "discount_allowed"],
+    ["4321", "Early Payment Discount Allowed", "expense", "discount_allowed"],
+    ["4322", "Promotional Discount Allowed", "expense", "discount_allowed"],
+    ["4323", "Volume Discount Allowed", "expense", "discount_allowed"],
+    ["4324", "Negotiated Discount Allowed", "expense", "discount_allowed"],
+    ["4325", "Customer Loyalty Discount Allowed", "expense", "discount_allowed"],
+    ["4326", "Contractual Discount Allowed", "expense", "discount_allowed"],
+    ["4329", "Other Discounts Allowed", "expense", "discount_allowed"],
+    // Discount Received — cost/expense reduction (credit normal) stored as revenue-type for credit-normal presentation
+    ["5160", "Discount Received", "revenue", "discount_received"],
+    ["5161", "Early Payment Discount Received", "revenue", "discount_received"],
+    ["5162", "Purchase Volume Discount Received", "revenue", "discount_received"],
+    ["5163", "Negotiated Discount Received", "revenue", "discount_received"],
+    ["5164", "Contractual Discount Received", "revenue", "discount_received"],
+    ["5165", "Supplier Promotional Discount Received", "revenue", "discount_received"],
+    ["5169", "Other Discounts Received", "revenue", "discount_received"],
+    // Other Professional Services Revenue
+    ["4230", "Other Professional Services Revenue", "revenue"],
+    ["4231", "Business Consulting Revenue", "revenue"],
+    ["4232", "Management Consulting Revenue", "revenue"],
+    ["4233", "Financial Consulting Revenue", "revenue"],
+    ["4234", "Accounting and Bookkeeping Services Revenue", "revenue"],
+    ["4235", "Business Advisory Revenue", "revenue"],
+    ["4236", "Project Management Consulting Revenue", "revenue"],
+    ["4237", "Research and Analysis Services Revenue", "revenue"],
+    ["4238", "Documentation and Technical Writing Revenue", "revenue"],
+    ["4239", "Professional Training and Development Revenue", "revenue"],
+    ["4240", "Administrative Support Services Revenue", "revenue"],
+    ["4245", "Other Specialist Professional Services Revenue", "revenue"],
+    // Other Professional Services Expenses
+    ["6410", "Other Professional Services Expenses", "expense"],
+    ["6411", "Legal and Advisory Services", "expense"],
+    ["6412", "External Accounting Services", "expense"],
+    ["6413", "External Bookkeeping Services", "expense"],
+    ["6414", "Business Consulting Expenses", "expense"],
+    ["6417", "Audit and Assurance Services", "expense"],
+    ["6418", "Tax Advisory Services", "expense"],
+    ["6421", "Independent Contractor Services", "expense"],
+    ["6426", "Other Specialist Consultancy Expenses", "expense"],
+
     ];
   for (const [code, name, type, subtype] of rows) {
     if (store.accounts.some((a) => a.code === code)) continue;
@@ -287,33 +328,58 @@ function trialBalance(asOf?: string) {
   return { rows, totalDebit: totD, totalCredit: totC, balanced: totD === totC, asOf: asOf || null, currency: "GHS" };
 }
 
+function accountPeriodBalance(code: string, from?: string, to?: string): number {
+  const acc = byCode(code);
+  if (!acc) return 0;
+  let bal = 0;
+  for (const j of store.journals) {
+    if (j.status !== "posted") continue;
+    if (from && j.entryDate < from) continue;
+    if (to && j.entryDate > to) continue;
+    for (const l of j.lines) {
+      if (l.accountCode !== code) continue;
+      if (acc.type === "asset" || acc.type === "expense") bal += l.debit - l.credit;
+      else bal += l.credit - l.debit;
+    }
+  }
+  return bal;
+}
+
 function pnl(from?: string, to?: string) {
   ensureCoa();
-  let revenue = 0, expense = 0;
+  let grossRevenue = 0;
+  let discountAllowed = 0;
+  let discountReceived = 0;
+  let expense = 0;
   for (const a of store.accounts.filter((x) => x.active)) {
     if (a.type !== "revenue" && a.type !== "expense") continue;
-    let bal = 0;
-    for (const j of store.journals) {
-      if (j.status !== "posted") continue;
-      if (from && j.entryDate < from) continue;
-      if (to && j.entryDate > to) continue;
-      for (const l of j.lines) {
-        if (l.accountCode !== a.code) continue;
-        if (a.type === "expense") bal += l.debit - l.credit;
-        else bal += l.credit - l.debit;
-      }
+    const bal = accountPeriodBalance(a.code, from, to);
+    if (a.subtype === "discount_allowed") {
+      discountAllowed += bal; // expense-type debit balance
+      continue;
     }
-    if (a.type === "revenue") revenue += bal;
+    if (a.subtype === "discount_received") {
+      discountReceived += bal; // revenue-type credit balance
+      continue;
+    }
+    if (a.type === "revenue") grossRevenue += bal;
     else expense += bal;
   }
+  const netRevenue = grossRevenue - discountAllowed;
+  const netExpense = expense - discountReceived;
   return {
-    revenue,
+    grossRevenue,
+    discountAllowed,
+    netRevenue,
+    discountReceived,
     expense,
-    netProfit: revenue - expense,
+    netExpense,
+    revenue: netRevenue,
+    netProfit: netRevenue - expense + discountReceived,
     from: from || null,
     to: to || null,
     currency: "GHS",
-    note: "From posted journals only. Not cash position.",
+    note: "Gross revenue less Discount Allowed; Discount Received reduces related cost/expense. Posted journals only.",
   };
 }
 
@@ -370,6 +436,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({
       currency: "GHS",
       revenue: p.revenue,
+      grossRevenue: p.grossRevenue,
+      discountAllowed: p.discountAllowed,
+      discountReceived: p.discountReceived,
       expense: p.expense,
       netProfit: p.netProfit,
       assets: bs.assets,
@@ -819,6 +888,175 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     acc.active = false;
     audit("account", acc.id, "deactivated", acc.code);
     return json({ account: acc });
+  }
+
+
+  // Invoice with Discount Allowed at issuance: Dr AR (net) + Dr Discount Allowed / Cr Revenue (gross)
+  if (path === "invoices/with-discount" && request.method === "POST") {
+    const body = await readJson(request);
+    const gross = Math.round(Number(body.grossMinor ?? body.amountMinor));
+    const discount = Math.round(Number(body.discountMinor) || 0);
+    if (!Number.isFinite(gross) || gross <= 0) return json({ error: "grossMinor required" }, 400);
+    if (discount < 0 || discount >= gross) return json({ error: "discount must be >= 0 and < gross" }, 400);
+    const net = gross - discount;
+    const customerName = String(body.customerName || "Customer").slice(0, 200);
+    const issueDate = String(body.issueDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const revenueCode = String(body.revenueAccountCode || "4230");
+    const discountCode = String(body.discountAccountCode || "4320");
+    const rev = byCode(revenueCode) || byCode("4190")!;
+    const disc = byCode(discountCode) || byCode("4320")!;
+    const ar = byCode("1050")!;
+    const inv: Invoice = {
+      id: crypto.randomUUID(),
+      number: `INV-${String(store.invoiceSeq++).padStart(5, "0")}`,
+      customerName,
+      issueDate,
+      currency: String(body.currency || "GHS"),
+      amountMinor: net,
+      amountPaidMinor: 0,
+      status: "open",
+      sourceModule: body.sourceModule ? String(body.sourceModule) : "finance",
+      sourceId: body.sourceId ? String(body.sourceId) : undefined,
+      createdAt: new Date().toISOString(),
+    };
+    if (inv.sourceId && store.invoices.some((x) => x.sourceModule === inv.sourceModule && x.sourceId === inv.sourceId)) {
+      return json({ invoice: store.invoices.find((x) => x.sourceModule === inv.sourceModule && x.sourceId === inv.sourceId), duplicate: true });
+    }
+    const lines: JournalLine[] = [
+      { id: crypto.randomUUID(), accountId: ar.id, accountCode: ar.code, memo: inv.number, debit: net, credit: 0 },
+      { id: crypto.randomUUID(), accountId: rev.id, accountCode: rev.code, memo: inv.number, debit: 0, credit: gross },
+    ];
+    if (discount > 0) {
+      lines.splice(1, 0, {
+        id: crypto.randomUUID(),
+        accountId: disc.id,
+        accountCode: disc.code,
+        memo: `Discount on ${inv.number}`,
+        debit: discount,
+        credit: 0,
+      });
+    }
+    const j: Journal = {
+      id: crypto.randomUUID(),
+      number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
+      journalType: "sales",
+      entryDate: issueDate,
+      description: `Invoice ${inv.number} gross ${gross} discount ${discount} net ${net}`,
+      sourceModule: inv.sourceModule,
+      sourceId: inv.id,
+      currency: inv.currency,
+      status: "draft",
+      lines,
+      createdAt: new Date().toISOString(),
+    };
+    postJournal(j);
+    store.journals.push(j);
+    inv.journalId = j.id;
+    store.invoices.push(inv);
+    audit("invoice", inv.id, "created_with_discount", `${inv.number} disc=${discount}`);
+    return json({ invoice: inv, journal: j, gross, discount, net }, 201);
+  }
+
+  // Settlement discount on payment: Dr Bank + Dr Discount Allowed / Cr AR (full)
+  if (path === "payments/with-discount" && request.method === "POST") {
+    const body = await readJson(request);
+    const invoiceId = String(body.invoiceId || "");
+    const inv = store.invoices.find((i) => i.id === invoiceId);
+    if (!inv) return json({ error: "Invoice not found" }, 404);
+    const remaining = inv.amountMinor - inv.amountPaidMinor;
+    const discount = Math.round(Number(body.discountMinor) || 0);
+    const payAmount = Math.round(Number(body.amountMinor));
+    if (!Number.isFinite(payAmount) || payAmount <= 0) return json({ error: "amountMinor required" }, 400);
+    if (discount < 0) return json({ error: "discount invalid" }, 400);
+    if (payAmount + discount !== remaining && payAmount + discount > remaining) {
+      return json({ error: "payment + discount exceeds balance", remaining }, 400);
+    }
+    // settle remaining: payment + discount should equal remaining for full settlement
+    const settle = payAmount + discount;
+    if (settle > remaining) return json({ error: "over-allocation", remaining }, 400);
+    const bank = byCode(String(body.bankAccountCode || "1030")) || byCode("1010")!;
+    const ar = byCode("1050")!;
+    const disc = byCode(String(body.discountAccountCode || "4321")) || byCode("4320")!;
+    const paymentDate = String(body.paymentDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const lines: JournalLine[] = [
+      { id: crypto.randomUUID(), accountId: bank.id, accountCode: bank.code, memo: "Settlement", debit: payAmount, credit: 0 },
+      { id: crypto.randomUUID(), accountId: ar.id, accountCode: ar.code, memo: inv.number, debit: 0, credit: settle },
+    ];
+    if (discount > 0) {
+      lines.splice(1, 0, {
+        id: crypto.randomUUID(),
+        accountId: disc.id,
+        accountCode: disc.code,
+        memo: `Settlement discount ${inv.number}`,
+        debit: discount,
+        credit: 0,
+      });
+    }
+    const j: Journal = {
+      id: crypto.randomUUID(),
+      number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
+      journalType: "cash_receipt",
+      entryDate: paymentDate,
+      description: `Payment ${inv.number} paid ${payAmount} discount ${discount}`,
+      sourceModule: "finance",
+      sourceId: inv.id,
+      currency: inv.currency,
+      status: "draft",
+      lines,
+      createdAt: new Date().toISOString(),
+    };
+    postJournal(j);
+    store.journals.push(j);
+    inv.amountPaidMinor += settle;
+    inv.status = inv.amountPaidMinor >= inv.amountMinor ? "paid" : "partial";
+    const pay: Payment = {
+      id: crypto.randomUUID(),
+      invoiceId: inv.id,
+      customerName: inv.customerName,
+      paymentDate,
+      amountMinor: payAmount,
+      currency: inv.currency,
+      method: body.method ? String(body.method) : undefined,
+      journalId: j.id,
+      createdAt: new Date().toISOString(),
+    };
+    store.payments.push(pay);
+    audit("payment", pay.id, "settlement_discount", `disc=${discount}`);
+    return json({ payment: pay, journal: j, invoice: inv, discount }, 201);
+  }
+
+  // Supplier bill with discount received at recording (net expense)
+  if (path === "expenses/with-discount" && request.method === "POST") {
+    const body = await readJson(request);
+    const gross = Math.round(Number(body.grossMinor));
+    const discount = Math.round(Number(body.discountMinor) || 0);
+    if (!Number.isFinite(gross) || gross <= 0) return json({ error: "grossMinor required" }, 400);
+    if (discount < 0 || discount >= gross) return json({ error: "invalid discount" }, 400);
+    const net = gross - discount;
+    const expenseCode = String(body.expenseAccountCode || "6410");
+    const exp = byCode(expenseCode) || byCode("6400")!;
+    const ap = byCode("2010")!;
+    const entryDate = String(body.entryDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    // Net method: expense and AP at net (discount reduces cost immediately)
+    const j: Journal = {
+      id: crypto.randomUUID(),
+      number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
+      journalType: "purchase",
+      entryDate,
+      description: String(body.description || `Supplier bill net of discount ${discount}`).slice(0, 500),
+      sourceModule: "procurement",
+      currency: String(body.currency || "GHS"),
+      status: "draft",
+      lines: [
+        { id: crypto.randomUUID(), accountId: exp.id, accountCode: exp.code, debit: net, credit: 0 },
+        { id: crypto.randomUUID(), accountId: ap.id, accountCode: ap.code, debit: 0, credit: net },
+      ],
+      createdAt: new Date().toISOString(),
+    };
+    postJournal(j);
+    store.journals.push(j);
+    audit("expense", j.id, "purchase_with_discount", `gross=${gross} disc=${discount} net=${net}`);
+    return json({ journal: j, gross, discount, net, method: "net" }, 201);
   }
 
   return json({ error: "Not found", path }, 404);
