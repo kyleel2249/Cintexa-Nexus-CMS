@@ -1,6 +1,6 @@
 /**
  * Cloudflare Pages Function for /api/*
- * - Proxies to API_ORIGIN when set to a valid http(s) URL (the Express API; AUTH_MODE=open there means no sign-in is needed)
+ * - Proxies to API_ORIGIN when set to a valid http(s) URL (the Express API; Nexus has no sign-in)
  * - Otherwise (unset OR not a valid URL) provides working stubs for sites, OpenRouter settings and API keys
  *   so the SPA does not get empty/405/503 responses on POST/PUT in Settings.
  *   Stub data lives in the function isolate's memory only and is lost on redeploy/restart.
@@ -9,7 +9,6 @@
 type Env = { API_ORIGIN?: string };
 
 const memorySites: any[] = [];
-const memoryKeys: any[] = [];
 let openRouterStore: {
   apiKey: string;
   model: string;
@@ -25,7 +24,7 @@ let openRouterStore: {
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
-  "access-control-allow-headers": "content-type,authorization,x-api-key",
+  "access-control-allow-headers": "content-type",
 };
 
 function json(data: unknown, status = 200) {
@@ -33,12 +32,6 @@ function json(data: unknown, status = 200) {
     status,
     headers: { "content-type": "application/json; charset=utf-8", ...CORS },
   });
-}
-
-function randomHex(bytes: number) {
-  const a = new Uint8Array(bytes);
-  crypto.getRandomValues(a);
-  return Array.from(a, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function maskKey(key: string) {
@@ -142,15 +135,11 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({
       platformName: "CINTEXA CMS",
       maintenanceMode: false,
-      userRegistration: true,
       aiFeatures: true,
-      passwordMinLength: 8,
-      allowPasswordLogin: true,
-      sessionTimeoutMinutes: 60,
     });
   }
   if (method === "GET" && subpath === "settings/whoami") {
-    return json({ ip: request.headers.get("cf-connecting-ip") || "", role: "admin", email: null });
+    return json({ ip: request.headers.get("cf-connecting-ip") || "" });
   }
 
   // --- Sites stub ---
@@ -261,49 +250,17 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     }
   }
 
-  // --- Application API keys stub (in-memory; accepted without any authentication) ---
-  if (subpath === "settings/api-keys" || subpath === "settings/api-keys/") {
-    if (method === "GET") return json(memoryKeys);
-    if (method === "POST") {
-      const body = await readJson(request);
-      const days = Number(body.expiresInDays);
-      const secret = `cxk_${randomHex(24)}`;
-      const entry = {
-        id: randomHex(8),
-        name: String(body.name || "API key").trim().slice(0, 80) || "API key",
-        prefix: secret.slice(0, 12),
-        scopes: Array.isArray(body.scopes) && body.scopes.includes("write") ? ["read", "write"] : ["read"],
-        createdAt: new Date().toISOString(),
-        expiresAt: Number.isFinite(days) && days > 0 ? new Date(Date.now() + days * 86_400_000).toISOString() : null,
-        lastUsedAt: null,
-      };
-      memoryKeys.unshift(entry);
-      return json({ ...entry, secret }, 201);
-    }
-  }
-  if (subpath.startsWith("settings/api-keys/") && method === "DELETE") {
-    const id = subpath.split("/")[2];
-    const idx = memoryKeys.findIndex((k) => k.id === id);
-    if (idx >= 0) memoryKeys.splice(idx, 1);
-    return json({ ok: true }, 200);
-  }
-
   // Other settings GETs — empty safe defaults so UI does not crash
   if (method === "GET" && subpath === "settings/general") {
     return json({
       platformName: "CINTEXA CMS",
       supportEmail: "support@cintexa.com",
       maintenanceMode: false,
-      userRegistration: true,
       aiFeatures: true,
     });
   }
   if (method === "GET" && subpath === "settings/security") {
     return json({
-      require2fa: false,
-      sessionTimeoutMinutes: 60,
-      passwordMinLength: 8,
-      allowPasswordLogin: true,
       ipAllowlist: "",
       apiRateLimitPerMinute: 240,
     });

@@ -44,8 +44,9 @@ export const OPEN_ACTOR = "open-access";
 const RESTRICTED: string[] = [...CCDI_RESTRICTED_PERMISSIONS];
 const CORRELATION_RE = /^[A-Za-z0-9._-]{8,64}$/;
 
+/** Nexus has no sign-in, so CCDI always runs in open mode (the former CCDI_ACCESS_MODE=enforced needed real user logins). */
 export function accessMode(): AccessMode {
-  return String(process.env.CCDI_ACCESS_MODE || "").toLowerCase() === "enforced" ? "enforced" : "open";
+  return "open";
 }
 
 export function isRestricted(code: string): boolean {

@@ -1,5 +1,4 @@
 import { Router } from "express";
-import { randomBytes } from "crypto";
 import {
   getOpenRouterSettings,
   setOpenRouterSettings,
@@ -13,10 +12,9 @@ import {
   DEFAULT_SECURITY,
   getSetting,
   setSetting,
-  type StoredApiKey,
   type StoredWebhook,
 } from "../lib/platform-settings";
-import { requireAdmin, sha256, isIpAllowed } from "../lib/auth-middleware";
+import { requireAdmin, isIpAllowed } from "../lib/auth-middleware";
 import {
   WEBHOOK_EVENTS,
   assertSafeWebhookUrl,
@@ -28,19 +26,6 @@ const router = Router();
 
 const fail = (res: any, e: any, status = 500) => res.status(status).json({ error: e?.message || "Request failed" });
 
-function publicKey(k: StoredApiKey) {
-  return {
-    id: k.id,
-    name: k.name,
-    prefix: k.prefix,
-    scopes: k.scopes ?? ["read"],
-    createdAt: k.createdAt,
-    expiresAt: k.expiresAt ?? null,
-    lastUsedAt: k.lastUsedAt ?? null,
-    revokedAt: k.revokedAt ?? null,
-    // the full secret / hash is never returned
-  };
-}
 
 function publicHook(h: StoredWebhook, revealSecret = false) {
   return {
@@ -53,15 +38,10 @@ function publicHook(h: StoredWebhook, revealSecret = false) {
 router.get("/public", async (_req, res) => {
   try {
     const g = { ...DEFAULT_GENERAL, ...(await getSetting<Partial<typeof DEFAULT_GENERAL>>("general", {})) };
-    const s = { ...DEFAULT_SECURITY, ...(await getSetting<Partial<typeof DEFAULT_SECURITY>>("security", {})) };
     res.json({
       platformName: g.platformName,
       maintenanceMode: g.maintenanceMode,
-      userRegistration: g.userRegistration,
       aiFeatures: g.aiFeatures,
-      passwordMinLength: s.passwordMinLength,
-      allowPasswordLogin: s.allowPasswordLogin,
-      sessionTimeoutMinutes: s.sessionTimeoutMinutes,
     });
   } catch (e) {
     fail(res, e);
@@ -72,8 +52,6 @@ router.get("/public", async (_req, res) => {
 router.get("/whoami", (req, res) => {
   res.json({
     ip: (req.ip || req.socket.remoteAddress || "").replace(/^::ffff:/, ""),
-    role: req.auth?.role ?? null,
-    email: req.auth?.email ?? null,
   });
 });
 
@@ -93,7 +71,6 @@ router.put("/general", requireAdmin, async (req, res) => {
       platformName: typeof b.platformName === "string" && b.platformName.trim() ? b.platformName.trim().slice(0, 120) : current.platformName,
       supportEmail: typeof b.supportEmail === "string" ? b.supportEmail.trim().slice(0, 200) : current.supportEmail,
       maintenanceMode: typeof b.maintenanceMode === "boolean" ? b.maintenanceMode : current.maintenanceMode,
-      userRegistration: typeof b.userRegistration === "boolean" ? b.userRegistration : current.userRegistration,
       aiFeatures: typeof b.aiFeatures === "boolean" ? b.aiFeatures : current.aiFeatures,
     };
     if (next.supportEmail && !/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(next.supportEmail)) {
@@ -123,10 +100,6 @@ router.put("/security", requireAdmin, async (req, res) => {
       return Number.isFinite(n) ? Math.min(max, Math.max(min, Math.round(n))) : fallback;
     };
     const next = {
-      require2fa: typeof b.require2fa === "boolean" ? b.require2fa : current.require2fa,
-      sessionTimeoutMinutes: clamp(b.sessionTimeoutMinutes ?? current.sessionTimeoutMinutes, 5, 10_080, 60),
-      passwordMinLength: clamp(b.passwordMinLength ?? current.passwordMinLength, 6, 64, 8),
-      allowPasswordLogin: typeof b.allowPasswordLogin === "boolean" ? b.allowPasswordLogin : current.allowPasswordLogin,
       ipAllowlist: typeof b.ipAllowlist === "string" ? b.ipAllowlist.trim() : current.ipAllowlist,
       apiRateLimitPerMinute: clamp(b.apiRateLimitPerMinute ?? current.apiRateLimitPerMinute, 30, 10_000, 240),
     };
@@ -139,59 +112,6 @@ router.put("/security", requireAdmin, async (req, res) => {
     }
     await setSetting("security", next);
     res.json(next);
-  } catch (e) {
-    fail(res, e);
-  }
-});
-
-// ---------------------------------------------------------------------------
-// API keys (hashed at rest, scoped, optional expiry)
-// ---------------------------------------------------------------------------
-
-router.get("/api-keys", requireAdmin, async (_req, res) => {
-  try {
-    const keys = await getSetting<StoredApiKey[]>("api_keys", []);
-    res.json(keys.filter((k) => !k.revokedAt).map(publicKey));
-  } catch (e) {
-    fail(res, e);
-  }
-});
-
-router.post("/api-keys", requireAdmin, async (req, res) => {
-  try {
-    const name = String(req.body?.name || "API key").trim().slice(0, 80) || "API key";
-    const scopes: Array<"read" | "write"> = Array.isArray(req.body?.scopes) && req.body.scopes.includes("write") ? ["read", "write"] : ["read"];
-    const days = Number(req.body?.expiresInDays);
-    const expiresAt = Number.isFinite(days) && days > 0 ? new Date(Date.now() + days * 86_400_000).toISOString() : null;
-    const secret = `cxk_${randomBytes(24).toString("hex")}`;
-    const entry: StoredApiKey = {
-      id: randomBytes(8).toString("hex"),
-      name,
-      prefix: secret.slice(0, 12),
-      hash: sha256(secret),
-      scopes,
-      createdAt: new Date().toISOString(),
-      expiresAt,
-      lastUsedAt: null,
-      revokedAt: null,
-    };
-    const keys = await getSetting<StoredApiKey[]>("api_keys", []);
-    keys.unshift(entry);
-    await setSetting("api_keys", keys);
-    res.status(201).json({ ...publicKey(entry), secret }); // secret is shown exactly once
-  } catch (e) {
-    fail(res, e);
-  }
-});
-
-router.delete("/api-keys/:id", requireAdmin, async (req, res) => {
-  try {
-    const keys = await getSetting<StoredApiKey[]>("api_keys", []);
-    const key = keys.find((k) => k.id === req.params.id);
-    if (!key) return res.status(404).json({ error: "API key not found" });
-    key.revokedAt = new Date().toISOString();
-    await setSetting("api_keys", keys);
-    res.status(204).send();
   } catch (e) {
     fail(res, e);
   }

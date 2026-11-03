@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { useTheme, type Accent, type Radius } from "@/components/ThemeProvider";
 import { useToast } from "@/hooks/use-toast";
-import { apiJson, API_BASE } from "@/lib/api";
+import { apiJson } from "@/lib/api";
 import {
   Settings as SettingsIcon,
   Palette,
@@ -30,7 +30,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Tab = "general" | "appearance" | "api-keys" | "webhooks" | "security";
+type Tab = "general" | "appearance" | "ai" | "webhooks" | "security";
 
 const ACCENTS: { value: Exclude<Accent, "custom">; label: string; color: string }[] = [
   { value: "gold", label: "Gold (Cintexa)", color: "hsl(46 89% 55%)" },
@@ -53,7 +53,6 @@ const copy = async (text: string) => {
   }
 };
 
-type ApiKeyRow = { id: string; name: string; prefix: string; scopes?: string[]; createdAt: string; expiresAt?: string | null; lastUsedAt?: string | null };
 type HookRow = { id: string; url: string; events: string[]; active: boolean; secret?: string; createdAt: string; lastStatus?: number | null; lastDeliveryAt?: string | null; failureCount?: number };
 type Delivery = { id: string; webhookId: string; event: string; status: number | null; ok: boolean; durationMs: number; error?: string; at: string };
 
@@ -151,25 +150,19 @@ function AppearanceCard() {
 export default function SettingsPage() {
   const [tab, setTab] = useState<Tab>("general");
   const { toast } = useToast();
-  const [general, setGeneral] = useState({ platformName: "CINTEXA CMS", supportEmail: "support@cintexa.com", maintenanceMode: false, userRegistration: true, aiFeatures: true });
-  const [security, setSecurity] = useState({ require2fa: false, sessionTimeoutMinutes: 60, passwordMinLength: 8, allowPasswordLogin: true, ipAllowlist: "", apiRateLimitPerMinute: 240 });
-  const [apiKeys, setApiKeys] = useState<ApiKeyRow[]>([]);
+  const [general, setGeneral] = useState({ platformName: "CINTEXA CMS", supportEmail: "support@cintexa.com", maintenanceMode: false, aiFeatures: true });
+  const [security, setSecurity] = useState({ ipAllowlist: "", apiRateLimitPerMinute: 240 });
   const [webhooks, setWebhooks] = useState<HookRow[]>([]);
   const [events, setEvents] = useState<string[]>(FALLBACK_EVENTS);
   const [deliveries, setDeliveries] = useState<Delivery[]>([]);
   const [deliveriesFor, setDeliveriesFor] = useState<HookRow | null>(null);
   const [myIp, setMyIp] = useState<string>("");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [adminOnlyNotice, setAdminOnlyNotice] = useState(false);
   const [openRouter, setOpenRouter] = useState({ configured: false, prefix: null as string | null, model: "openai/gpt-4o-mini", siteUrl: "https://cintexa.com", appName: "CINTEXA Nexus CMS", source: "none" });
   const [orKeyInput, setOrKeyInput] = useState("");
   const [orBusy, setOrBusy] = useState(false);
 
   const [busy, setBusy] = useState(false);
-  const [newKeyName, setNewKeyName] = useState("Production");
-  const [newKeyWrite, setNewKeyWrite] = useState(false);
-  const [newKeyDays, setNewKeyDays] = useState(0);
-  const [newKeySecret, setNewKeySecret] = useState<string | null>(null);
   const [hookUrl, setHookUrl] = useState("");
   const [hookEvents, setHookEvents] = useState<string[]>(["content.published", "form.submitted"]);
   const [newHookSecret, setNewHookSecret] = useState<{ url: string; secret: string } | null>(null);
@@ -181,15 +174,13 @@ export default function SettingsPage() {
       try {
         return await apiJson<T>(path);
       } catch (e: any) {
-        if (e?.status === 403) setAdminOnlyNotice(true);
-        else if (e?.status !== 404) setLoadError(e?.message || "Could not load settings");
+        if (e?.status !== 404) setLoadError(e?.message || "Could not load settings");
         return null;
       }
     };
-    const [g, s, k, w, ev, or, who] = await Promise.all([
+    const [g, s, w, ev, or, who] = await Promise.all([
       attempt<any>("/settings/general"),
       attempt<any>("/settings/security"),
-      attempt<ApiKeyRow[]>("/settings/api-keys"),
       attempt<HookRow[]>("/settings/webhooks"),
       attempt<string[]>("/settings/webhooks/events"),
       attempt<any>("/settings/openrouter"),
@@ -197,7 +188,6 @@ export default function SettingsPage() {
     ]);
     if (g && !g.error) setGeneral((p) => ({ ...p, ...g }));
     if (s && !s.error) setSecurity((p) => ({ ...p, ...s }));
-    if (Array.isArray(k)) setApiKeys(k);
     if (Array.isArray(w)) setWebhooks(w);
     if (Array.isArray(ev) && ev.length) setEvents(ev.filter((e) => e !== "webhook.test"));
     if (or && !or.error) setOpenRouter((p) => ({ ...p, ...or }));
@@ -231,36 +221,6 @@ export default function SettingsPage() {
       toast({ title: e?.message || "Save failed", variant: "destructive" });
     } finally {
       setBusy(false);
-    }
-  }
-
-  async function createApiKey() {
-    setBusy(true);
-    setNewKeySecret(null);
-    try {
-      const data = await apiJson<ApiKeyRow & { secret: string }>("/settings/api-keys", {
-        method: "POST",
-        body: JSON.stringify({ name: newKeyName, scopes: newKeyWrite ? ["read", "write"] : ["read"], expiresInDays: newKeyDays || undefined }),
-      });
-      setNewKeySecret(data.secret);
-      const { secret: _s, ...row } = data;
-      setApiKeys((prev) => [row, ...prev]);
-      toast({ title: "API key created — copy it now" });
-    } catch (e: any) {
-      toast({ title: e?.message || "Could not create key", variant: "destructive" });
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function deleteApiKey(id: string) {
-    if (!window.confirm("Revoke this API key? Anything using it will stop working immediately.")) return;
-    try {
-      await apiJson(`/settings/api-keys/${id}`, { method: "DELETE" });
-      setApiKeys((prev) => prev.filter((k) => k.id !== id));
-      toast({ title: "API key revoked" });
-    } catch (e: any) {
-      toast({ title: e?.message || "Failed", variant: "destructive" });
     }
   }
 
@@ -395,14 +355,11 @@ export default function SettingsPage() {
   const nav: { id: Tab; label: string; icon: typeof SettingsIcon }[] = [
     { id: "general", label: "General", icon: SettingsIcon },
     { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "api-keys", label: "API Keys", icon: Key },
+    { id: "ai", label: "AI Provider", icon: Key },
     { id: "webhooks", label: "Webhooks", icon: Webhook },
     { id: "security", label: "Security", icon: Shield },
   ];
 
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
-  const apiUrl = API_BASE.startsWith("http") ? API_BASE : `${origin}${API_BASE}`;
-  const curl = useMemo(() => `curl -H "Authorization: Bearer cxk_YOUR_KEY" ${apiUrl}/posts`, [apiUrl]);
   const verifySnippet = `// Node.js: verify a Nexus webhook
 import { createHmac, timingSafeEqual } from "node:crypto";
 export function verify(rawBody, headers, secret) {
@@ -416,16 +373,12 @@ export function verify(rawBody, headers, secret) {
     <div className="space-y-6">
       <div>
         <h2 className="text-3xl font-bold tracking-tight">Settings</h2>
-        <p className="text-muted-foreground mt-1">Platform configuration, appearance, keys, webhooks and security.</p>
+        <p className="text-muted-foreground mt-1">Platform configuration, appearance, AI provider, webhooks and network protection.</p>
       </div>
 
-      {(loadError || adminOnlyNotice) && (
+      {loadError && (
         <div className="rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm flex items-start justify-between gap-3">
-          <span>
-            {adminOnlyNotice
-              ? "Some settings are visible to administrators only. Add your e-mail to ADMIN_EMAILS on the API server to manage them."
-              : loadError}
-          </span>
+          <span>{loadError}</span>
           <Button size="sm" variant="outline" onClick={() => void load()}>Retry</Button>
         </div>
       )}
@@ -461,7 +414,6 @@ export function verify(rawBody, headers, secret) {
                     <h4 className="text-sm font-semibold">Features</h4>
                     {([
                       ["maintenanceMode", "Maintenance mode", "Shows a maintenance flag to connected sites via /api/settings/public."],
-                      ["userRegistration", "User registration", "Allow new users to sign up."],
                       ["aiFeatures", "AI features", "Enable AI Studio and generation tools."],
                     ] as const).map(([key, label, help]) => (
                       <div key={key} className="flex items-center justify-between">
@@ -483,7 +435,7 @@ export function verify(rawBody, headers, secret) {
 
           {tab === "appearance" && <AppearanceCard />}
 
-          {tab === "api-keys" && (
+          {tab === "ai" && (
             <>
               <Card className="bg-card border-border/50 border-primary/20">
                 <CardHeader>
@@ -518,71 +470,6 @@ export function verify(rawBody, headers, secret) {
                     {openRouter.configured && openRouter.source !== "environment" && (
                       <Button type="button" variant="ghost" className="text-destructive" onClick={() => void clearOpenRouterKey()} disabled={orBusy}>Remove key</Button>
                     )}
-                  </div>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-card border-border/50">
-                <CardHeader>
-                  <CardTitle>Application API keys</CardTitle>
-                  <CardDescription>Generate keys for programmatic access to Nexus. Secrets are hashed at rest and shown once. Keys can never access Settings or Users.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-6">
-                  <div className="grid sm:grid-cols-[1fr_auto_auto] gap-3 items-end">
-                    <div className="space-y-2">
-                      <Label>Key name</Label>
-                      <Input value={newKeyName} onChange={(e) => setNewKeyName(e.target.value)} placeholder="CI pipeline" />
-                    </div>
-                    <div className="space-y-2">
-                      <Label>Expires</Label>
-                      <select className="h-10 rounded-md border bg-background px-3 text-sm" value={newKeyDays} onChange={(e) => setNewKeyDays(Number(e.target.value))}>
-                        <option value={0}>Never</option>
-                        <option value={30}>30 days</option>
-                        <option value={90}>90 days</option>
-                        <option value={365}>1 year</option>
-                      </select>
-                    </div>
-                    <Button onClick={() => void createApiKey()} disabled={busy}>
-                      <Plus className="h-4 w-4 mr-1" />Generate key
-                    </Button>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Switch checked={newKeyWrite} onCheckedChange={setNewKeyWrite} id="key-write" />
-                    <Label htmlFor="key-write" className="text-sm">Allow write access (create / update / delete). Otherwise the key is read-only.</Label>
-                  </div>
-                  {newKeySecret && (
-                    <motion.div initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-2">
-                      <p className="text-sm font-medium">Copy this secret now — it will not be shown again.</p>
-                      <div className="flex gap-2 items-center">
-                        <code className="text-xs break-all flex-1 font-mono">{newKeySecret}</code>
-                        <Button size="icon" variant="outline" onClick={async () => toast({ title: (await copy(newKeySecret)) ? "Copied" : "Copy failed" })}>
-                          <Copy className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </motion.div>
-                  )}
-                  <ul className="space-y-2">
-                    {apiKeys.map((k) => (
-                      <li key={k.id} className="flex items-center justify-between gap-3 border rounded-lg px-3 py-2 text-sm">
-                        <div className="min-w-0">
-                          <div className="font-medium flex items-center gap-2 flex-wrap">
-                            {k.name}
-                            {(k.scopes ?? ["read"]).includes("write") ? <Badge variant="default" className="text-[10px]">read + write</Badge> : <Badge variant="secondary" className="text-[10px]">read-only</Badge>}
-                          </div>
-                          <div className="text-xs text-muted-foreground font-mono">{k.prefix}…</div>
-                          <div className="text-[11px] text-muted-foreground">
-                            Created {new Date(k.createdAt).toLocaleDateString()} · {k.lastUsedAt ? `last used ${new Date(k.lastUsedAt).toLocaleString()}` : "never used"}
-                            {k.expiresAt ? ` · expires ${new Date(k.expiresAt).toLocaleDateString()}` : ""}
-                          </div>
-                        </div>
-                        <Button size="icon" variant="ghost" onClick={() => void deleteApiKey(k.id)} title="Revoke"><Trash2 className="h-4 w-4 text-destructive" /></Button>
-                      </li>
-                    ))}
-                    {!apiKeys.length && <p className="text-sm text-muted-foreground">No API keys yet.</p>}
-                  </ul>
-                  <div className="rounded-lg bg-muted/40 p-3 space-y-1">
-                    <p className="text-xs font-medium">Usage</p>
-                    <code className="text-[11px] break-all block">{curl}</code>
                   </div>
                 </CardContent>
               </Card>
@@ -675,20 +562,10 @@ export function verify(rawBody, headers, secret) {
             <Card className="bg-card border-border/50">
               <CardHeader>
                 <CardTitle>Security</CardTitle>
-                <CardDescription>Session, authentication and access controls. These are enforced by the API.</CardDescription>
+                <CardDescription>Optional network protection: an IP allow-list and a request rate limit. Nexus has no sign-in.</CardDescription>
               </CardHeader>
               <CardContent className="space-y-6">
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5"><Label>Require two-factor authentication</Label><p className="text-sm text-muted-foreground">Prompt admins for 2FA when available.</p></div>
-                  <Switch checked={security.require2fa} onCheckedChange={(v) => setSecurity({ ...security, require2fa: v })} />
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="space-y-0.5"><Label>Allow password login</Label><p className="text-sm text-muted-foreground">Disable to block password sign-in.</p></div>
-                  <Switch checked={security.allowPasswordLogin} onCheckedChange={(v) => setSecurity({ ...security, allowPasswordLogin: v })} />
-                </div>
                 <div className="grid sm:grid-cols-3 gap-4">
-                  <div className="space-y-2"><Label>Session timeout (min)</Label><Input type="number" min={5} value={security.sessionTimeoutMinutes} onChange={(e) => setSecurity({ ...security, sessionTimeoutMinutes: Number(e.target.value) || 60 })} /></div>
-                  <div className="space-y-2"><Label>Min password length</Label><Input type="number" min={6} value={security.passwordMinLength} onChange={(e) => setSecurity({ ...security, passwordMinLength: Number(e.target.value) || 8 })} /></div>
                   <div className="space-y-2"><Label>API requests / minute</Label><Input type="number" min={30} value={security.apiRateLimitPerMinute} onChange={(e) => setSecurity({ ...security, apiRateLimitPerMinute: Number(e.target.value) || 240 })} /></div>
                 </div>
                 <div className="space-y-2">

@@ -116,11 +116,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({
       platformName: "CINTEXA CMS",
       maintenanceMode: false,
-      userRegistration: true,
       aiFeatures: true,
-      passwordMinLength: 8,
-      allowPasswordLogin: true,
-      sessionTimeoutMinutes: 60,
     });
   }
 
@@ -206,20 +202,14 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       platformName: "CINTEXA CMS",
       supportEmail: "support@cintexa.com",
       maintenanceMode: false,
-      userRegistration: true,
       aiFeatures: true,
     });
   }
   if (method === "GET" && subpath === "settings/security") {
     return json({
-      require2fa: false,
-      sessionTimeoutMinutes: 60,
-      passwordMinLength: 8,
-      allowPasswordLogin: true,
       ipAllowlist: "",
     });
   }
-  if (method === "GET" && subpath === "settings/api-keys") return json([]);
   if (method === "GET" && subpath === "settings/webhooks") return json([]);
   if (method === "PUT" && (subpath === "settings/general" || subpath === "settings/security")) {
     const body = await readJson(request);

@@ -4,8 +4,7 @@
  *  - API_BASE          : where the REST API lives (`/api` by default, or VITE_API_BASE_URL)
  *  - apiFetch / apiJson: small helpers that always return a readable Error (never "Unexpected end of JSON").
  *
- * Auth: cookies (credentials: include) + optional Bearer from localStorage (cintexa_token).
- * AUTH_MODE=open on the API treats requests as admin without a login UI.
+ * No authentication: the API serves every request as the built-in operator, so nothing credential-related is sent.
  */
 
 export const API_BASE = ((import.meta.env.VITE_API_BASE_URL as string | undefined) ||
@@ -26,8 +25,7 @@ export class ApiError extends Error {
 /** Human readable explanation for the failures people actually hit. */
 export function explainStatus(status: number, serverMessage?: string): string {
   if (serverMessage && serverMessage !== "API backend not configured") return serverMessage;
-  if (status === 401) return "The API refused the request (authentication is required by that server).";
-  if (status === 403) return "You do not have permission to do that (the server restricts this action).";
+  if (status === 401 || status === 403) return "The API refused the request (a proxy or IP allow-list in front of it may be restricting access).";
   if (status === 404) return "The API route was not found. Check that the API/Functions deployment is up to date.";
   if (status === 429) return "Too many requests. Wait a minute and try again.";
   if (status === 502 || status === 503 || status === 504)
@@ -35,29 +33,12 @@ export function explainStatus(status: number, serverMessage?: string): string {
   return `Request failed (${status}).`;
 }
 
-function readClientToken(): string | null {
-  if (typeof window === "undefined") return null;
-  try {
-    const t =
-      localStorage.getItem("cintexa_token") ||
-      localStorage.getItem("cintexa-api-token") ||
-      sessionStorage.getItem("cintexa_token");
-    return t && t.trim() ? t.trim() : null;
-  } catch {
-    return null;
-  }
-}
-
 export async function apiFetch(path: string, init: RequestInit = {}): Promise<Response> {
   const url = path.startsWith("http") ? path : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("content-type") && typeof init.body === "string") headers.set("content-type", "application/json");
   headers.set("accept", "application/json");
-  if (!headers.has("authorization")) {
-    const token = readClientToken();
-    if (token) headers.set("authorization", `Bearer ${token}`);
-  }
-  return fetch(url, { credentials: "include", ...init, headers });
+  return fetch(url, { ...init, headers });
 }
 
 export async function readJson<T = any>(res: Response): Promise<T | null> {

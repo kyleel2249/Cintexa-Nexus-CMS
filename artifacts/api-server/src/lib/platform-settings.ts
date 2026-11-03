@@ -64,33 +64,16 @@ export const DEFAULT_GENERAL = {
   platformName: "CINTEXA CMS",
   supportEmail: "support@cintexa.com",
   maintenanceMode: false,
-  userRegistration: true,
   aiFeatures: true,
 };
 
 export const DEFAULT_SECURITY = {
-  require2fa: false,
-  sessionTimeoutMinutes: 60,
-  passwordMinLength: 8,
-  allowPasswordLogin: true,
   ipAllowlist: "",
   apiRateLimitPerMinute: 240,
 };
 
 export type GeneralSettings = typeof DEFAULT_GENERAL;
 export type SecuritySettings = typeof DEFAULT_SECURITY;
-
-export type StoredApiKey = {
-  id: string;
-  name: string;
-  prefix: string;
-  hash: string; // sha256 of the secret - the plaintext secret is never stored
-  scopes: Array<"read" | "write">;
-  createdAt: string;
-  expiresAt: string | null;
-  lastUsedAt: string | null;
-  revokedAt?: string | null;
-};
 
 export type StoredWebhook = {
   id: string;

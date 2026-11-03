@@ -1,7 +1,7 @@
 /**
  * CINTEXA CCDI — Phase 2 foundation API (versioned). Mounted at /api/ccdi/v1.
  *
- * Authentication is OPEN by default (CCDI_ACCESS_MODE=open): see services/ccdi-foundation/access.ts.
+ * There is no authentication (CCDI always runs open): see services/ccdi-foundation/access.ts.
  * Every route below still validates input, scopes queries by organisation, writes an audit record
  * for state changes, and never returns secret values.
  *

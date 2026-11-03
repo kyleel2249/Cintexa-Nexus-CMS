@@ -10,7 +10,7 @@ export function SalesRoute({ perm, anyPerm, component: Page, params }: { perm?: 
     return (
       <EmptyState
         title="You are not part of the sales team yet"
-        description="Sales Management needs a sales role. Ask a Sales Administrator to add your sign-in email under Sales Settings → Team, or ask your platform administrator to list your email in SALES_ADMIN_EMAILS to bootstrap the first administrator."
+        description="Sales Management needs a sales role. Ask a Sales Administrator to add your email under Sales Settings → Team, or ask your platform administrator to list your email in SALES_ADMIN_EMAILS to bootstrap the first administrator."
       />
     );
   }

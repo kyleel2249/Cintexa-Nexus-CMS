@@ -18,7 +18,6 @@
 
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
-import bcrypt from "bcryptjs";
 import * as schema from "@workspace/db/schema";
 
 const { Pool } = pg;
@@ -113,15 +112,11 @@ async function main() {
   // ── 1. Users ──────────────────────────────────────────────────────────────
   console.log("👤  Creating users…");
 
-  const adminHash = await bcrypt.hash("Admin@123456", 12);
-  const editorHash = await bcrypt.hash("Editor@123456", 12);
-
   const [admin] = await db.insert(schema.usersTable).values({
     name: "Alex Admin",
     email: "admin@cintexa.com",
     role: "admin",
     status: "active",
-    passwordHash: adminHash,
     bio: "Platform administrator and lead architect of the CINTEXA CMS.",
     avatar: "https://images.unsplash.com/photo-1633332755192-727a05c4013d?w=80&h=80&fit=crop",
   }).returning();
@@ -131,7 +126,6 @@ async function main() {
     email: "sarah@cintexa.com",
     role: "editor",
     status: "active",
-    passwordHash: editorHash,
     bio: "Senior content strategist with 8 years of digital publishing experience.",
     avatar: "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=80&h=80&fit=crop",
   }).returning();
@@ -141,7 +135,6 @@ async function main() {
     email: "marcus@cintexa.com",
     role: "editor",
     status: "active",
-    passwordHash: editorHash,
     bio: "Technical writer and SEO specialist.",
     avatar: "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=80&h=80&fit=crop",
   }).returning();
@@ -151,7 +144,6 @@ async function main() {
     email: "priya@cintexa.com",
     role: "editor",
     status: "active",
-    passwordHash: editorHash,
     bio: "Product marketing lead and visual content creator.",
     avatar: "https://images.unsplash.com/photo-1438761681033-6461ffad8d80?w=80&h=80&fit=crop",
   });

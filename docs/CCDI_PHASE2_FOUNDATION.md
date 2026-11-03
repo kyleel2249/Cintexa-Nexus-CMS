@@ -5,12 +5,7 @@ nothing here has been type-checked, linted, built, run against PostgreSQL or tes
 
 ## Access mode (sign-in is intentionally off)
 
-`CCDI_ACCESS_MODE` on the API server:
-
-| Mode | Behaviour |
-|------|-----------|
-| `open` (default) | No sign-in. `/api/ccdi/v1/*` is public, permissions and membership are not enforced, actor is recorded as `open-access`. Every response carries `X-CCDI-Access-Mode: open`; the UI shows a banner. |
-| `enforced` | Requires an authenticated identity, active organisation membership and the specific permission, all checked on the server. Denials are audited. |
+CCDI always runs in `open` mode now: no sign-in exists, permissions and membership are not enforced, the actor is recorded as `open-access`, and every response carries `X-CCDI-Access-Mode: open`. The former `enforced` mode and `CCDI_ACCESS_MODE` / `CCDI_PLATFORM_ADMINS` variables are no longer honoured because they depended on real user logins.
 
 Open mode still: validates input, scopes queries by organisation, audits every change, never returns secrets, and refuses to
 grant restricted permissions. Switching to `enforced` needs no code change, except that `CCDI_PLATFORM_ADMINS` must list at least one user so the first organisation can be created.

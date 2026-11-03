@@ -1,6 +1,5 @@
 import { Router, type IRouter } from "express";
 import healthRouter from "./health";
-import authRouter from "./auth";
 import dashboardRouter from "./dashboard";
 import sitesRouter from "./sites";
 import pagesRouter from "./pages";
@@ -34,11 +33,9 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 
-// Every route below is authenticated (session JWT cookie or API key)
-// except the explicit public allow-list defined in lib/auth-middleware.ts.
+// No authentication anywhere: the guard attaches the built-in operator identity, then applies the optional IP allow-list and rate limit.
 router.use(apiGuard);
 router.use("/public/forms", publicFormsRouter);
-router.use("/auth", authRouter);
 router.use("/dashboard", dashboardRouter);
 router.use("/sites", sitesRouter);
 router.use("/pages", pagesRouter);
