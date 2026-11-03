@@ -47,7 +47,7 @@ function start() {
   return ready;
 }
 
-export async function localCall(req: Omit<SkRequest, "identity" | "isApiKey">): Promise<SkResponse> {
+export async function localCall(req: Omit<SkRequest, "identity">): Promise<SkResponse> {
   const { db } = await start();
   return handleSentinelRequest(db, { ...req, identity: { ownerId: LOCAL_OWNER } });
 }

@@ -757,7 +757,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       success: connected || Boolean(env.FIN_ALLOW_MEMORY === "1"),
       service: "CINTEXA Finance",
       api: "operational",
-      apiKeysRequired: false,
       database: {
         provider: "Cloudflare D1",
         binding: "FIN_DB",
@@ -796,7 +795,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       journalCount: store.journals.filter((j) => j.status === "posted").length,
       invoiceCount: store.invoices.length,
       openInvoices: store.invoices.filter((i) => i.status !== "paid" && i.status !== "void").length,
-      apiKeysRequired: false,
       storage: storageMode === "d1" ? "d1" : (env.FIN_ALLOW_MEMORY === "1" ? "isolate-memory-dev" : "isolate-memory"),
       d1Configured: Boolean(env.FIN_DB),
       schemaError: schemaError || null,
@@ -808,7 +806,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({
       name: "CINTEXA Finance",
       version: "1.0.0",
-      apiKeysRequired: false,
       doubleEntry: true,
       baseCurrency: "GHS",
       storage: storageMode === "d1" ? "d1" : (env.FIN_ALLOW_MEMORY === "1" ? "isolate-memory-dev" : "isolate-memory"),

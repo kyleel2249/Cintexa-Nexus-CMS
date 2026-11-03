@@ -18,7 +18,7 @@ import { actualFor } from "./targets";
 import { enqueue } from "../integrations/outbox";
 import type { Actor, Db, Queryable } from "../core/types";
 
-const SYSTEM_ACTOR: Actor = { memberId: 0, userSub: "automation", email: "", name: "Automation", role: "sales_admin", teamId: null, teamMemberIds: [], label: "Automation", isApiKey: false };
+const SYSTEM_ACTOR: Actor = { memberId: 0, userSub: "automation", email: "", name: "Automation", role: "sales_admin", teamId: null, teamMemberIds: [], label: "Automation" };
 
 const TABLE: Record<string, string> = { lead: "sales_leads", opportunity: "sales_opportunities", quotation: "sales_quotations", order: "sales_orders", activity: "sales_activities", account: "sales_accounts", renewal: "sales_renewals", target: "sales_targets" };
 const ENTITY_LABEL: Record<string, string> = { lead: "Lead", opportunity: "Opportunity", quotation: "Quotation", order: "Order", activity: "Activity", account: "Account", renewal: "Renewal", target: "Target" };

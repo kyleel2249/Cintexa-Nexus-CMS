@@ -29,10 +29,8 @@ before(async () => {
 });
 after(async () => { if (db) await db.close(); });
 
-test("unmapped users and API keys are denied", { skip }, async () => {
+test("unmapped users and anonymous callers are denied", { skip }, async () => {
   assert.equal((await outsider("GET", "/leads")).status, 403);
-  const key = client(db, { sub: "k", email: "", platformRole: "api", isApiKey: true });
-  assert.equal((await key("GET", "/leads")).status, 403);
   const anon = client(db, undefined);
   assert.equal((await anon("GET", "/leads")).status, 401);
 });

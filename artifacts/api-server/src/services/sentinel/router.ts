@@ -48,7 +48,6 @@ const ROUTES: { method: string; re: RegExp; cls: keyof typeof LIMITS; status?: n
 export async function handleSentinelRequest(db: Db, req: SkRequest, log?: (msg: string, meta?: unknown) => void): Promise<SkResponse> {
   try {
     if (!req.identity?.ownerId) throw new SkError(401, "unauthenticated", "Authentication required");
-    if (req.isApiKey) throw new SkError(403, "forbidden", "API keys cannot access the Sentinel Key vault");
     const path = req.path.replace(/\/+$/, "") || "/";
     const method = req.method.toUpperCase();
     const route = ROUTES.find((r) => r.method === method && r.re.test(path));

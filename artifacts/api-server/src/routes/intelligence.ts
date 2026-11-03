@@ -6,8 +6,7 @@ import { getOpenRouterClient, getOpenRouterModel } from "../lib/openrouter";
 
 /**
  * /api/intelligence/* - thin Express adapter over the shared handler in lib/intelligence (the same code runs on-device).
- * apiGuard (mounted before this router) has already authenticated the caller. API keys are refused: Intelligence can
- * propose and, with approval, perform business actions, so it needs an accountable human identity.
+ * apiGuard (mounted before this router) attaches the built-in operator identity.
  * Deployment == organisation: one CMS deployment is one business, so orgId is "default".
  */
 const router: IRouter = Router();
@@ -26,7 +25,6 @@ async function buildLlm(): Promise<ModelRouter | null> {
 
 router.use(async (req: Request, res: Response) => {
   const a = req.auth;
-  if (a?.role === "api") { res.status(403).json({ error: "API keys cannot use Intelligence", code: "forbidden" }); return; }
   try {
     const i = createIntelligence({ db: pool as never, llm: await buildLlm(), websiteTools: true });
     const out = await handleIntelligence(i, {

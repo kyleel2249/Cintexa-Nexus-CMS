@@ -141,7 +141,7 @@ function toResponse(result: unknown, requestId: string): SalesResponse {
 const MAX_BODY_BYTES = 2_000_000;
 
 /** Stand-in identity for unauthenticated public routes: no permissions, no ownership, clearly labelled in audit logs. */
-export const PUBLIC_ACTOR: Actor = { memberId: 0, userSub: "public", email: "", name: "Public web form", role: "readonly_exec", teamId: null, teamMemberIds: [], label: "Public web form", isApiKey: false };
+export const PUBLIC_ACTOR: Actor = { memberId: 0, userSub: "public", email: "", name: "Public web form", role: "readonly_exec", teamId: null, teamMemberIds: [], label: "Public web form" };
 
 const publicBuckets = new Map<string, { n: number; reset: number }>();
 export function publicRateLimited(key: string, limit = 20, windowMs = 60_000, nowMs = Date.now()): boolean {

@@ -5,8 +5,8 @@ import type { Db } from "../services/sentinel/types";
 import { logger } from "../lib/logger";
 
 /**
- * /api/sentinel/* - thin adapter. Authentication is the platform's apiGuard (session JWT; API keys are
- * refused by the Sentinel layer). Every query is scoped to the authenticated owner; see services/sentinel.
+ * /api/sentinel/* - thin adapter. There is no authentication: apiGuard attaches the built-in operator identity.
+ * Every query is scoped to that owner; see services/sentinel.
  * Responses are never cached: they contain (encrypted) credential material.
  */
 const router: IRouter = Router();
@@ -19,7 +19,7 @@ router.use(async (req: Request, res: Response) => {
     getDb(),
     {
       method: req.method, path: req.path, query: req.query as Record<string, string | string[] | undefined>, body: req.body,
-      identity: a ? { ownerId: `jwt:${String(a.sub)}` } : undefined, isApiKey: a?.role === "api",
+      identity: a ? { ownerId: `jwt:${String(a.sub)}` } : undefined,
     },
     (msg, meta) => logger.error({ meta }, msg),
   );

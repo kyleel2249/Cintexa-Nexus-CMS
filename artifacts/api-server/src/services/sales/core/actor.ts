@@ -1,7 +1,6 @@
 /**
  * Resolve the platform identity (session JWT) to a Sales member + role.
  *
- *  - API keys are refused: Sales holds financial and personal data and API keys have no member identity.
  *  - Nexus has no sign-in, so the identity is always the built-in operator. A platform `admin` with no member row is
  *    provisioned as `sales_admin` (bootstrap).
  *  - Sales roles (admin / manager / rep) remain as feature-level permissions inside Sales; they are not logins.
@@ -35,7 +34,6 @@ export async function loadTeamMemberIds(q: Queryable, memberId: number, teamId: 
 
 export async function resolveActor(q: Queryable, auth: AuthIdentity | undefined): Promise<Actor> {
   if (!auth || !auth.sub) throw unauthorized();
-  if (auth.isApiKey || auth.platformRole === "api") throw forbidden("API keys cannot access Sales Management", "api_key_not_allowed");
   const email = (auth.email ?? "").trim().toLowerCase();
 
   let row: MemberRow | undefined = (await q.query<MemberRow>("SELECT * FROM sales_members WHERE user_sub = $1", [auth.sub])).rows[0];
@@ -79,6 +77,5 @@ export async function resolveActor(q: Queryable, auth: AuthIdentity | undefined)
     teamId: row.team_id,
     teamMemberIds,
     label: `${row.display_name} <${row.email}>`,
-    isApiKey: false,
   };
 }

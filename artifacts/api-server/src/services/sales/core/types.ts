@@ -7,10 +7,8 @@ export type RecordScope = "own" | "team" | "all";
 export interface AuthIdentity {
   sub: string;
   email: string;
-  /** platform role: admin | editor | api */
+  /** platform role: admin | editor */
   platformRole: string;
-  isApiKey?: boolean;
-  apiKeyScopes?: string[];
   displayName?: string;
 }
 
@@ -25,7 +23,6 @@ export interface Actor {
   teamMemberIds: number[];
   /** used for audit trails: "Name <email>" */
   label: string;
-  isApiKey: boolean;
 }
 
 export interface Queryable {

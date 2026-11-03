@@ -16,7 +16,7 @@ import { toCsv } from "./core/http";
 import { base64Utf8 } from "./core/portable";
 import type { Actor } from "./core/types";
 
-const SYSTEM: Actor = { memberId: 0, userSub: "scheduler", email: "", name: "Scheduler", role: "sales_admin", teamId: null, teamMemberIds: [], label: "Scheduler", isApiKey: false };
+const SYSTEM: Actor = { memberId: 0, userSub: "scheduler", email: "", name: "Scheduler", role: "sales_admin", teamId: null, teamMemberIds: [], label: "Scheduler" };
 
 export async function expireQuotations(db: Db, deps: Deps): Promise<number> {
   const settings = await loadSettings(db);

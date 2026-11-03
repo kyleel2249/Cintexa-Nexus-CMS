@@ -5,14 +5,13 @@ import type { AuthIdentity } from "../services/sales/core/types";
 /**
  * /api/sales/* - thin adapter. All authentication mapping, authorisation, validation, transactions, idempotency and
  * error mapping live in services/sales/core/router.ts so they can be tested without Express.
- * Authentication itself is the platform's apiGuard (session JWT or API key - the latter is refused
- * by the Sales layer). Public routes are listed in lib/auth-middleware.ts.
+ * There is no authentication: apiGuard attaches the built-in operator identity.
  */
 const router: IRouter = Router();
 
 router.use(async (req: Request, res: Response) => {
   const a = req.auth;
-  const auth: AuthIdentity | undefined = a ? { sub: String(a.sub), email: a.email ?? "", platformRole: a.role, isApiKey: a.role === "api", displayName: undefined } : undefined;
+  const auth: AuthIdentity | undefined = a ? { sub: String(a.sub), email: a.email ?? "", platformRole: a.role, displayName: undefined } : undefined;
   try {
     const out = await handleSalesRequest({
       method: req.method, path: req.path, query: req.query as Record<string, string | string[] | undefined>,

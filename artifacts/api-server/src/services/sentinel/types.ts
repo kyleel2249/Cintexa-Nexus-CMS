@@ -29,7 +29,6 @@ export interface SkRequest {
   query?: Record<string, string | string[] | undefined>;
   body?: unknown;
   identity?: Identity;
-  isApiKey?: boolean;
 }
 export interface SkResponse {
   status: number;

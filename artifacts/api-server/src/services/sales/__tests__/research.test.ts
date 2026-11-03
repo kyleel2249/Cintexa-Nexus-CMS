@@ -153,7 +153,7 @@ test("a failed research is recorded without touching any record", {}, async (t) 
 import { researchRoutes } from "../research/routes";
 import { ROLE_PERMISSIONS } from "../core/rbac";
 const route = (m: string, path: string) => researchRoutes.find((r) => r.method === m && r.path === path)!;
-const actor = (memberId: number, role: any = "sales_rep"): any => ({ memberId, userSub: `u${memberId}`, email: `u${memberId}@x.test`, name: `U${memberId}`, role, teamId: null, teamMemberIds: [memberId], label: `U${memberId}`, isApiKey: false });
+const actor = (memberId: number, role: any = "sales_rep"): any => ({ memberId, userSub: `u${memberId}`, email: `u${memberId}@x.test`, name: `U${memberId}`, role, teamId: null, teamMemberIds: [memberId], label: `U${memberId}` });
 const ctx = (d: Db, a: any, extra: any = {}): any => ({ q: d, db: d, actor: a, now: new Date(), params: {}, query: {}, body: {}, requestId: "t", events: [], settings: {} as any, deps: {} as any, ...extra });
 
 test("routes: need ai:use, validate input, protect other people's jobs and record decisions", async (t) => {

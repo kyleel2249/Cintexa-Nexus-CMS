@@ -37,7 +37,7 @@ export default function BdOverview() {
         <Card>
           <CardHeader>
             <CardTitle>Business Diary unavailable</CardTitle>
-            <CardDescription>Deploy Pages Function at /api/diary. No API keys required.</CardDescription>
+            <CardDescription>Served by the Pages Function at /api/diary.</CardDescription>
           </CardHeader>
         </Card>
       </div>

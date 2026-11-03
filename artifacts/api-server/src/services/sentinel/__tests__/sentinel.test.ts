@@ -15,8 +15,8 @@ const PLAINTEXT = "P@ssw0rd-SECRET-VALUE-9f3a";
 async function setup() {
   resetRateLimits();
   const { db, pg } = await memoryDb();
-  const call = async (identity: typeof A | undefined, method: string, path: string, body?: unknown, query?: SkRequest["query"], isApiKey = false) =>
-    handleSentinelRequest(db, { method, path, body, query, identity, isApiKey });
+  const call = async (identity: typeof A | undefined, method: string, path: string, body?: unknown, query?: SkRequest["query"]) =>
+    handleSentinelRequest(db, { method, path, body, query, identity });
   const mkAlias = async (who = A, name = `Alias ${randomUUID().slice(0, 6)}`) => { const r = await call(who, "POST", "/aliases", { id: randomUUID(), name }); assert.equal(r.status, 201, JSON.stringify(r.body)); return r.body as any; };
   const generate = async (who: typeof A, aliasId: string, type = "password", settings: any = { length: 24 }) => {
     const eventId = randomUUID(), entryId = randomUUID();
@@ -238,10 +238,9 @@ test("key envelope: created once, bounded KDF settings", async () => {
   assert.equal(((await call(B, "GET", "/key")).body as any).exists, false, "keys are per owner");
 });
 
-test("router: authentication, API keys, routing errors and rate limits", async () => {
+test("router: missing identity, routing errors and rate limits", async () => {
   const { call } = await setup();
   assert.equal((await call(undefined, "GET", "/summary")).status, 401);
-  assert.equal((await call(A, "GET", "/summary", undefined, undefined, true)).status, 403);
   assert.equal((await call(A, "GET", "/nope")).status, 404); assert.equal((await call(A, "PUT", "/history")).status, 405);
   assert.equal((await call(A, "POST", "/aliases", "not an object")).status, 400);
   assert.equal((await call(A, "GET", "/vault/not-a-uuid")).status, 400);

@@ -18,7 +18,6 @@ interface Dash {
   balanceSheet: { assets: number; liabilities: number; equity: number; balanced: boolean };
   health: { score: number | null; insufficientData: boolean };
   alerts: { id: string; level: string; title: string; evidence: string }[];
-  apiKeysRequired: boolean;
   engine: string;
 }
 
@@ -79,7 +78,7 @@ export default function FiOverview() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">CINTEXA Finance — Financial Intelligence</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            Native engine ({d.engine}). As of {d.asOf}. API keys required: <strong>none</strong>.
+            Native engine ({d.engine}). As of {d.asOf}.
           </p>
         </div>
         <div className="flex flex-wrap gap-2">

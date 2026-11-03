@@ -209,7 +209,6 @@ export default function FiPage({ mode }: { mode: Mode }) {
         <Card className="mb-4"><CardContent className="pt-4 text-sm space-y-1">
           <p>Version: {meta.data.version}</p>
           <p>Storage: {meta.data.storage}</p>
-          <p>API keys required: {String(meta.data.apiKeysRequired)}</p>
         </CardContent></Card>
       )}
       <div className="flex gap-2">

@@ -142,7 +142,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({
       name: "CINTEXA Nexus Sync Engine",
       version: "1.0.0",
-      apiKeysRequired: false,
       eventTypes: Object.keys(ROUTING),
       modules: MODULES,
       engine: "nexus-sync-v1",
@@ -223,7 +222,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       processed,
       total: memory.events.length,
       healthy: failed === 0,
-      apiKeysRequired: false,
     });
   }
 

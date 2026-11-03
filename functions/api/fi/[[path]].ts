@@ -190,7 +190,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       health: h,
       alerts,
       engine: "native-fi-v1",
-      apiKeysRequired: false,
     });
   }
 
@@ -339,7 +338,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({
       name: "CINTEXA Finance Financial Intelligence",
       version: "1.0.0",
-      apiKeysRequired: false,
       storage: env.FI_DB ? "d1" : "isolate-memory",
       engine: "native-fi-v1",
     });

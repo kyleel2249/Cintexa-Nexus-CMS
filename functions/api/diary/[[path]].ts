@@ -259,7 +259,6 @@ function dashboard() {
     recent: active.slice().sort((a, b) => b.activityDate.localeCompare(a.activityDate)).slice(0, 8),
     upcomingFollowUps: pendingFu.slice().sort((a, b) => (a.dueDate || "9999").localeCompare(b.dueDate || "9999")).slice(0, 8),
     byCategory: CATEGORIES.map((c) => ({ category: c, count: active.filter((e) => e.category === c).length })).filter((x) => x.count > 0),
-    apiKeysRequired: false,
     engine: "native-diary-v1",
   };
 }
@@ -467,7 +466,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({
       name: "CINTEXA Business Diary",
       version: "1.0.0",
-      apiKeysRequired: false,
       storage: "isolate-memory",
       engine: "native-diary-v1",
     });
@@ -740,7 +738,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       createdAt: new Date().toISOString(),
     };
     memory.correspondence.push(corr);
-    return json({ correspondenceId: corr.id, extraction, method: extraction.method, apiKeysRequired: false }, 201);
+    return json({ correspondenceId: corr.id, extraction, method: extraction.method }, 201);
   }
 
   if (path === "email/approve" && request.method === "POST") {

@@ -18,7 +18,7 @@ const DB_NAME = "cintexa-sales";
 const IDB_NAME = `/pglite/${DB_NAME}`;
 
 /** Fixed local identity. The engine's first-run bootstrap makes this person the Sales Administrator. */
-const LOCAL_IDENTITY = { sub: "local-device-owner", email: "owner@cintexa.local", platformRole: "admin", isApiKey: false, displayName: "Device owner" };
+const LOCAL_IDENTITY = { sub: "local-device-owner", email: "owner@cintexa.local", platformRole: "admin", displayName: "Device owner" };
 
 type PgRunner = { query: (sql: string, params?: unknown[]) => Promise<{ rows: any[]; affectedRows?: number }> };
 
