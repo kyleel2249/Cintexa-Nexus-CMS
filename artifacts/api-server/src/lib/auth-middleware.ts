@@ -14,6 +14,8 @@ import {
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "cintexa-dev-secret-change-in-production";
 const COOKIE_NAME = "cintexa_token";
+// Optional: verify Firebase-issued ID tokens if presented. Core Nexus tools do NOT require Firebase.
+// Set OPEN_ACCESS=1 for bootstrap admin without any external IdP.
 const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "cintexa-nexus";
 const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
 const FIREBASE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"));

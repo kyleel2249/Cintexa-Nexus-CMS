@@ -6,6 +6,7 @@ import { SalesOverviewWidget } from "@/components/sales/SalesOverviewWidget";
 import { Link } from "wouter";
 import { FiDashboardWidget } from "@/components/financial-intelligence/FiDashboardWidget";
 import { BdDashboardWidget } from "@/components/business-diary/BdDashboardWidget";
+import { SyncStatusWidget } from "@/components/nexus-sync/SyncStatusWidget";
 import { useEffect, useState } from "react";
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";

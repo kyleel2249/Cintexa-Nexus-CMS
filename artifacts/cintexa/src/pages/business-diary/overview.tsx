@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { bdGet, bdPost } from "@/lib/business-diary/api";
+import { publishNexusEvent } from "@/lib/nexus-sync/api";
 import { BD_NAV } from "@/lib/business-diary/nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +11,20 @@ export default function BdOverview() {
   const qc = useQueryClient();
   const q = useQuery({ queryKey: ["bd", "dashboard"], queryFn: () => bdGet<any>("/dashboard") });
   const seed = useMutation({
-    mutationFn: () => bdPost("/seed-demo", {}),
+    mutationFn: async () => {
+      const r = await bdPost("/seed-demo", {});
+      try {
+        await publishNexusEvent({
+          eventType: "DIARY_ENTRY_CREATED",
+          sourceModule: "business-diary",
+          entityType: "diary_seed",
+          entityId: "demo",
+          idempotencyKey: "diary-demo-seed",
+          payload: { title: "Demo diary data loaded" },
+        });
+      } catch { /* sync optional */ }
+      return r;
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["bd"] }),
   });
 

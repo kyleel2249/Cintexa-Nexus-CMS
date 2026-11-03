@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fiGet, fiPost, formatMinor } from "@/lib/financial-intelligence/api";
+import { publishNexusEvent } from "@/lib/nexus-sync/api";
 import { FI_NAV, FI_SECTIONS } from "@/lib/financial-intelligence/nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -28,7 +29,20 @@ export default function FiOverview() {
     queryFn: () => fiGet<Dash>("/dashboard"),
   });
   const seed = useMutation({
-    mutationFn: () => fiPost<{ message: string }>("/seed-demo", {}),
+    mutationFn: async () => {
+      const r = await fiPost<{ message: string }>("/seed-demo", {});
+      try {
+        await publishNexusEvent({
+          eventType: "FI_ENTRY_POSTED",
+          sourceModule: "financial-intelligence",
+          entityType: "fi_seed",
+          entityId: "demo",
+          idempotencyKey: "fi-demo-seed",
+          payload: { title: "Demo FI journals posted" },
+        });
+      } catch { /* sync optional */ }
+      return r;
+    },
     onSuccess: () => qc.invalidateQueries({ queryKey: ["fi"] }),
   });
 
