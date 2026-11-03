@@ -1,11 +1,17 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { finGet, finPost, formatMinor, formatCurrency } from "@/lib/finance/api";
+import {
+  generateDocumentation,
+  explainAccount,
+  type DocumentationResult,
+} from "@/lib/finance/documentation-engine";
 
 import { AccountSelect, type AccountOption } from "@/components/finance/AccountSelect";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+
 
 type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "discounts" | "audit";
 
@@ -251,12 +257,14 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["fin", "je"], queryFn: () => finGet<{ items: any[] }>("/journals") });
   const [desc, setDesc] = useState("");
+  const [descTouched, setDescTouched] = useState(false);
   const [journalType, setJournalType] = useState("general");
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
   const [lines, setLines] = useState<DraftLine[]>([
     { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
     { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
   ]);
+  const [docsOpen, setDocsOpen] = useState(true);
 
   const totals = useMemo(() => {
     let d = 0, c = 0;
@@ -267,26 +275,80 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
     return { debit: d, credit: c, difference: d - c, balanced: d === c && d > 0 };
   }, [lines]);
 
+  const docs: DocumentationResult = useMemo(
+    () =>
+      generateDocumentation({
+        journalType,
+        entryDate,
+        currency: "GHS",
+        description: desc,
+        preserveUserEdits: descTouched,
+        lines: lines.map((l) => ({
+          key: l.key,
+          account: l.account
+            ? {
+                code: l.account.code,
+                name: l.account.name,
+                type: l.account.type as any,
+                subtype: (l.account as any).subtype,
+              }
+            : null,
+          memo: l.memo,
+          debit: Math.round(Number(l.debit) || 0),
+          credit: Math.round(Number(l.credit) || 0),
+        })),
+      }),
+    [lines, journalType, entryDate, desc, descTouched],
+  );
+
+  // Auto-fill description from engine when user has not manually edited it
+  useEffect(() => {
+    if (!descTouched && docs.journalMemo) {
+      setDesc(docs.journalMemo);
+    }
+  }, [docs.journalMemo, descTouched]);
+
+  // Auto-fill empty line memos from engine notes
+  useEffect(() => {
+    setLines((prev) => {
+      let changed = false;
+      const next = prev.map((l) => {
+        if (l.memo.trim()) return l;
+        const note = docs.lineNotes.find((n) => n.key === l.key);
+        if (note?.autoNote) {
+          changed = true;
+          return { ...l, memo: note.autoNote };
+        }
+        return l;
+      });
+      return changed ? next : prev;
+    });
+  }, [docs.lineNotes]);
+
   const post = useMutation({
     mutationFn: () =>
       finPost("/journals", {
-        description: desc || `${journalType} journal`,
+        description: desc || docs.journalMemo || `${journalType} journal`,
         journalType,
         entryDate,
         post: true,
         lines: lines
           .filter((l) => l.account && (Number(l.debit) || Number(l.credit)))
-          .map((l) => ({
-            accountCode: l.account!.code,
-            memo: l.memo,
-            debit: Math.round(Number(l.debit) || 0),
-            credit: Math.round(Number(l.credit) || 0),
-          })),
+          .map((l) => {
+            const auto = docs.lineNotes.find((n) => n.key === l.key);
+            return {
+              accountCode: l.account!.code,
+              memo: l.memo || auto?.autoNote || "",
+              debit: Math.round(Number(l.debit) || 0),
+              credit: Math.round(Number(l.credit) || 0),
+            };
+          }),
       }),
     onSuccess: () => {
       onPosted();
       qc.invalidateQueries({ queryKey: ["fin", "je"] });
       setDesc("");
+      setDescTouched(false);
       setLines([
         { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
         { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
@@ -297,6 +359,21 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
   const updateLine = (key: string, patch: Partial<DraftLine>) => {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   };
+
+  const applyAutoMemo = () => {
+    setDesc(docs.journalMemo);
+    setDescTouched(false);
+  };
+
+  const applyLineNotes = () => {
+    setLines((prev) =>
+      prev.map((l) => {
+        const note = docs.lineNotes.find((n) => n.key === l.key);
+        return note ? { ...l, memo: note.autoNote } : l;
+      }),
+    );
+  };
+
 
   return (
     <Shell title="General Journal / Journal Entries" desc="Searchable Chart of Accounts on every line · posts only when balanced">
@@ -314,10 +391,26 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
           <Input type="date" className="mt-1" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Description</label>
-          <Input className="mt-1" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Narration" />
+          <label className="text-xs text-muted-foreground">Description / journal memo</label>
+          <Input
+            className="mt-1"
+            value={desc}
+            onChange={(e) => {
+              setDesc(e.target.value);
+              setDescTouched(true);
+            }}
+            placeholder="Auto-generated from accounts — edit freely"
+          />
+          <button
+            type="button"
+            className="mt-1 text-[11px] text-primary hover:underline"
+            onClick={applyAutoMemo}
+          >
+            Regenerate from accounts
+          </button>
         </div>
       </div>
+
 
       <div className="mb-2 hidden grid-cols-12 gap-2 text-[11px] uppercase text-muted-foreground sm:grid">
         <div className="col-span-5">Account</div>
@@ -349,19 +442,147 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <Button type="button" variant="outline" size="sm" onClick={() => setLines((p) => [...p, { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" }])}>
           Add line
         </Button>
         <div className="text-sm tabular-nums">
-          Dr <strong>{totals.debit}</strong> · Cr <strong>{totals.credit}</strong> · Diff{" "}
-          <strong className={totals.difference === 0 ? "text-emerald-600" : "text-rose-600"}>{totals.difference}</strong>
+          Dr <strong>{formatMinor(totals.debit)}</strong> · Cr <strong>{formatMinor(totals.credit)}</strong> · Diff{" "}
+          <strong className={totals.difference === 0 ? "text-emerald-600" : "text-rose-600"}>{formatMinor(Math.abs(totals.difference))}</strong>
         </div>
         <Button disabled={!totals.balanced || post.isPending} onClick={() => post.mutate()}>
           {post.isPending ? "Posting…" : "Post balanced journal"}
         </Button>
       </div>
       {post.isError && <p className="text-sm text-rose-600 mb-4">Post rejected — check balance and accounts.</p>}
+
+      {/* Automatic accounting documentation panel */}
+      <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card">
+        <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">Accounting documentation & intelligence</CardTitle>
+            <CardDescription>
+              Deterministic notes from Chart of Accounts and line structure — no external AI keys.
+              Completeness score: <strong className="text-foreground">{docs.completenessScore}%</strong>
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={applyLineNotes}>
+              Apply line notes
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setDocsOpen((o) => !o)}>
+              {docsOpen ? "Collapse" : "Expand"}
+            </Button>
+          </div>
+        </CardHeader>
+        {docsOpen && (
+          <CardContent className="space-y-4 text-sm">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {docs.completeness.map((c) => (
+                <div
+                  key={c.id}
+                  className={`rounded-md border px-2 py-1.5 text-xs ${
+                    c.status === "complete"
+                      ? "border-emerald-500/30 bg-emerald-500/5"
+                      : c.status === "partial"
+                        ? "border-yellow-500/30 bg-yellow-500/5"
+                        : "border-muted bg-muted/30"
+                  }`}
+                >
+                  <span className="font-medium">{c.label}</span>
+                  <span className="ml-1 uppercase text-[10px] text-muted-foreground">{c.status}</span>
+                  {c.detail && <p className="text-muted-foreground">{c.detail}</p>}
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <p className="text-[11px] uppercase text-muted-foreground">Journal memo</p>
+              <p className="mt-0.5">{docs.journalMemo || "—"}</p>
+            </div>
+
+            {docs.lineNotes.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase text-muted-foreground mb-1">Line explanations</p>
+                <ul className="space-y-1.5">
+                  {docs.lineNotes.map((n) => (
+                    <li key={`${n.accountCode}-${n.side}`} className="rounded border px-2 py-1.5 text-xs">
+                      <span className="font-medium">
+                        {n.side === "debit" ? "Dr" : "Cr"} {n.accountCode} {n.accountName}
+                      </span>{" "}
+                      <span className="tabular-nums text-muted-foreground">{formatCurrency(n.amount)}</span>
+                      <p className="text-muted-foreground mt-0.5">{n.autoNote}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div>
+              <p className="text-[11px] uppercase text-muted-foreground">Financial impact</p>
+              <p className="mt-0.5 text-xs">{docs.financialImpact.summary}</p>
+              <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                <span>Assets: {docs.financialImpact.assets}</span>
+                <span>Liabilities: {docs.financialImpact.liabilities}</span>
+                <span>Cash: {docs.financialImpact.cash}</span>
+                <span>Profit: {docs.financialImpact.profit}</span>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[11px] uppercase text-muted-foreground">Accounting treatment</p>
+              <p className="mt-0.5 text-xs">
+                <span className="font-medium">{docs.treatment.classification}</span> — {docs.treatment.principle}
+              </p>
+              {docs.treatment.alternatives && (
+                <p className="text-xs text-muted-foreground mt-0.5">Alternative: {docs.treatment.alternatives}</p>
+              )}
+            </div>
+
+            {docs.accountExplanations.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase text-muted-foreground mb-1">Account context</p>
+                <ul className="space-y-1">
+                  {docs.accountExplanations.map((a) => (
+                    <li key={a.code} className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{a.code} {a.name}:</span> {a.explanation}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {docs.alerts.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] uppercase text-muted-foreground">Intelligence alerts</p>
+                {docs.alerts.map((a) => (
+                  <div
+                    key={a.id}
+                    className={`rounded-md border px-3 py-2 text-xs ${
+                      a.severity === "critical"
+                        ? "border-red-500/40 bg-red-500/5"
+                        : a.severity === "caution"
+                          ? "border-yellow-500/40 bg-yellow-500/5"
+                          : "border-sky-500/30 bg-sky-500/5"
+                    }`}
+                  >
+                    <p className="font-medium">
+                      <span className="uppercase text-[10px] text-muted-foreground mr-1">{a.severity}</span>
+                      {a.title}
+                    </p>
+                    <p className="mt-0.5 text-muted-foreground">{a.observation}</p>
+                    <p className="mt-0.5">
+                      <span className="font-medium">Recommendation:</span> {a.recommendation}
+                    </p>
+                    <p className="text-muted-foreground mt-0.5">{a.reason}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
 
       <h2 className="text-sm font-semibold mb-2">Posted / draft journals</h2>
       <div className="space-y-2 text-sm">
