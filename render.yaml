@@ -13,8 +13,6 @@ services:
         fromDatabase:
           name: cintexa-nexus-db
           property: connectionString
-      - key: FIREBASE_PROJECT_ID
-        value: cintexa-nexus
       - key: ADMIN_EMAILS
         sync: false
       - key: JWT_SECRET

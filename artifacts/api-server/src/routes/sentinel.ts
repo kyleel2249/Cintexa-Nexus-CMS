@@ -5,7 +5,7 @@ import type { Db } from "../services/sentinel/types";
 import { logger } from "../lib/logger";
 
 /**
- * /api/sentinel/* - thin adapter. Authentication is the platform's apiGuard (Firebase token or legacy JWT; API keys are
+ * /api/sentinel/* - thin adapter. Authentication is the platform's apiGuard (session JWT; API keys are
  * refused by the Sentinel layer). Every query is scoped to the authenticated owner; see services/sentinel.
  * Responses are never cached: they contain (encrypted) credential material.
  */
@@ -19,7 +19,7 @@ router.use(async (req: Request, res: Response) => {
     getDb(),
     {
       method: req.method, path: req.path, query: req.query as Record<string, string | string[] | undefined>, body: req.body,
-      identity: a ? { ownerId: `${a.firebase ? "fb" : "jwt"}:${String(a.sub)}` } : undefined, isApiKey: a?.role === "api",
+      identity: a ? { ownerId: `jwt:${String(a.sub)}` } : undefined, isApiKey: a?.role === "api",
     },
     (msg, meta) => logger.error({ meta }, msg),
   );

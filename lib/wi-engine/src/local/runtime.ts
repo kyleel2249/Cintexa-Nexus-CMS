@@ -106,7 +106,7 @@ export function createLocalRuntime(o: LocalRuntimeOptions): LocalRuntime {
   };
 
   const integrations = async (): Promise<IntegrationStatus[]> => [
-    { id: "relay", label: "Fetch relay (Cloudflare Pages Function)", status: "available", detail: "Pages are fetched through /api/wi-relay with your sign-in token.", envVars: ["FIREBASE_PROJECT_ID"] },
+    { id: "relay", label: "Fetch relay (Cloudflare Pages Function)", status: "available", detail: "Pages are fetched through /api/wi-relay (same-origin only).", envVars: [] },
     { id: "pagespeed", label: "PageSpeed Insights", status: o.pageSpeedKey() ? "available" : "not_configured", detail: o.pageSpeedKey() ? "Using the key saved in this browser." : "Add your own PageSpeed Insights API key in this browser to enable lab Core Web Vitals.", envVars: [] },
     { id: "browser", label: "Headless browser worker", status: "not_configured", detail: "Not available in local mode. Rendering-dependent tests are reported as not tested.", envVars: [] },
     { id: "ai", label: "Explanations", status: "available", detail: "Deterministic explanations built from the recorded evidence.", envVars: [] },

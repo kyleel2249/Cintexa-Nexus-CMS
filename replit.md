@@ -19,7 +19,6 @@ Required env:
 
 - `DATABASE_URL` — Postgres connection string
 - `OPENROUTER_API_KEY` — optional; enables live AI features (deterministic fallbacks otherwise)
-- Firebase client env vars (see `artifacts/cintexa/.env.example`)
 
 ## Default Login (after seeding)
 

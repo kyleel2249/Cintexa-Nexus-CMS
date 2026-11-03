@@ -24,16 +24,16 @@ No setting is required. Setting `API_ORIGIN` later switches users to server mode
 | Explanations | Deterministic, built from recorded evidence |
 
 ## The relay
-`GET /api/wi-relay?url=<target>&max=<bytes>` with an optional `Authorization: Bearer <Firebase ID token>`.
+`GET /api/wi-relay?url=<target>&max=<bytes>`.
 
 - **No sign-in required.** Visitors who are not signed in use a separate on-device workspace (`cintexa-wi-anonymous`); their history is not merged into an account.
-- Anonymous requests are accepted only from this site's own pages (same-origin browser requests), are capped at 2 MB per page and 120 requests/minute per address (best effort, per edge instance). A valid Firebase ID token (RS256, audience/issuer = `FIREBASE_PROJECT_ID`, default `cintexa-nexus`) raises this to 5 MB and 600/minute. An invalid token is treated as anonymous.
+- Anonymous requests are accepted only from this site's own pages (same-origin browser requests), are capped at 2 MB per page and 120 requests/minute per address (best effort, per edge instance). There is no token tier: an `Authorization` header grants nothing.
 - GET/HEAD only; http/https; ports 80, 443, 8080, 8443; no URL credentials.
 - Refuses literal private/loopback/link-local/CGNAT IPs, `localhost`, `.local`, `.internal`, numeric hosts and itself.
 - Never follows redirects: the browser revalidates every hop (scope, robots, SSRF) and calls the relay again.
-- Streams the body through a size cap (default 2.5 MB, hard 5 MB), 20 s timeout.
+- Streams the body through a size cap (default 2.5 MB, 2 MB cap for relay callers), 20 s timeout.
 - Returns metadata in `x-wi-*` headers. Stores nothing and logs nothing.
-- Optional env: `FIREBASE_PROJECT_ID`, `WI_RELAY_ALLOWED_ORIGINS` (comma separated, for a custom domain).
+- Optional env: `WI_RELAY_ALLOWED_ORIGINS` (comma separated, for a custom domain).
 
 Deploy: nothing extra. The file is in `functions/api/` and is deployed with the site (the copy in `artifacts/cintexa/functions/api/` is kept identical).
 

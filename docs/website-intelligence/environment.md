@@ -14,7 +14,6 @@ Frontend: no new variables.
 ## Pages Function variables (local mode)
 | Variable | Default | Purpose |
 |---|---|---|
-| `FIREBASE_PROJECT_ID` | `cintexa-nexus` | Audience/issuer checked on the Firebase ID token |
 | `WI_RELAY_ALLOWED_ORIGINS` | none | Extra browser origins allowed to call the relay |
 
 ## Competitor discovery (API host)

@@ -2,28 +2,25 @@
  * Website Intelligence fetch relay (Cloudflare Pages Function).
  * Stateless: no database, no storage. Lets the in-browser audit engine read other sites despite CORS.
  *
- *   GET /api/wi-relay?url=<https://target/>   Authorization: Bearer <Firebase ID token>
+ *   GET /api/wi-relay?url=<https://target/>
  *
- * - Works without signing in. A valid Firebase ID token (RS256 verified against Google's securetoken keys) raises the limits.
- * - Anonymous callers must be this site's own pages (same-origin browser request), get a smaller size cap and a lower rate limit.
+ * - No sign-in and no third-party identity provider. Callers must be this site's own pages (same-origin browser request) or an
+ *   origin listed in WI_RELAY_ALLOWED_ORIGINS; a size cap and a per-address rate limit apply.
  * - GET/HEAD only; http/https; ports 80/443/8080/8443; literal private/loopback/link-local IPs and internal hostnames refused.
  * - Redirects are NOT followed: the client revalidates every hop through this same relay.
  * - Body is streamed through a size cap. Metadata is returned in x-wi-* response headers.
- * Env: FIREBASE_PROJECT_ID (default "cintexa-nexus"), WI_RELAY_ALLOWED_ORIGINS (optional, comma separated).
+ * Env: WI_RELAY_ALLOWED_ORIGINS (optional, comma separated).
  */
 
-type Env = { FIREBASE_PROJECT_ID?: string; WI_RELAY_ALLOWED_ORIGINS?: string };
+type Env = { WI_RELAY_ALLOWED_ORIGINS?: string };
 
-const JWKS_URL = "https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com";
 const UA = "CintexaWebsiteIntelligence/1.0 (+audit; read-only)";
 const DEFAULT_MAX = 2_500_000;
-const HARD_MAX = 5_000_000;
 const TIMEOUT_MS = 20_000;
 const ALLOWED_PORTS = new Set(["", "80", "443", "8080", "8443"]);
 
 const RATE_WINDOW_MS = 60_000;
 const RATE_ANON = 120;
-const RATE_SIGNED_IN = 600;
 const ANON_MAX = 2_000_000;
 const hitsByIp = new Map<string, { start: number; n: number }>();
 
@@ -34,47 +31,6 @@ export function rateLimited(ip: string, limit: number, now = Date.now()): boolea
   if (!h || now - h.start > RATE_WINDOW_MS) { hitsByIp.set(ip, { start: now, n: 1 }); return false; }
   h.n++;
   return h.n > limit;
-}
-
-let jwksCache: { at: number; keys: Array<JsonWebKey & { kid: string }> } | null = null;
-
-const b64u = (s: string): Uint8Array => {
-  const p = s.replace(/-/g, "+").replace(/_/g, "/") + "===".slice((s.length + 3) % 4);
-  const bin = atob(p);
-  const out = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
-  return out;
-};
-
-async function loadKeys(force = false) {
-  if (!force && jwksCache && Date.now() - jwksCache.at < 3_600_000) return jwksCache.keys;
-  const res = await fetch(JWKS_URL);
-  if (!res.ok) throw new Error("jwks");
-  const body = (await res.json()) as { keys: Array<JsonWebKey & { kid: string }> };
-  jwksCache = { at: Date.now(), keys: body.keys };
-  return body.keys;
-}
-
-export async function verifyFirebaseToken(token: string, projectId: string): Promise<{ uid: string; email?: string } | null> {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  try {
-    const header = JSON.parse(new TextDecoder().decode(b64u(parts[0]!))) as { alg?: string; kid?: string };
-    const payload = JSON.parse(new TextDecoder().decode(b64u(parts[1]!))) as { aud?: string; iss?: string; sub?: string; exp?: number; iat?: number; email?: string };
-    if (header.alg !== "RS256" || !header.kid) return null;
-    const now = Math.floor(Date.now() / 1000);
-    if (payload.aud !== projectId || payload.iss !== `https://securetoken.google.com/${projectId}`) return null;
-    if (!payload.sub || typeof payload.exp !== "number" || payload.exp < now - 30 || (payload.iat ?? 0) > now + 300) return null;
-    let keys = await loadKeys();
-    let jwk = keys.find((k) => k.kid === header.kid);
-    if (!jwk) { keys = await loadKeys(true); jwk = keys.find((k) => k.kid === header.kid); }
-    if (!jwk) return null;
-    const key = await crypto.subtle.importKey("jwk", jwk, { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" }, false, ["verify"]);
-    const ok = await crypto.subtle.verify("RSASSA-PKCS1-v1_5", key, b64u(parts[2]!), new TextEncoder().encode(`${parts[0]}.${parts[1]}`));
-    return ok ? { uid: payload.sub, email: payload.email } : null;
-  } catch {
-    return null;
-  }
 }
 
 /** Literal-IP and internal-name guard. DNS names resolving to private space are not reachable from Cloudflare's edge. */
@@ -101,7 +57,7 @@ function cors(env: Env, request: Request): Record<string, string> {
   const ok = !origin || origin === self || allowed.includes(origin);
   return {
     "access-control-allow-origin": ok && origin ? origin : self,
-    "access-control-allow-headers": "authorization,content-type",
+    "access-control-allow-headers": "content-type",
     "access-control-allow-methods": "GET,HEAD,OPTIONS",
     "access-control-expose-headers": "x-wi-status,x-wi-status-text,x-wi-final-url,x-wi-headers,x-wi-ttfb,x-wi-truncated,x-wi-bytes",
     vary: "origin",
@@ -117,12 +73,9 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: base });
   if (request.method !== "GET" && request.method !== "HEAD") return fail(405, "Only GET and HEAD are supported.", base);
 
-  const auth = request.headers.get("authorization") ?? "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
-  const user = token ? await verifyFirebaseToken(token, env.FIREBASE_PROJECT_ID || "cintexa-nexus") : null;
   const self = new URL(request.url).origin;
-  if (!user) {
-    // Anonymous use is allowed, but only from this site's own pages (not curl, scripts or other sites).
+  {
+    // Only this site's own pages may use the relay (not curl, scripts or other sites).
     const origin = request.headers.get("origin");
     const sameSite = request.headers.get("sec-fetch-site");
     const allowed = (env.WI_RELAY_ALLOWED_ORIGINS ?? "").split(",").map((x) => x.trim()).filter(Boolean);
@@ -130,7 +83,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
     if (!ok) return fail(403, "The relay can only be used from the CINTEXA Nexus site.", base);
   }
   const ip = request.headers.get("cf-connecting-ip") ?? "unknown";
-  if (rateLimited(`${user ? "u" : "a"}:${ip}`, user ? RATE_SIGNED_IN : RATE_ANON)) return fail(429, "Too many requests. Wait a minute and try again.", base);
+  if (rateLimited(`a:${ip}`, RATE_ANON)) return fail(429, "Too many requests. Wait a minute and try again.", base);
 
   const reqUrl = new URL(request.url);
   let target: URL;
@@ -142,7 +95,7 @@ export const onRequest: PagesFunction<Env> = async ({ request, env }) => {
   if (why) return fail(403, `Target refused (${why}).`, base);
   if (target.hostname === reqUrl.hostname) return fail(403, "Target refused (relay loop).", base);
 
-  const cap = Math.min(Math.max(Number(reqUrl.searchParams.get("max")) || DEFAULT_MAX, 1_000), user ? HARD_MAX : ANON_MAX);
+  const cap = Math.min(Math.max(Number(reqUrl.searchParams.get("max")) || DEFAULT_MAX, 1_000), ANON_MAX);
   const accept = reqUrl.searchParams.get("accept");
   const ctl = new AbortController();
   const timer = setTimeout(() => ctl.abort(), TIMEOUT_MS);

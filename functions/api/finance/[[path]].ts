@@ -809,7 +809,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       name: "CINTEXA Finance",
       version: "1.0.0",
       apiKeysRequired: false,
-      firebase: false,
       doubleEntry: true,
       baseCurrency: "GHS",
       storage: storageMode === "d1" ? "d1" : (env.FIN_ALLOW_MEMORY === "1" ? "isolate-memory-dev" : "isolate-memory"),

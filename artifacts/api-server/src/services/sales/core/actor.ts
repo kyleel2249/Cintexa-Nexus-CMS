@@ -1,5 +1,5 @@
 /**
- * Resolve the platform identity (Firebase token / legacy JWT) to a Sales member + role.
+ * Resolve the platform identity (session JWT) to a Sales member + role.
  *
  *  - API keys are refused: Sales holds financial and personal data and API keys have no member identity.
  *  - A platform `admin` with no member row is provisioned as `sales_admin` (bootstrap). Note: when the platform's

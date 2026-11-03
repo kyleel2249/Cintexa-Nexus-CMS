@@ -50,7 +50,7 @@ const memory = new Map<string, string>();
 const repo = new MemoryRepo();
 const rt = createLocalRuntime({
   user: { id: "local-user", email: "qa@example.com" },
-  net: { relayUrl: "/api/wi-relay", getToken: async () => null, fetchImpl: relayShim, dohUrl: "https://cloudflare-dns.com/dns-query" },
+  net: { relayUrl: "/api/wi-relay", fetchImpl: relayShim, dohUrl: "https://cloudflare-dns.com/dns-query" },
   repo, settingsStore: { read: () => memory.get("s") ?? null, write: (v) => void memory.set("s", v) }, pageSpeedKey: () => null, runtimeVersion: "bun-test", fetchImpl: relayShim,
 });
 const call = async (method: string, path: string, body?: unknown) => { const r = await rt.handle({ method, path, body }); return { status: r.status, json: r.contentType.includes("json") && r.body ? JSON.parse(r.body) : null, text: r.body, headers: r.headers }; };

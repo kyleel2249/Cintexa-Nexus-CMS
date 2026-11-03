@@ -34,7 +34,7 @@ const router: IRouter = Router();
 
 router.use(healthRouter);
 
-// Every route below is authenticated (Firebase ID token, legacy JWT cookie or API key)
+// Every route below is authenticated (session JWT cookie or API key)
 // except the explicit public allow-list defined in lib/auth-middleware.ts.
 router.use(apiGuard);
 router.use("/public/forms", publicFormsRouter);

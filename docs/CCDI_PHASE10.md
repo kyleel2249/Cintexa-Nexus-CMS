@@ -28,7 +28,7 @@ Implemented on `main`.
 
 1. Provision PostgreSQL and set `DATABASE_URL`
 2. Start API; CCDI tables bootstrap idempotently
-3. Configure Firebase/JWT auth as per Nexus
+3. Configure session JWT auth as per Nexus
 4. `POST /api/ccdi/rbac/seed`
 5. Create organisation; assign roles via `POST /api/ccdi/rbac/assign`
 6. Optionally set `OPENROUTER_API_KEY` for advisory agents

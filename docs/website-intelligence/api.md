@@ -1,4 +1,4 @@
-# API — base `/api/v1/website-audits` (Firebase-authenticated; owner-scoped; 404 for non-owners)
+# API — base `/api/v1/website-audits` (session-JWT authenticated; owner-scoped; 404 for non-owners)
 | Method | Path | Notes |
 |---|---|---|
 | GET | `/meta`, `/catalog`, `/integrations`, `/stats`, `/trend` | Config, test catalogue, integration status, dashboard data |

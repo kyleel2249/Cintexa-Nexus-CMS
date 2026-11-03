@@ -683,7 +683,7 @@ export function verify(rawBody, headers, secret) {
                   <Switch checked={security.require2fa} onCheckedChange={(v) => setSecurity({ ...security, require2fa: v })} />
                 </div>
                 <div className="flex items-center justify-between">
-                  <div className="space-y-0.5"><Label>Allow password login</Label><p className="text-sm text-muted-foreground">Disable to require SSO / Firebase only.</p></div>
+                  <div className="space-y-0.5"><Label>Allow password login</Label><p className="text-sm text-muted-foreground">Disable to block password sign-in.</p></div>
                   <Switch checked={security.allowPasswordLogin} onCheckedChange={(v) => setSecurity({ ...security, allowPasswordLogin: v })} />
                 </div>
                 <div className="grid sm:grid-cols-3 gap-4">

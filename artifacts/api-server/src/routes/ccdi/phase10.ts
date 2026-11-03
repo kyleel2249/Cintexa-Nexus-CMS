@@ -142,7 +142,7 @@ router.get("/readiness", requireAuth, async (_req: Request, res: Response) => {
       },
       operatorActions: [
         "Set DATABASE_URL and run bootstrap",
-        "Configure authentication (Firebase/JWT)",
+        "Configure authentication (session JWT)",
         "Optionally set OPENROUTER_API_KEY for advisory agents",
         "POST /api/ccdi/rbac/seed and assign roles",
         "Set CCDI_STRICT_RBAC=1 only after roles are assigned",

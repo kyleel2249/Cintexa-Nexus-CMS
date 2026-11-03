@@ -143,7 +143,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       name: "CINTEXA Nexus Sync Engine",
       version: "1.0.0",
       apiKeysRequired: false,
-      firebase: false,
       eventTypes: Object.keys(ROUTING),
       modules: MODULES,
       engine: "nexus-sync-v1",

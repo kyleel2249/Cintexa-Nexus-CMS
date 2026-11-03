@@ -49,7 +49,7 @@ Windows users: follow **[WINDOWS.md](./WINDOWS.md)**.
 ## Stack
 
 - **Frontend**: React 19, Vite, Tailwind CSS 4, shadcn/ui, Framer Motion, TanStack Query, Wouter
-- **API**: Express 5, Drizzle ORM, JWT + Firebase Auth
+- **API**: Express 5, Drizzle ORM, JWT session auth
 - **Database**: PostgreSQL
 - **AI**: OpenRouter (`openai/gpt-4o-mini`) with offline fallbacks
 

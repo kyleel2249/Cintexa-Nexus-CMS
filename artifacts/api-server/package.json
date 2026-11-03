@@ -22,7 +22,6 @@
     "cors": "^2.8.6",
     "drizzle-orm": "^0.45.2",
     "express": "^5.2.1",
-    "jose": "^6.1.0",
     "jsonwebtoken": "^9.0.3",
     "nodemailer": "^9.0.1",
     "openai": "^6.44.0",

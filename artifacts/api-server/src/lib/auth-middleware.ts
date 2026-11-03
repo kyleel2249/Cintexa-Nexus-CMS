@@ -2,7 +2,6 @@ import type { Request, Response, NextFunction } from "express";
 import { createHash, timingSafeEqual } from "node:crypto";
 import net from "node:net";
 import jwt from "jsonwebtoken";
-import { createRemoteJWKSet, jwtVerify } from "jose";
 import { logger } from "./logger";
 import {
   DEFAULT_SECURITY,
@@ -14,16 +13,11 @@ import {
 
 const JWT_SECRET = process.env.JWT_SECRET ?? "cintexa-dev-secret-change-in-production";
 const COOKIE_NAME = "cintexa_token";
-// Optional: verify Firebase-issued ID tokens if presented. Core Nexus tools do NOT require Firebase.
-// Set OPEN_ACCESS=1 for bootstrap admin without any external IdP.
-const FIREBASE_PROJECT_ID = process.env.FIREBASE_PROJECT_ID ?? "cintexa-nexus";
-const FIREBASE_ISSUER = `https://securetoken.google.com/${FIREBASE_PROJECT_ID}`;
-const FIREBASE_JWKS = createRemoteJWKSet(new URL("https://www.googleapis.com/service_accounts/v1/jwk/securetoken@system.gserviceaccount.com"));
 
 /**
  * AUTH_MODE
  *  - "open" (DEFAULT): authentication is switched off. Every request is served as an administrator, whether it carries no
- *                      credential, a valid or an invalid cxk_ API key, a Firebase token or a legacy JWT. API keys are accepted
+ *                      credential, a valid or an invalid cxk_ API key or a session JWT. API keys are accepted
  *                      unconditionally (scopes and the settings/users restriction are not applied).
  *  - "enforced"       : every non-public route needs a valid credential (original behaviour).
  */
@@ -44,7 +38,6 @@ export interface AuthPayload {
   sub: string | number;
   email: string;
   role: string;
-  firebase?: boolean;
   apiKeyId?: string;
   scopes?: Array<"read" | "write">;
   /** true when AUTH_MODE=open granted this identity without a usable credential */
@@ -67,25 +60,6 @@ function resolveRole(email: string, adminClaim: boolean): string {
   if (adminClaim) return "admin";
   if (!ADMIN_EMAILS.length) return "admin";
   return ADMIN_EMAILS.includes(email.toLowerCase()) ? "admin" : "editor";
-}
-
-async function verifyFirebaseToken(raw: string): Promise<AuthPayload | null> {
-  try {
-    const { payload } = await jwtVerify(raw, FIREBASE_JWKS, {
-      issuer: FIREBASE_ISSUER,
-      audience: FIREBASE_PROJECT_ID,
-    });
-    if (typeof payload.sub !== "string" || payload.sub.length === 0) return null;
-    const email = typeof payload.email === "string" ? payload.email : "";
-    return {
-      sub: payload.sub,
-      email,
-      role: resolveRole(email, payload.admin === true),
-      firebase: true,
-    };
-  } catch {
-    return null;
-  }
 }
 
 export function sha256(value: string): string {
@@ -126,14 +100,12 @@ function extractToken(req: Request): string | undefined {
   return (req as any).cookies?.[COOKIE_NAME];
 }
 
-/** Resolve whatever credential the request carries (API key, Firebase token or legacy JWT) or null. */
+/** Resolve whatever credential the request carries (API key or session JWT) or null. */
 async function resolveCredential(req: Request): Promise<AuthPayload | null> {
   const raw = extractToken(req);
   if (!raw) return null;
   const apiKey = await verifyApiKey(raw);
   if (apiKey) return apiKey;
-  const firebaseAuth = await verifyFirebaseToken(raw);
-  if (firebaseAuth) return firebaseAuth;
   try {
     const decoded = jwt.verify(raw, JWT_SECRET) as AuthPayload;
     return { ...decoded, role: resolveRole(decoded.email ?? "", decoded.role === "admin") };
@@ -268,7 +240,7 @@ setInterval(() => {
  *  - public routes pass straight through
  *  - AUTH_MODE=open (default): no credential is required or rejected; the IP allow-list (if you set one) and the rate limit
  *    still apply (DISABLE_IP_ALLOWLIST=1 bypasses the allow-list)
- *  - AUTH_MODE=enforced: needs a valid Firebase token / legacy JWT / API key; keys are read-only unless issued with "write"
+ *  - AUTH_MODE=enforced: needs a valid session JWT / API key; keys are read-only unless issued with "write"
  */
 export async function apiGuard(req: Request, res: Response, next: NextFunction) {
   if (req.method === "OPTIONS" || isPublic(req)) return next();

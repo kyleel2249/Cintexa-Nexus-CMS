@@ -41,7 +41,7 @@ async function probeServer(): Promise<boolean> {
   } catch { return false; }
 }
 
-/** Detects the mode once. Waits for the Firebase session to be restored so the probe carries a token. */
+/** Detects the mode once (server API reachable, otherwise in-browser local mode). */
 export function ensureMode(): Promise<WiMode> {
   if (mode !== "detecting") return Promise.resolve(mode);
   detecting ??= (async () => {
@@ -97,7 +97,7 @@ async function createLocal(uid: string, email: string | null): Promise<LocalStat
   const store = (k: string) => ({ read: () => { try { return localStorage.getItem(k); } catch { return null; } }, write: (v: string) => localStorage.setItem(k, v) });
   const runtime = createLocalRuntime({
     user: { id: uid, email },
-    net: { relayUrl: RELAY, getToken: () => Promise.resolve(null) },
+    net: { relayUrl: RELAY },
     repo,
     settingsStore: store(SETTINGS_KEY),
     pageSpeedKey: getPageSpeedKey,

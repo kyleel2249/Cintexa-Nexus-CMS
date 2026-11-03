@@ -340,7 +340,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       name: "CINTEXA Finance Financial Intelligence",
       version: "1.0.0",
       apiKeysRequired: false,
-      firebase: false,
       storage: env.FI_DB ? "d1" : "isolate-memory",
       engine: "native-fi-v1",
     });

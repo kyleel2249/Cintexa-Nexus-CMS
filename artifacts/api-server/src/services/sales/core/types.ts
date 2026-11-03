@@ -3,7 +3,7 @@ export const SALES_ROLES: readonly SalesRole[] = ["sales_admin", "sales_director
 
 export type RecordScope = "own" | "team" | "all";
 
-/** Identity resolved by the host application's auth layer (Firebase token, legacy JWT or API key). */
+/** Identity resolved by the host application's auth layer (session JWT or API key). */
 export interface AuthIdentity {
   sub: string;
   email: string;

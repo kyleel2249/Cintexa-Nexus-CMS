@@ -5,7 +5,7 @@ import type { AuthIdentity } from "../services/sales/core/types";
 /**
  * /api/sales/* - thin adapter. All authentication mapping, authorisation, validation, transactions, idempotency and
  * error mapping live in services/sales/core/router.ts so they can be tested without Express.
- * Authentication itself is the platform's apiGuard (Firebase token, legacy JWT, or API key - the latter is refused
+ * Authentication itself is the platform's apiGuard (session JWT or API key - the latter is refused
  * by the Sales layer). Public routes are listed in lib/auth-middleware.ts.
  */
 const router: IRouter = Router();

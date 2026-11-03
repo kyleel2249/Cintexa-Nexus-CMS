@@ -210,7 +210,6 @@ export default function FiPage({ mode }: { mode: Mode }) {
           <p>Version: {meta.data.version}</p>
           <p>Storage: {meta.data.storage}</p>
           <p>API keys required: {String(meta.data.apiKeysRequired)}</p>
-          <p>Firebase: {String(meta.data.firebase)}</p>
         </CardContent></Card>
       )}
       <div className="flex gap-2">

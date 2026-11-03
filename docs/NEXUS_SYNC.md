@@ -21,8 +21,8 @@ Handlers fan out via routing table to Business Diary, Financial Intelligence, Da
 - CMS (independent content)
 
 ## Firebase status
-- Removed: `firebase.json`, `firestore.rules`, frontend `firebase` npm dependency
-- Remaining: optional **JWT verification** of Firebase ID tokens in Express `auth-middleware` if a Bearer token is presented — **not required** for FI, Diary, Sync, or OPEN_ACCESS bootstrap
+- Removed entirely: `firebase.json`, `firestore.rules`, the frontend `firebase` dependency, Firebase ID-token verification in the Express `auth-middleware` and the website-intelligence relay, `firebase-admin` and its admin script, and `ccdi-standalone-scaffold/` (a self-contained Firebase prototype that was never integrated).
+- Nothing in the repository references a Firebase project, SDK or credential any more.
 
 ## Honest limits
 - Full PostgreSQL → D1 migration of Sales/CMS is **not** completed in this change set

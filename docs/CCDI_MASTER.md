@@ -116,7 +116,7 @@ UI: `/ccdi` Command Centre (sidebar + dashboard card).
 | `DATABASE_URL` / `POSTGRES_URL` | PostgreSQL |
 | `CCDI_RBAC_STRICT` | `true` to enforce RBAC strictly in production |
 | `OPENROUTER_API_KEY` | Optional advisory intelligence |
-| Existing Nexus auth (Firebase/JWT) | Shared authentication |
+| Existing Nexus auth (session JWT) | Shared authentication |
 
 No CCDI feature requires embedding raw third-party scanner credentials in the DB — use `ccdi_secret_refs`.
 

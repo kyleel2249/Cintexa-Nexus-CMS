@@ -468,7 +468,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       name: "CINTEXA Business Diary",
       version: "1.0.0",
       apiKeysRequired: false,
-      firebase: false,
       storage: "isolate-memory",
       engine: "native-diary-v1",
     });
