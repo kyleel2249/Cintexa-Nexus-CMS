@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Plus } from "lucide-react";
 import { marketingIntel, marketingAssets } from "@/lib/marketing/api";
 import { Link } from "wouter";
+import { CmsPagesPicker } from "@/components/marketing/CmsPagesPicker";
 
 export default function LandingFunnelsPage() {
   const qc = useQueryClient();
@@ -114,6 +115,17 @@ export default function LandingFunnelsPage() {
               <CardTitle className="text-sm">Page registry</CardTitle>
               <CardDescription>Paths you use as landing pages</CardDescription>
             </div>
+            <div className="flex gap-1">
+            <CmsPagesPicker
+              triggerLabel="Browse cached pages"
+              onSelect={(page) => {
+                marketingAssets.createPageRef({
+                  title: page.title,
+                  path: page.slug ? `/${page.slug}` : page.url || "/",
+                  notes: `cmsPageId=${page.cmsPageId}`,
+                }).then(() => qc.invalidateQueries({ queryKey: ["mkt", "pageRefs"] }));
+              }}
+            />
             <Dialog open={refOpen} onOpenChange={setRefOpen}>
               <DialogTrigger asChild><Button size="sm" variant="outline">Add page</Button></DialogTrigger>
               <DialogContent>
@@ -127,6 +139,7 @@ export default function LandingFunnelsPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            </div>
           </CardHeader>
           <CardContent className="space-y-1">
             {pages.map((p) => (

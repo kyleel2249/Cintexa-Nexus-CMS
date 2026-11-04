@@ -1,4 +1,4 @@
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useGetMedia, useCreateMedia, useUpdateMedia, useDeleteMedia, getGetMediaQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
@@ -12,6 +12,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { Upload, Image as ImageIcon, File as FileIcon, Film, Search, Loader2, Trash2, Copy, Pencil, LayoutGrid, List, Download, CloudUpload } from "lucide-react";
 import { format } from "date-fns";
 import { useToast } from "@/hooks/use-toast";
+import { markMediaSessionAvailable } from "@/lib/marketing/cms-cache/sessionMarkers";
 
 const MAX_BYTES = 8 * 1024 * 1024; // files are stored as data URLs, keep them reasonable
 
@@ -58,6 +59,10 @@ export default function Media() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [dragging, setDragging] = useState(false);
   const { data: media, isLoading, refetch } = useGetMedia({ search: search || undefined, type: type === "all" ? undefined : type });
+  useEffect(() => {
+    const list = Array.isArray(media) ? media : [];
+    if (list.length > 0) markMediaSessionAvailable();
+  }, [media]);
   const createMedia = useCreateMedia();
   const updateMedia = useUpdateMedia();
   const deleteMedia = useDeleteMedia();

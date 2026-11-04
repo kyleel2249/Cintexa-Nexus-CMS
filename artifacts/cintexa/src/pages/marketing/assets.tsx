@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Plus, Trash2, ExternalLink } from "lucide-react";
 import { marketingAssets, marketingIntel } from "@/lib/marketing/api";
 import { Link } from "wouter";
+import { CmsMediaPicker } from "@/components/marketing/CmsMediaPicker";
 
 export default function AssetLibraryPage() {
   const qc = useQueryClient();
@@ -68,6 +69,19 @@ export default function AssetLibraryPage() {
             <Link href="/media" className="underline">Nexus Media Library</Link>. No duplicate storage.
           </p>
         </div>
+        <div className="flex flex-wrap gap-2">
+        <CmsMediaPicker
+          onSelect={(m) => {
+            marketingAssets.create({
+              name: m.name,
+              media_id: m.cmsMediaId,
+              url: m.thumbnailUrl || null,
+              mime_type: m.mimeType || null,
+              tags: [],
+              category: m.mimeType?.startsWith("image/") ? "Image" : m.mimeType?.startsWith("video/") ? "Video" : "File",
+            }).then(() => qc.invalidateQueries({ queryKey: ["mkt", "assets"] }));
+          }}
+        />
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Register asset</Button>
@@ -87,6 +101,7 @@ export default function AssetLibraryPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       <div className="flex gap-2">
