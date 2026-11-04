@@ -105,6 +105,21 @@ interface DepreciationRun {
   createdAt: string;
 }
 
+interface AccountingPeriod {
+  id: string;
+  periodYm: string; // YYYY-MM
+  status: "open" | "closed";
+  label?: string;
+  closedAt?: string;
+  closedBy?: string;
+  closeReason?: string;
+  reopenedAt?: string;
+  reopenedBy?: string;
+  reopenReason?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface Audit {
   id: string;
   entityType: string;
@@ -121,6 +136,7 @@ interface Store {
   payments: Payment[];
   fixedAssets: FixedAsset[];
   depreciationRuns: DepreciationRun[];
+  periods: AccountingPeriod[];
   audit: Audit[];
   journalSeq: number;
   invoiceSeq: number;
@@ -135,6 +151,7 @@ const store: Store = {
   payments: [],
   fixedAssets: [],
   depreciationRuns: [],
+  periods: [],
   audit: [],
   journalSeq: 1,
   invoiceSeq: 1,
@@ -498,13 +515,64 @@ function integrityReport() {
   if (!tb.balanced) {
     issues.push({ code: "TB_OUT_OF_BALANCE", message: `Trial balance out of balance Dr ${tb.totalDebit} Cr ${tb.totalCredit}` });
   }
-  return { ok: issues.length === 0, issues, journalCount: store.journals.length, assetCount: store.fixedAssets.length };
+  for (const p of store.periods) {
+    if (p.status === "closed") {
+      const posts = store.journals.filter((j) => j.status === "posted" && periodYmFromDate(j.entryDate) === p.periodYm);
+      // informational only — presence of closed period is not an error
+    }
+  }
+  const closedCount = store.periods.filter((p) => p.status === "closed").length;
+  return { ok: issues.length === 0, issues, journalCount: store.journals.length, assetCount: store.fixedAssets.length, closedPeriods: closedCount };
+
+}
+
+function periodYmFromDate(dateStr: string): string {
+  const d = String(dateStr || "").slice(0, 10);
+  if (d.length >= 7) return d.slice(0, 7);
+  return periodYm();
+}
+
+function findPeriod(periodYm: string): AccountingPeriod | undefined {
+  return store.periods.find((p) => p.periodYm === periodYm);
+}
+
+function isPeriodClosed(dateStr: string): boolean {
+  const ym = periodYmFromDate(dateStr);
+  const p = findPeriod(ym);
+  return Boolean(p && p.status === "closed");
+}
+
+/** Ensure period exists (open by default) when first referenced. */
+function ensurePeriod(periodYm: string): AccountingPeriod {
+  let p = findPeriod(periodYm);
+  if (p) return p;
+  p = {
+    id: crypto.randomUUID(),
+    periodYm,
+    status: "open",
+    label: periodYm,
+    createdAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString(),
+  };
+  store.periods.push(p);
+  return p;
+}
+
+function assertPeriodOpenForPosting(entryDate: string) {
+  const ym = periodYmFromDate(entryDate);
+  const p = ensurePeriod(ym);
+  if (p.status === "closed") {
+    throw new Error(
+      `Accounting period ${ym} is closed. Reopen the period with authorization before posting, or use an open period date.`,
+    );
+  }
 }
 
 function postJournal(j: Journal) {
   const t = lineTotals(j.lines);
   if (!t.balanced) throw new Error(`Unbalanced journal: debit ${t.debit} credit ${t.credit} difference ${t.difference}`);
   if (!j.lines.length) throw new Error("Journal has no lines");
+  assertPeriodOpenForPosting(j.entryDate || j.postingDate || new Date().toISOString().slice(0, 10));
   j.status = "posted";
   j.postedAt = new Date().toISOString();
   j.postingDate = j.postingDate || j.entryDate;
@@ -616,6 +684,20 @@ const FINANCE_SCHEMA_SQL = [
     action TEXT NOT NULL,
     detail TEXT,
     created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_periods (
+    id TEXT PRIMARY KEY,
+    period_ym TEXT NOT NULL UNIQUE,
+    status TEXT NOT NULL DEFAULT 'open',
+    label TEXT,
+    closed_at TEXT,
+    closed_by TEXT,
+    close_reason TEXT,
+    reopened_at TEXT,
+    reopened_by TEXT,
+    reopen_reason TEXT,
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
   )`,
 ];
 
@@ -1785,6 +1867,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const idx = store.journals.findIndex((x) => x.id === id);
     if (idx < 0) return json({ error: "Not found" }, 404);
     const j = store.journals[idx]!;
+    if (isPeriodClosed(j.entryDate) && String(body.force || "") !== "AFTER_REOPEN") {
+      return json({
+        error: `Period ${periodYmFromDate(j.entryDate)} is closed. Reopen the period before deleting, or pass force:"AFTER_REOPEN" only after reopen authorization.`,
+        periodYm: periodYmFromDate(j.entryDate),
+      }, 403);
+    }
     const impact = {
       number: j.number,
       status: j.status,
@@ -1832,6 +1920,96 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       impact,
       integrity: integrityReport(),
       note: "Active ledger effect removed. Audit trail retains deletion event. Re-enter a correct journal if needed.",
+    });
+  }
+
+
+  // —— Accounting periods (monthly close / reopen) ——
+  if (path === "periods" && request.method === "GET") {
+    // Ensure current + prior 11 months exist for UI
+    const now = new Date();
+    for (let i = 0; i < 12; i++) {
+      const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth() - i, 1));
+      ensurePeriod(`${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`);
+    }
+    // Also ensure periods from existing journals
+    for (const j of store.journals) {
+      if (j.entryDate) ensurePeriod(periodYmFromDate(j.entryDate));
+    }
+    const items = store.periods.slice().sort((a, b) => b.periodYm.localeCompare(a.periodYm));
+    return json({ items, currency: "GHS" });
+  }
+
+  if (path === "periods/close" && request.method === "POST") {
+    const body = await readJson(request);
+    const ym = String(body.periodYm || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return json({ error: "periodYm required as YYYY-MM" }, 400);
+    if (String(body.confirm || "") !== "CLOSE_PERIOD") {
+      return json({ error: "Confirmation required", hint: 'Pass { "confirm": "CLOSE_PERIOD", "periodYm": "YYYY-MM", "reason": "..." }' }, 400);
+    }
+    const reason = String(body.reason || "").trim();
+    if (reason.length < 3) return json({ error: "reason required (min 3 chars)" }, 400);
+    const actor = String(body.closedBy || body.actor || "authorized_user").slice(0, 120);
+    const p = ensurePeriod(ym);
+    if (p.status === "closed") return json({ error: `Period ${ym} is already closed`, period: p }, 400);
+    // Soft check: warn if unbalanced journals in period (still allow close — integrity page surfaces issues)
+    const periodJournals = store.journals.filter((j) => j.status === "posted" && periodYmFromDate(j.entryDate) === ym);
+    p.status = "closed";
+    p.closedAt = new Date().toISOString();
+    p.closedBy = actor;
+    p.closeReason = reason.slice(0, 500);
+    p.updatedAt = new Date().toISOString();
+    audit("period", p.id, "closed", `${ym}:${reason.slice(0, 120)}`);
+    if (access.db) {
+      try {
+        await access.db.prepare(
+          `INSERT OR REPLACE INTO fin_periods (id, period_ym, status, label, closed_at, closed_by, close_reason, reopened_at, reopened_by, reopen_reason, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(p.id, p.periodYm, p.status, p.label || p.periodYm, p.closedAt, p.closedBy, p.closeReason, p.reopenedAt || null, p.reopenedBy || null, p.reopenReason || null, p.createdAt, p.updatedAt).run();
+        await d1Audit(access.db, "period", p.id, "closed", ym);
+      } catch (e: any) {
+        console.error("period close d1", e?.message);
+      }
+    }
+    return json({
+      period: p,
+      postedJournalsInPeriod: periodJournals.length,
+      note: "Period closed. New posts and journal deletes for this month are blocked until reopen.",
+    });
+  }
+
+  if (path === "periods/reopen" && request.method === "POST") {
+    const body = await readJson(request);
+    const ym = String(body.periodYm || "").slice(0, 7);
+    if (!/^\d{4}-\d{2}$/.test(ym)) return json({ error: "periodYm required as YYYY-MM" }, 400);
+    if (String(body.confirm || "") !== "REOPEN_PERIOD") {
+      return json({ error: "Confirmation required", hint: 'Pass { "confirm": "REOPEN_PERIOD", "periodYm": "YYYY-MM", "reason": "..." }' }, 400);
+    }
+    const reason = String(body.reason || "").trim();
+    if (reason.length < 3) return json({ error: "reason required (min 3 chars) — elevated authorization expected" }, 400);
+    const actor = String(body.reopenedBy || body.actor || "authorized_user").slice(0, 120);
+    const p = ensurePeriod(ym);
+    if (p.status === "open") return json({ error: `Period ${ym} is already open`, period: p }, 400);
+    p.status = "open";
+    p.reopenedAt = new Date().toISOString();
+    p.reopenedBy = actor;
+    p.reopenReason = reason.slice(0, 500);
+    p.updatedAt = new Date().toISOString();
+    audit("period", p.id, "reopened", `${ym}:${reason.slice(0, 120)}`);
+    if (access.db) {
+      try {
+        await access.db.prepare(
+          `INSERT OR REPLACE INTO fin_periods (id, period_ym, status, label, closed_at, closed_by, close_reason, reopened_at, reopened_by, reopen_reason, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        ).bind(p.id, p.periodYm, p.status, p.label || p.periodYm, p.closedAt || null, p.closedBy || null, p.closeReason || null, p.reopenedAt, p.reopenedBy, p.reopenReason, p.createdAt, p.updatedAt).run();
+        await d1Audit(access.db, "period", p.id, "reopened", ym);
+      } catch (e: any) {
+        console.error("period reopen d1", e?.message);
+      }
+    }
+    return json({
+      period: p,
+      note: "Period reopened. Posting and authorized deletions for this month are allowed again. Prefer adjusting entries when restating issued statements.",
     });
   }
 

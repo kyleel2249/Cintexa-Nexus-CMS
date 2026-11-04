@@ -19,7 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 
 
-type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "discounts" | "audit" | "assets" | "integrity";
+type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "discounts" | "audit" | "assets" | "integrity" | "periods";
 
 interface DraftLine {
   key: string;
@@ -138,6 +138,79 @@ export default function FinancePage({ mode }: { mode: Mode }) {
             </Card>
           ))}
           {!q.data?.items?.length && <p className="text-muted-foreground">No fixed assets yet.</p>}
+        </div>
+      </Shell>
+    );
+  }
+
+
+  if (mode === "periods") {
+    const q = useQuery({ queryKey: ["fin", "periods"], queryFn: () => finGet<{ items: any[] }>("/periods") });
+    const [reason, setReason] = useState("");
+    const closeMut = useMutation({
+      mutationFn: (periodYm: string) =>
+        finPost("/periods/close", { periodYm, confirm: "CLOSE_PERIOD", reason: reason || "Month-end close", actor: "finance_user" }),
+      onSuccess: inv,
+    });
+    const reopenMut = useMutation({
+      mutationFn: (periodYm: string) =>
+        finPost("/periods/reopen", { periodYm, confirm: "REOPEN_PERIOD", reason: reason || "Authorized correction", actor: "finance_user" }),
+      onSuccess: inv,
+    });
+    return (
+      <Shell title="Accounting periods" desc="Close a month to block new posts and deletions for that period. Reopen requires a reason (elevated authorization).">
+        <div className="mb-4 flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-xs text-muted-foreground">Close / reopen reason</label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Month-end close / Correct posting error" />
+          </div>
+        </div>
+        <div className="space-y-2 text-sm">
+          {(q.data?.items || []).map((p) => (
+            <Card key={p.id || p.periodYm}>
+              <CardContent className="py-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-medium">{p.periodYm} · <span className={p.status === "closed" ? "text-rose-600" : "text-emerald-600"}>{p.status}</span></p>
+                  {p.status === "closed" && (
+                    <p className="text-xs text-muted-foreground">Closed {p.closedAt?.slice(0, 16)} by {p.closedBy}: {p.closeReason}</p>
+                  )}
+                  {p.reopenedAt && (
+                    <p className="text-xs text-muted-foreground">Last reopen {p.reopenedAt?.slice(0, 16)} by {p.reopenedBy}: {p.reopenReason}</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {p.status === "open" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={closeMut.isPending}
+                      onClick={() => {
+                        if (!window.confirm(`Close period ${p.periodYm}? Posting and deletes for this month will be blocked.`)) return;
+                        closeMut.mutate(p.periodYm);
+                      }}
+                    >
+                      Close period
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      disabled={reopenMut.isPending}
+                      onClick={() => {
+                        if (!reason || reason.length < 3) {
+                          window.alert("Enter a reopen reason (min 3 characters).");
+                          return;
+                        }
+                        if (!window.confirm(`Reopen period ${p.periodYm}? Only for authorized corrections.`)) return;
+                        reopenMut.mutate(p.periodYm);
+                      }}
+                    >
+                      Reopen period
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
         </div>
       </Shell>
     );
