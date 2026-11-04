@@ -19,7 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 
 
-type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "discounts" | "audit" | "assets" | "integrity" | "periods";
+type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "cf" | "ar-aging" | "dep-sched" | "equity" | "adjustments" | "invoices" | "payments" | "discounts" | "audit" | "assets" | "integrity" | "periods";
 
 interface DraftLine {
   key: string;
@@ -143,6 +143,137 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     );
   }
 
+
+
+  if (mode === "cf") {
+    const q = useQuery({ queryKey: ["fin", "cf"], queryFn: () => finGet<any>("/cash-flow") });
+    const d = q.data;
+    return (
+      <Shell title="Cash flow statement" desc="Direct method from cash/bank journal lines · posted only · depreciation shown as non-cash">
+        {d && (
+          <div className="space-y-3 text-sm">
+            <p className="text-xs text-muted-foreground">{d.note}</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Card><CardContent className="pt-4"><p className="text-xs uppercase text-muted-foreground">Operating net</p><p className="font-semibold tabular-nums">{formatCurrency(d.operating?.netMinor ?? 0)}</p></CardContent></Card>
+              <Card><CardContent className="pt-4"><p className="text-xs uppercase text-muted-foreground">Investing net</p><p className="font-semibold tabular-nums">{formatCurrency(d.investing?.netMinor ?? 0)}</p></CardContent></Card>
+              <Card><CardContent className="pt-4"><p className="text-xs uppercase text-muted-foreground">Financing net</p><p className="font-semibold tabular-nums">{formatCurrency(d.financing?.netMinor ?? 0)}</p></CardContent></Card>
+            </div>
+            <p>Net change {formatCurrency(d.netChangeMinor ?? 0)} · Closing cash {formatCurrency(d.closingCashMinor ?? 0)}</p>
+            <p className="text-xs text-muted-foreground">Non-cash depreciation {formatCurrency(d.nonCash?.depreciationMinor ?? 0)}</p>
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
+  if (mode === "ar-aging") {
+    const q = useQuery({ queryKey: ["fin", "ar-aging"], queryFn: () => finGet<any>("/ar-aging") });
+    const d = q.data;
+    return (
+      <Shell title="Accounts receivable aging" desc="Open invoice balances by days outstanding">
+        {d && (
+          <div className="space-y-3 text-sm">
+            <div className="grid gap-2 sm:grid-cols-5">
+              {[
+                ["Current", d.buckets?.current],
+                ["1–30", d.buckets?.d1_30],
+                ["31–60", d.buckets?.d31_60],
+                ["61–90", d.buckets?.d61_90],
+                ["90+", d.buckets?.d90_plus],
+              ].map(([l, v]) => (
+                <Card key={l as string}><CardContent className="pt-3"><p className="text-[11px] uppercase text-muted-foreground">{l}</p><p className="font-semibold tabular-nums">{formatCurrency(Number(v) || 0)}</p></CardContent></Card>
+              ))}
+            </div>
+            <p className="font-medium">Total {formatCurrency(d.totalMinor ?? 0)}</p>
+            <div className="space-y-1">
+              {(d.items || []).map((i: any) => (
+                <div key={i.number} className="flex justify-between gap-2 border-b py-1 text-xs">
+                  <span>{i.number} · {i.customerName} · {i.daysOutstanding}d · {i.bucket}</span>
+                  <span className="tabular-nums">{formatCurrency(i.balanceMinor)}</span>
+                </div>
+              ))}
+              {!d.items?.length && <p className="text-muted-foreground">No open receivables.</p>}
+            </div>
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
+  if (mode === "dep-sched") {
+    const q = useQuery({ queryKey: ["fin", "dep-sched"], queryFn: () => finGet<any>("/depreciation-schedule") });
+    return (
+      <Shell title="Depreciation schedule" desc={q.data?.policy || "Fixed asset depreciation schedule"}>
+        <div className="space-y-2 text-sm">
+          {(q.data?.items || []).map((a: any) => (
+            <Card key={a.assetNumber}>
+              <CardContent className="py-3">
+                <p className="font-medium">{a.assetNumber} · {a.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  Cost {formatCurrency(a.costMinor)} · Annual {formatCurrency(a.annualDepreciationMinor)} · Monthly {formatCurrency(a.monthlyDepreciationMinor)} · Accum {formatCurrency(a.accumulatedMinor)} · NBV {formatCurrency(a.netBookValueMinor)}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+          {!q.data?.items?.length && <p className="text-muted-foreground">No assets in register.</p>}
+        </div>
+      </Shell>
+    );
+  }
+
+  if (mode === "equity") {
+    const q = useQuery({ queryKey: ["fin", "equity"], queryFn: () => finGet<any>("/equity-statement") });
+    const d = q.data;
+    return (
+      <Shell title="Statement of changes in equity" desc="Simplified roll-forward from equity accounts + period P&amp;L">
+        {d && (
+          <div className="space-y-2 text-sm">
+            <p className="text-xs text-muted-foreground">{d.note}</p>
+            <p>Net profit (period) {formatCurrency(d.netProfitMinor ?? 0)}</p>
+            {Object.entries(d.closing || {}).map(([code, bal]) => (
+              <div key={code} className="flex justify-between border-b py-1">
+                <span>{code}</span>
+                <span className="tabular-nums">{formatCurrency(Number(bal) || 0)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
+  if (mode === "adjustments") {
+    const [amount, setAmount] = useState("");
+    const [desc, setDesc] = useState("");
+    const prepaid = useMutation({
+      mutationFn: () => finPost("/adjustments/prepaid", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      onSuccess: inv,
+    });
+    const deferred = useMutation({
+      mutationFn: () => finPost("/adjustments/deferred-revenue", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      onSuccess: inv,
+    });
+    const accrue = useMutation({
+      mutationFn: () => finPost("/adjustments/accrue-expense", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      onSuccess: inv,
+    });
+    return (
+      <Shell title="Period adjustments" desc="Accrual helpers — prepaid recognition, deferred revenue earned, accrued expenses. Major units. Respects closed periods.">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Input placeholder="Amount GHS" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-32" />
+          <Input placeholder="Description" value={desc} onChange={(e) => setDesc(e.target.value)} className="min-w-[200px]" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={!amount || prepaid.isPending} onClick={() => prepaid.mutate()}>Recognize prepaid → expense</Button>
+          <Button disabled={!amount || deferred.isPending} variant="secondary" onClick={() => deferred.mutate()}>Recognize deferred revenue</Button>
+          <Button disabled={!amount || accrue.isPending} variant="outline" onClick={() => accrue.mutate()}>Accrue expense</Button>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Prepaid: Dr Expense / Cr 1080 · Deferred: Dr 2110 / Cr Revenue · Accrue: Dr Expense / Cr 2030
+        </p>
+      </Shell>
+    );
+  }
 
   if (mode === "periods") {
     const q = useQuery({ queryKey: ["fin", "periods"], queryFn: () => finGet<{ items: any[] }>("/periods") });

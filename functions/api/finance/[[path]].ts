@@ -464,6 +464,187 @@ function balanceSheet(asOf?: string) {
 }
 
 
+
+function isCashAccount(a: Account) {
+  return a.subtype === "cash" || a.subtype === "bank" || a.code === "1010" || a.code === "1020" || a.code === "1030" || a.code === "1040";
+}
+
+/** Cash flow from posted cash/bank movements + non-cash depreciation note. Amounts in minor units. */
+function cashFlow(from?: string, to?: string) {
+  ensureCoa();
+  let operatingIn = 0, operatingOut = 0, investingOut = 0, financingIn = 0, financingOut = 0;
+  let depreciationNonCash = 0;
+  const movements: { date: string; journal: string; type: string; amountMinor: number; memo: string }[] = [];
+
+  for (const j of store.journals) {
+    if (j.status !== "posted") continue;
+    if (from && j.entryDate < from) continue;
+    if (to && j.entryDate > to) continue;
+    let cashDelta = 0;
+    for (const l of j.lines) {
+      const acc = byCode(l.accountCode);
+      if (!acc || !isCashAccount(acc)) continue;
+      // Asset: debit increases cash
+      cashDelta += (Number(l.debit) || 0) - (Number(l.credit) || 0);
+    }
+    if (j.journalType === "depreciation") {
+      const dep = j.lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
+      depreciationNonCash += dep;
+      continue;
+    }
+    if (cashDelta === 0) continue;
+    const abs = Math.abs(cashDelta);
+    const jt = j.journalType || "general";
+    if (jt === "cash_receipt" || jt === "sales" || cashDelta > 0 && (jt === "general" || jt === "receipt")) {
+      if (cashDelta > 0) operatingIn += cashDelta;
+      else operatingOut += abs;
+    } else if (jt === "purchase" || jt === "expense" || jt === "payment") {
+      if (cashDelta < 0) operatingOut += abs;
+      else operatingIn += cashDelta;
+    } else if (jt === "asset_purchase" || jt === "capex") {
+      investingOut += abs;
+    } else if (jt === "loan" || jt === "equity" || jt === "owner") {
+      if (cashDelta > 0) financingIn += cashDelta;
+      else financingOut += abs;
+    } else {
+      if (cashDelta > 0) operatingIn += cashDelta;
+      else operatingOut += abs;
+    }
+    movements.push({
+      date: j.entryDate,
+      journal: j.number,
+      type: jt,
+      amountMinor: cashDelta,
+      memo: j.description || "",
+    });
+  }
+
+  const netOperating = operatingIn - operatingOut;
+  const netInvesting = -investingOut;
+  const netFinancing = financingIn - financingOut;
+  const netChange = netOperating + netInvesting + netFinancing;
+
+  // Opening / closing cash
+  const cashCodes = store.accounts.filter((a) => a.active && isCashAccount(a)).map((a) => a.code);
+  let openingCash = 0, closingCash = 0;
+  for (const code of cashCodes) {
+    if (from) {
+      // balance just before from
+      const dayBefore = from;
+      openingCash += accountBalance(code, /* asOf exclusive: use day before */ (() => {
+        const d = new Date(from + "T00:00:00Z");
+        d.setUTCDate(d.getUTCDate() - 1);
+        return d.toISOString().slice(0, 10);
+      })());
+    } else {
+      openingCash = 0;
+    }
+    closingCash += accountBalance(code, to || undefined);
+  }
+  if (!from) openingCash = closingCash - netChange;
+
+  return {
+    from: from || null,
+    to: to || null,
+    currency: "GHS",
+    operating: { inflowsMinor: operatingIn, outflowsMinor: operatingOut, netMinor: netOperating },
+    investing: { outflowsMinor: investingOut, netMinor: netInvesting },
+    financing: { inflowsMinor: financingIn, outflowsMinor: financingOut, netMinor: netFinancing },
+    netChangeMinor: netChange,
+    openingCashMinor: openingCash,
+    closingCashMinor: closingCash,
+    nonCash: { depreciationMinor: depreciationNonCash },
+    movements: movements.slice(0, 200),
+    method: "direct_from_cash_bank_lines",
+    note: "Classified by journal type. Depreciation is non-cash (excluded from cash totals). Amounts are minor units.",
+  };
+}
+
+function arAging(asOf?: string) {
+  const asOfDate = asOf || new Date().toISOString().slice(0, 10);
+  const buckets = { current: 0, d1_30: 0, d31_60: 0, d61_90: 0, d90_plus: 0 };
+  const items: any[] = [];
+  for (const inv of store.invoices) {
+    if (inv.status === "void" || inv.status === "cancelled") continue;
+    const bal = inv.amountMinor - inv.amountPaidMinor;
+    if (bal <= 0) continue;
+    const issue = inv.issueDate || inv.createdAt.slice(0, 10);
+    const days = Math.max(0, Math.floor((Date.parse(asOfDate) - Date.parse(issue)) / 86400000));
+    let bucket = "current";
+    if (days <= 0) bucket = "current";
+    else if (days <= 30) bucket = "d1_30";
+    else if (days <= 60) bucket = "d31_60";
+    else if (days <= 90) bucket = "d61_90";
+    else bucket = "d90_plus";
+    (buckets as any)[bucket] += bal;
+    items.push({
+      number: inv.number,
+      customerName: inv.customerName,
+      issueDate: issue,
+      dueDate: inv.dueDate,
+      balanceMinor: bal,
+      daysOutstanding: days,
+      bucket,
+      status: inv.status,
+    });
+  }
+  const total = Object.values(buckets).reduce((s, v) => s + v, 0);
+  return { asOf: asOfDate, currency: "GHS", buckets, totalMinor: total, items };
+}
+
+function depreciationSchedule() {
+  return {
+    currency: "GHS",
+    policy: "Computers/laptops: 25% p.a. straight-line accounting depreciation (not Ghana tax capital allowance).",
+    items: store.fixedAssets.map((a) => {
+      const base = a.costMinor - a.residualMinor;
+      const annual = Math.round((base * a.depreciationRateBps) / 10000);
+      const monthly = Math.round(annual / 12);
+      return {
+        assetNumber: a.assetNumber,
+        name: a.name,
+        category: a.category,
+        acquisitionDate: a.acquisitionDate,
+        inServiceDate: a.inServiceDate,
+        costMinor: a.costMinor,
+        residualMinor: a.residualMinor,
+        ratePct: a.depreciationRateBps / 100,
+        annualDepreciationMinor: annual,
+        monthlyDepreciationMinor: monthly,
+        accumulatedMinor: a.accumulatedMinor,
+        netBookValueMinor: Math.max(0, a.costMinor - a.residualMinor - a.accumulatedMinor),
+        status: a.status,
+      };
+    }),
+  };
+}
+
+/** Statement of changes in equity — simplified from equity account movements + P&L. */
+function equityStatement(from?: string, to?: string) {
+  ensureCoa();
+  const equityAccounts = store.accounts.filter((a) => a.active && a.type === "equity");
+  const opening: Record<string, number> = {};
+  const closing: Record<string, number> = {};
+  for (const a of equityAccounts) {
+    if (from) {
+      const d = new Date(from + "T00:00:00Z");
+      d.setUTCDate(d.getUTCDate() - 1);
+      opening[a.code] = accountBalance(a.code, d.toISOString().slice(0, 10));
+    } else opening[a.code] = 0;
+    closing[a.code] = accountBalance(a.code, to || undefined);
+  }
+  const p = pnl(from, to);
+  return {
+    from: from || null,
+    to: to || null,
+    currency: "GHS",
+    opening,
+    closing,
+    netProfitMinor: p.netProfit,
+    note: "Simplified equity roll-forward. Current year earnings reflected via P&L; does not auto-close to retained earnings.",
+  };
+}
+
 function isComputerCategory(cat: string) {
   return cat === "computer" || cat === "laptop";
 }
@@ -1118,6 +1299,114 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
   if (path === "balance-sheet") {
     return json(balanceSheet(url.searchParams.get("asOf") || undefined));
+  }
+  if (path === "cash-flow") {
+    return json(cashFlow(url.searchParams.get("from") || undefined, url.searchParams.get("to") || undefined));
+  }
+  if (path === "ar-aging") {
+    return json(arAging(url.searchParams.get("asOf") || undefined));
+  }
+  if (path === "depreciation-schedule") {
+    return json(depreciationSchedule());
+  }
+  if (path === "equity-statement") {
+    return json(equityStatement(url.searchParams.get("from") || undefined, url.searchParams.get("to") || undefined));
+  }
+
+  // Recognize portion of prepaid expense → expense (accrual)
+  if (path === "adjustments/prepaid" && request.method === "POST") {
+    const body = await readJson(request);
+    const amount = Math.round(Number(body.amountMinor) || 0);
+    if (amount <= 0) return json({ error: "amountMinor must be positive" }, 400);
+    ensureCoa();
+    const expCode = String(body.expenseAccountCode || "6400");
+    const prepaid = byCode("1080")!;
+    const exp = byCode(expCode) || byCode("6400")!;
+    const entryDate = String(body.entryDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const j: Journal = {
+      id: crypto.randomUUID(),
+      number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
+      journalType: "adjustment",
+      entryDate,
+      description: String(body.description || "Prepaid expense recognition").slice(0, 500),
+      sourceModule: "finance",
+      currency: String(body.currency || "GHS"),
+      status: "draft",
+      lines: [
+        { id: crypto.randomUUID(), accountId: exp.id, accountCode: exp.code, memo: "Prepaid recognition", debit: amount, credit: 0 },
+        { id: crypto.randomUUID(), accountId: prepaid.id, accountCode: prepaid.code, memo: "Prepaid release", debit: 0, credit: amount },
+      ],
+      createdAt: new Date().toISOString(),
+    };
+    try { postJournal(j); } catch (e: any) { return json({ error: e.message }, 400); }
+    store.journals.push(j);
+    await persistJournal(j);
+    audit("journal", j.id, "prepaid_recognition", j.number);
+    return json({ journal: j }, 201);
+  }
+
+  // Recognize deferred revenue → revenue (when earned)
+  if (path === "adjustments/deferred-revenue" && request.method === "POST") {
+    const body = await readJson(request);
+    const amount = Math.round(Number(body.amountMinor) || 0);
+    if (amount <= 0) return json({ error: "amountMinor must be positive" }, 400);
+    ensureCoa();
+    const revCode = String(body.revenueAccountCode || "4070");
+    const deferred = byCode("2110") || byCode("2120")!;
+    const rev = byCode(revCode) || byCode("4070")!;
+    const entryDate = String(body.entryDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const j: Journal = {
+      id: crypto.randomUUID(),
+      number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
+      journalType: "adjustment",
+      entryDate,
+      description: String(body.description || "Deferred revenue recognition").slice(0, 500),
+      sourceModule: "finance",
+      currency: String(body.currency || "GHS"),
+      status: "draft",
+      lines: [
+        { id: crypto.randomUUID(), accountId: deferred.id, accountCode: deferred.code, memo: "Deferred release", debit: amount, credit: 0 },
+        { id: crypto.randomUUID(), accountId: rev.id, accountCode: rev.code, memo: "Revenue earned", debit: 0, credit: amount },
+      ],
+      createdAt: new Date().toISOString(),
+    };
+    try { postJournal(j); } catch (e: any) { return json({ error: e.message }, 400); }
+    store.journals.push(j);
+    await persistJournal(j);
+    audit("journal", j.id, "deferred_revenue_recognition", j.number);
+    return json({ journal: j }, 201);
+  }
+
+  // Accrue expense (Dr Expense / Cr Accrued Expenses)
+  if (path === "adjustments/accrue-expense" && request.method === "POST") {
+    const body = await readJson(request);
+    const amount = Math.round(Number(body.amountMinor) || 0);
+    if (amount <= 0) return json({ error: "amountMinor must be positive" }, 400);
+    ensureCoa();
+    const expCode = String(body.expenseAccountCode || "6400");
+    const exp = byCode(expCode) || byCode("6400")!;
+    const accrued = byCode("2030")!;
+    const entryDate = String(body.entryDate || new Date().toISOString().slice(0, 10)).slice(0, 10);
+    const j: Journal = {
+      id: crypto.randomUUID(),
+      number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
+      journalType: "adjustment",
+      entryDate,
+      description: String(body.description || "Accrued expense").slice(0, 500),
+      sourceModule: "finance",
+      currency: String(body.currency || "GHS"),
+      status: "draft",
+      lines: [
+        { id: crypto.randomUUID(), accountId: exp.id, accountCode: exp.code, memo: "Accrual", debit: amount, credit: 0 },
+        { id: crypto.randomUUID(), accountId: accrued.id, accountCode: accrued.code, memo: "Accrued liability", debit: 0, credit: amount },
+      ],
+      createdAt: new Date().toISOString(),
+    };
+    try { postJournal(j); } catch (e: any) { return json({ error: e.message }, 400); }
+    store.journals.push(j);
+    await persistJournal(j);
+    audit("journal", j.id, "accrue_expense", j.number);
+    return json({ journal: j }, 201);
   }
 
   // Invoice from sales (or manual) — creates AR + revenue journal
