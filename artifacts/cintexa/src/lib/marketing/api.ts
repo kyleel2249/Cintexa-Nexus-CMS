@@ -111,3 +111,73 @@ export const marketingApi = {
   },
   upsertSeo: (body: Parameters<typeof store.upsertSeo>[0]) => Promise.resolve(store.upsertSeo(body)),
 };
+
+// Extended entities (strategy, brand, personas, SWOT, OKRs, funnels, settings)
+import * as ent from "./entities";
+
+export const marketingIntel = {
+  ensureSeed: () => { ent.ensureMarketingSeed(); },
+
+  listStrategies: () => Promise.resolve({ items: ent.listStrategies() }),
+  getStrategy: (id: number) => {
+    const s = ent.getStrategy(id);
+    if (!s) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(s);
+  },
+  createStrategy: (b: Parameters<typeof ent.createStrategy>[0]) => Promise.resolve(ent.createStrategy(b)),
+  updateStrategy: (id: number, b: Parameters<typeof ent.updateStrategy>[1]) => {
+    const s = ent.updateStrategy(id, b);
+    if (!s) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(s);
+  },
+
+  listPersonas: () => Promise.resolve({ items: ent.listPersonas() }),
+  createPersona: (b: Parameters<typeof ent.createPersona>[0]) => Promise.resolve(ent.createPersona(b)),
+  updatePersona: (id: number, b: Parameters<typeof ent.updatePersona>[1]) => {
+    const p = ent.updatePersona(id, b);
+    if (!p) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(p);
+  },
+
+  listSwot: () => Promise.resolve({ items: ent.listSwot() }),
+  createSwot: (b: Parameters<typeof ent.createSwot>[0]) => Promise.resolve(ent.createSwot(b)),
+  updateSwot: (id: number, b: Parameters<typeof ent.updateSwot>[1]) => {
+    const s = ent.updateSwot(id, b);
+    if (!s) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(s);
+  },
+  deleteSwot: (id: number) => { ent.deleteSwot(id); return Promise.resolve(); },
+
+  listObjectives: () => Promise.resolve({ items: ent.listObjectives() }),
+  createObjective: (b: Parameters<typeof ent.createObjective>[0]) => Promise.resolve(ent.createObjective(b)),
+  updateObjective: (id: number, b: Parameters<typeof ent.updateObjective>[1]) => {
+    const o = ent.updateObjective(id, b);
+    if (!o) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(o);
+  },
+  objectiveProgress: ent.objectiveProgress,
+
+  listBrands: () => Promise.resolve({ items: ent.listBrands() }),
+  getDefaultBrand: () => Promise.resolve(ent.getDefaultBrand()),
+  updateBrand: (id: number, b: Parameters<typeof ent.updateBrand>[1]) => {
+    const x = ent.updateBrand(id, b);
+    if (!x) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(x);
+  },
+  listClaims: (brandId?: number) => Promise.resolve({ items: ent.listClaims(brandId) }),
+  createClaim: (b: Parameters<typeof ent.createClaim>[0]) => Promise.resolve(ent.createClaim(b)),
+
+  listFunnels: () => Promise.resolve({ items: ent.listFunnels() }),
+  createFunnel: (b: Parameters<typeof ent.createFunnel>[0]) => Promise.resolve(ent.createFunnel(b)),
+  updateFunnel: (id: number, b: Parameters<typeof ent.updateFunnel>[1]) => {
+    const f = ent.updateFunnel(id, b);
+    if (!f) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(f);
+  },
+
+  getSettings: () => Promise.resolve(ent.getSettings()),
+  updateSettings: (b: Parameters<typeof ent.updateSettings>[0]) => Promise.resolve(ent.updateSettings(b)),
+  exportJson: () => Promise.resolve(ent.exportMarketingJson()),
+  importJson: (raw: string, mode: "merge" | "replace" = "merge") => Promise.resolve(ent.importMarketingJson(raw, mode)),
+  toCsv: ent.toCsv,
+};

@@ -12,6 +12,11 @@ const Seo = lazy(() => import("./seo"));
 const Leads = lazy(() => import("./leads"));
 const Automation = lazy(() => import("./automation"));
 const Budget = lazy(() => import("./budget"));
+const Strategy = lazy(() => import("./strategy"));
+const Brand = lazy(() => import("./brand"));
+const Landing = lazy(() => import("./landing"));
+const Analytics = lazy(() => import("./analytics"));
+const Settings = lazy(() => import("./settings"));
 const Placeholder = lazy(() => import("./placeholder"));
 
 function Spinner() {
@@ -27,6 +32,7 @@ export function MarketingRoutes() {
     <Suspense fallback={<Spinner />}>
       <Switch>
         <Route path="/marketing" component={Overview} />
+        <Route path="/marketing/strategy" component={Strategy} />
         <Route path="/marketing/campaigns" component={Campaigns} />
         <Route path="/marketing/campaigns/:id" component={CampaignDetail} />
         <Route path="/marketing/content" component={ContentStudio} />
@@ -38,14 +44,13 @@ export function MarketingRoutes() {
         <Route path="/marketing/audience" component={Leads} />
         <Route path="/marketing/leads" component={Leads} />
         <Route path="/marketing/automation" component={Automation} />
+        <Route path="/marketing/brand" component={Brand} />
+        <Route path="/marketing/landing" component={Landing} />
+        <Route path="/marketing/analytics" component={Analytics} />
         <Route path="/marketing/budget" component={Budget} />
-        <Route path="/marketing/strategy">{() => <Placeholder title="Marketing Strategy" />}</Route>
-        <Route path="/marketing/brand">{() => <Placeholder title="Brand Management" />}</Route>
-        <Route path="/marketing/assets">{() => <Placeholder title="Asset Library" />}</Route>
-        <Route path="/marketing/landing">{() => <Placeholder title="Landing Pages & Funnels" />}</Route>
-        <Route path="/marketing/analytics">{() => <Placeholder title="Marketing Analytics" />}</Route>
-        <Route path="/marketing/reports">{() => <Placeholder title="Reports & Intelligence" />}</Route>
-        <Route path="/marketing/settings">{() => <Placeholder title="Marketing Settings" />}</Route>
+        <Route path="/marketing/reports" component={Analytics} />
+        <Route path="/marketing/settings" component={Settings} />
+        <Route path="/marketing/assets">{() => <Placeholder title="Asset Library — uses Media Library references" />}</Route>
       </Switch>
     </Suspense>
   );
