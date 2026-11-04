@@ -55,7 +55,7 @@ async function loadLedger(env: Env, origin: string): Promise<LedgerResult> {
       const rows = (await env.FIN_DB.prepare(
         `SELECT j.id AS jid, j.entry_date, j.currency, j.description, l.account_code, l.debit, l.credit
          FROM fin_journals j JOIN fin_journal_lines l ON l.journal_id = j.id
-         WHERE j.status = 'posted' ORDER BY j.entry_date, j.number`,
+         WHERE j.status = 'posted' AND j.journal_type <> 'closing' ORDER BY j.entry_date, j.number`,
       ).all()).results || [];
       const byId = new Map<string, Entry>();
       for (const r of rows as any[]) {
@@ -80,7 +80,7 @@ async function loadLedger(env: Env, origin: string): Promise<LedgerResult> {
     if (!jr.ok || !ar.ok) throw new Error(`Finance API unavailable (${jr.status}/${ar.status})`);
     const journals = ((await jr.json()) as any).items || [];
     const accounts = new Map<string, any>((((await ar.json()) as any).items || []).map((a: any) => [String(a.code), a]));
-    const entries: Entry[] = journals.filter((j: any) => j.status === "posted").map((j: any) => ({
+    const entries: Entry[] = journals.filter((j: any) => j.status === "posted" && j.journalType !== "closing").map((j: any) => ({
       id: j.id, date: String(j.entryDate), currency: j.currency || "GHS", status: "posted" as const, memo: j.description || undefined,
       lines: (j.lines || []).map((l: any) => {
         const a = accounts.get(String(l.accountCode));

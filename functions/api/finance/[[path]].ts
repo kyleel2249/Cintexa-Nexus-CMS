@@ -129,7 +129,16 @@ interface Audit {
   createdAt: string;
 }
 
+interface Policy { id: string; key: string; value: string; effectiveFrom: string; reason: string; setBy: string; createdAt: string }
+interface YearClose {
+  id: string; fiscalYear: number; startDate: string; endDate: string; status: "closed" | "reopened";
+  netResultMinor: number; drawingsMinor: number; journalId?: string; reversalJournalId?: string;
+  closedAt: string; closedBy: string; reason: string; reopenedAt?: string; reopenReason?: string;
+}
+
 interface Store {
+  policies: Policy[];
+  yearCloses: YearClose[];
   accounts: Account[];
   journals: Journal[];
   invoices: Invoice[];
@@ -145,6 +154,8 @@ interface Store {
 }
 
 const store: Store = {
+  policies: [],
+  yearCloses: [],
   accounts: [],
   journals: [],
   invoices: [],
@@ -347,12 +358,18 @@ function lineTotals(lines: { debit: number; credit: number }[]) {
   return { debit: d, credit: c, balanced: d === c, difference: d - c };
 }
 
-function accountBalance(code: string, asOf?: string): number {
+/** Year-end closing journals only move temporary accounts into equity; they are not period activity. */
+function isClosingJournal(j: { journalType: string }) {
+  return j.journalType === "closing";
+}
+
+function accountBalance(code: string, asOf?: string, preClosing = false): number {
   let bal = 0;
   const acc = byCode(code);
   if (!acc) return 0;
   for (const j of store.journals) {
     if (j.status !== "posted") continue;
+    if (preClosing && isClosingJournal(j)) continue;
     if (asOf && j.entryDate > asOf) continue;
     for (const l of j.lines) {
       if (l.accountCode !== code) continue;
@@ -363,10 +380,10 @@ function accountBalance(code: string, asOf?: string): number {
   return bal;
 }
 
-function trialBalance(asOf?: string) {
+function trialBalance(asOf?: string, preClosing = false) {
   ensureCoa();
   const rows = store.accounts.filter((a) => a.active).map((a) => {
-    const bal = accountBalance(a.code, asOf);
+    const bal = accountBalance(a.code, asOf, preClosing);
     const debit = bal > 0 && (a.type === "asset" || a.type === "expense") ? bal
       : bal < 0 && !(a.type === "asset" || a.type === "expense") ? -bal
       : bal > 0 && !(a.type === "asset" || a.type === "expense") ? 0
@@ -392,6 +409,7 @@ function accountPeriodBalance(code: string, from?: string, to?: string): number 
   let bal = 0;
   for (const j of store.journals) {
     if (j.status !== "posted") continue;
+    if (isClosingJournal(j)) continue; // period activity excludes closing entries
     if (from && j.entryDate < from) continue;
     if (to && j.entryDate > to) continue;
     for (const l of j.lines) {
@@ -450,8 +468,14 @@ function balanceSheet(asOf?: string) {
     else if (a.type === "liability") liabilities += bal;
     else if (a.type === "equity") equity += bal;
   }
-  const p = pnl(undefined, asOf || undefined);
-  equity += p.netProfit;
+  // Earnings not yet closed to retained earnings = cumulative revenue-type minus expense-type balances
+  // (closing journals included, so a closed year is counted once, inside Retained Earnings).
+  let unclosed = 0;
+  for (const a of store.accounts.filter((x) => x.active)) {
+    if (a.type === "revenue") unclosed += accountBalance(a.code, asOf);
+    else if (a.type === "expense") unclosed -= accountBalance(a.code, asOf);
+  }
+  equity += unclosed;
   return {
     assets,
     liabilities,
@@ -749,17 +773,134 @@ function assertPeriodOpenForPosting(entryDate: string) {
   }
 }
 
-function postJournal(j: Journal) {
+function postJournal(j: Journal, opts: { bypassPeriodLock?: boolean } = {}) {
   const t = lineTotals(j.lines);
   if (!t.balanced) throw new Error(`Unbalanced journal: debit ${t.debit} credit ${t.credit} difference ${t.difference}`);
   if (!j.lines.length) throw new Error("Journal has no lines");
-  assertPeriodOpenForPosting(j.entryDate || j.postingDate || new Date().toISOString().slice(0, 10));
+  // Duplicate-posting guard: one live posted journal per (type, source module, source id)
+  if (j.sourceModule && j.sourceId) {
+    const dup = store.journals.find((x) => x.id !== j.id && x.status === "posted" && !x.reversedBy && x.journalType === j.journalType
+      && x.sourceModule === j.sourceModule && x.sourceId === j.sourceId);
+    if (dup) throw new Error(`DUPLICATE_POSTING: ${dup.number} already posted for ${j.sourceModule}/${j.sourceId}`);
+  }
+  if (!opts.bypassPeriodLock) assertPeriodOpenForPosting(j.entryDate || j.postingDate || new Date().toISOString().slice(0, 10));
   j.status = "posted";
   j.postedAt = new Date().toISOString();
   j.postingDate = j.postingDate || j.entryDate;
   audit("journal", j.id, "posted", j.number);
 }
 
+
+// ───────────────────────── Accounting Policy & Rules Engine ─────────────────────────
+// One authority for effective-dated accounting policies. Modules ask the engine; they never hard-code treatments.
+const POLICY_DEFAULTS: Record<string, { value: string; kind: "enum" | "int" | "code"; allowed?: string[]; min?: number; max?: number; doc: string }> = {
+  framework: { value: "IFRS_FOR_SMES", kind: "enum", allowed: ["IFRS", "IFRS_FOR_SMES"], doc: "Reporting framework selected for the entity" },
+  functionalCurrency: { value: "GHS", kind: "code", doc: "Functional/presentation currency" },
+  fiscalYearEndMonth: { value: "12", kind: "int", min: 1, max: 12, doc: "Month in which the fiscal year ends" },
+  retainedEarningsCode: { value: "3040", kind: "code", doc: "Account receiving closed profit or loss" },
+  drawingsCode: { value: "3060", kind: "code", doc: "Owner drawings account closed to retained earnings at year end" },
+  inventoryMethod: { value: "WEIGHTED_AVERAGE", kind: "enum", allowed: ["FIFO", "WEIGHTED_AVERAGE", "SPECIFIC"], doc: "Inventory valuation (consumed by the inventory module when built)" },
+  materialityBps: { value: "500", kind: "int", min: 0, max: 10000, doc: "Quantitative materiality as basis points of revenue (restatement assessment)" },
+};
+
+/** Policy in force on a date: latest effectiveFrom <= date, else the documented default. */
+function policyAt(key: string, date: string): string {
+  const d = String(date).slice(0, 10);
+  let hit: Policy | undefined;
+  for (const p of store.policies) {
+    if (p.key !== key || p.effectiveFrom > d) continue;
+    if (!hit || p.effectiveFrom > hit.effectiveFrom || (p.effectiveFrom === hit.effectiveFrom && p.createdAt > hit.createdAt)) hit = p;
+  }
+  return hit ? hit.value : POLICY_DEFAULTS[key]!.value;
+}
+
+function validatePolicy(key: string, value: string): string | null {
+  const def = POLICY_DEFAULTS[key];
+  if (!def) return `Unknown policy key. Allowed: ${Object.keys(POLICY_DEFAULTS).join(", ")}`;
+  if (def.kind === "enum" && !def.allowed!.includes(value)) return `Value must be one of ${def.allowed!.join(", ")}`;
+  if (def.kind === "int") {
+    const n = Number(value);
+    if (!Number.isInteger(n) || n < (def.min ?? 0) || n > (def.max ?? 1e9)) return `Value must be an integer ${def.min}..${def.max}`;
+  }
+  if (def.kind === "code" && !/^[A-Za-z0-9_-]{2,12}$/.test(value)) return "Value must be a short code";
+  return null;
+}
+
+function lastDayOfMonth(year: number, month: number) {
+  return new Date(Date.UTC(year, month, 0)).toISOString().slice(0, 10);
+}
+
+/** Fiscal year `fy` ends in fiscalYearEndMonth of year `fy`; it starts the day after the previous year's end. */
+function fiscalRange(fy: number, endMonth: number) {
+  const endDate = lastDayOfMonth(fy, endMonth);
+  const prev = new Date(lastDayOfMonth(fy - 1, endMonth) + "T00:00:00Z");
+  prev.setUTCDate(prev.getUTCDate() + 1);
+  return { startDate: prev.toISOString().slice(0, 10), endDate };
+}
+
+function monthsBetween(startDate: string, endDate: string): string[] {
+  const out: string[] = [];
+  let y = Number(startDate.slice(0, 4)), m = Number(startDate.slice(5, 7));
+  const ey = Number(endDate.slice(0, 4)), em = Number(endDate.slice(5, 7));
+  while (y < ey || (y === ey && m <= em)) {
+    out.push(`${y}-${String(m).padStart(2, "0")}`);
+    m++; if (m > 12) { m = 1; y++; }
+  }
+  return out;
+}
+
+/** Build the closing lines for a fiscal year from period activity (closing entries excluded → idempotent). */
+function buildYearEndClosing(fy: number) {
+  const endMonth = Number(policyAt("fiscalYearEndMonth", `${fy}-12-31`));
+  const { startDate, endDate } = fiscalRange(fy, endMonth);
+  const reCode = policyAt("retainedEarningsCode", endDate);
+  const drawCode = policyAt("drawingsCode", endDate);
+  const re = byCode(reCode);
+  const lines: { accountCode: string; memo: string; debit: number; credit: number }[] = [];
+  let net = 0; // profit positive
+  for (const a of store.accounts.filter((x) => x.active && (x.type === "revenue" || x.type === "expense"))) {
+    const bal = accountPeriodBalance(a.code, startDate, endDate); // natural-side balance
+    if (!bal) continue;
+    const creditNormal = a.type === "revenue";
+    // Zero the account: revenue (credit-normal) is debited, expense (debit-normal) is credited; negatives reverse.
+    const debit = creditNormal ? (bal > 0 ? bal : 0) : (bal < 0 ? -bal : 0);
+    const credit = creditNormal ? (bal < 0 ? -bal : 0) : (bal > 0 ? bal : 0);
+    lines.push({ accountCode: a.code, memo: `Close ${a.name} to ${reCode}`, debit, credit });
+    net += creditNormal ? bal : -bal;
+  }
+  let drawings = 0;
+  const dacc = byCode(drawCode);
+  if (dacc) {
+    const bal = accountPeriodBalance(drawCode, startDate, endDate); // credit-normal; drawings are a debit balance → negative
+    if (bal < 0) { drawings = -bal; lines.push({ accountCode: drawCode, memo: `Close drawings to ${reCode}`, debit: 0, credit: drawings }); }
+  }
+  if (net > 0) lines.push({ accountCode: reCode, memo: `FY${fy} net profit transferred`, debit: 0, credit: net });
+  else if (net < 0) lines.push({ accountCode: reCode, memo: `FY${fy} net loss transferred`, debit: -net, credit: 0 });
+  if (drawings > 0) lines.push({ accountCode: reCode, memo: `FY${fy} drawings`, debit: drawings, credit: 0 });
+  return { fy, startDate, endDate, reCode, reExists: Boolean(re), lines, netResultMinor: net, drawingsMinor: drawings, totals: lineTotals(lines) };
+}
+
+function yearEndChecks(fy: number) {
+  const c = buildYearEndClosing(fy);
+  const blockers: { code: string; message: string }[] = [];
+  const drafts = store.journals.filter((j) => j.status === "draft" && j.entryDate >= c.startDate && j.entryDate <= c.endDate);
+  if (drafts.length) blockers.push({ code: "DRAFT_JOURNALS", message: `${drafts.length} draft journal(s) in the year must be posted or deleted: ${drafts.slice(0, 5).map((d) => d.number).join(", ")}` });
+  const bad = store.journals.filter((j) => !lineTotals(j.lines).balanced);
+  if (bad.length) blockers.push({ code: "UNBALANCED_JOURNAL", message: `Unbalanced journals: ${bad.slice(0, 5).map((d) => d.number).join(", ")}` });
+  const tb = trialBalance(c.endDate, true);
+  if (!tb.balanced) blockers.push({ code: "TB_OUT_OF_BALANCE", message: `Trial balance out of balance Dr ${tb.totalDebit} Cr ${tb.totalCredit}` });
+  if (!c.reExists) blockers.push({ code: "NO_RETAINED_EARNINGS_ACCOUNT", message: `Account ${c.reCode} (retained earnings) not found in the chart of accounts` });
+  const existing = store.yearCloses.find((y) => y.fiscalYear === fy);
+  if (existing && existing.status === "closed") blockers.push({ code: "ALREADY_CLOSED", message: `FY${fy} is already closed (journal ${existing.journalId || "none"})` });
+  const prior = store.yearCloses.find((y) => y.fiscalYear === fy - 1);
+  const warnings: string[] = [];
+  if (!prior || prior.status !== "closed") {
+    const earlier = store.journals.some((j) => j.status === "posted" && !isClosingJournal(j) && j.entryDate < c.startDate);
+    if (earlier) warnings.push(`FY${fy - 1} has activity but is not closed; close it first so opening retained earnings are correct.`);
+  }
+  warnings.push("Not yet automated and therefore NOT verified by this check: FX revaluation, inventory/COGS, payroll accruals, bank reconciliation.");
+  return { closing: c, blockers, warnings, canClose: blockers.length === 0 };
+}
 
 type Env = {
   FIN_DB?: D1Database;
@@ -865,6 +1006,31 @@ const FINANCE_SCHEMA_SQL = [
     action TEXT NOT NULL,
     detail TEXT,
     created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_policies (
+    id TEXT PRIMARY KEY,
+    key TEXT NOT NULL,
+    value TEXT NOT NULL,
+    effective_from TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    set_by TEXT NOT NULL,
+    created_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_year_closes (
+    id TEXT PRIMARY KEY,
+    fiscal_year INTEGER NOT NULL UNIQUE,
+    start_date TEXT NOT NULL,
+    end_date TEXT NOT NULL,
+    status TEXT NOT NULL,
+    net_result_minor INTEGER NOT NULL,
+    drawings_minor INTEGER NOT NULL DEFAULT 0,
+    journal_id TEXT,
+    reversal_journal_id TEXT,
+    closed_at TEXT NOT NULL,
+    closed_by TEXT NOT NULL,
+    reason TEXT NOT NULL,
+    reopened_at TEXT,
+    reopen_reason TEXT
   )`,
   `CREATE TABLE IF NOT EXISTS fin_periods (
     id TEXT PRIMARY KEY,
@@ -1037,6 +1203,22 @@ async function d1Audit(db: D1Database, entityType: string, entityId: string, act
   ).bind(crypto.randomUUID(), entityType, entityId, action, detail || null, new Date().toISOString()).run();
 }
 
+async function d1UpsertPeriod(db: D1Database, p: AccountingPeriod) {
+  await db.prepare(
+    `INSERT OR REPLACE INTO fin_periods (id, period_ym, status, label, closed_at, closed_by, close_reason, reopened_at, reopened_by, reopen_reason, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(p.id, p.periodYm, p.status, p.label || p.periodYm, p.closedAt || null, p.closedBy || null, p.closeReason || null,
+    p.reopenedAt || null, p.reopenedBy || null, p.reopenReason || null, p.createdAt, p.updatedAt).run();
+}
+
+async function d1UpsertYearClose(db: D1Database, y: YearClose) {
+  await db.prepare(
+    `INSERT OR REPLACE INTO fin_year_closes (id, fiscal_year, start_date, end_date, status, net_result_minor, drawings_minor, journal_id, reversal_journal_id, closed_at, closed_by, reason, reopened_at, reopen_reason)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(y.id, y.fiscalYear, y.startDate, y.endDate, y.status, y.netResultMinor, y.drawingsMinor, y.journalId || null,
+    y.reversalJournalId || null, y.closedAt, y.closedBy, y.reason, y.reopenedAt || null, y.reopenReason || null).run();
+}
+
 async function d1NextSeq(db: D1Database, kind: "journal" | "invoice"): Promise<number> {
   const table = kind === "journal" ? "fin_journals" : "fin_invoices";
   const col = kind === "journal" ? "number" : "number";
@@ -1054,6 +1236,21 @@ async function hydrateFromD1(db: D1Database) {
   store.invoices = await d1ListInvoices(db);
   store.payments = await d1ListPayments(db);
   store.seededCoa = true;
+  // Periods, policies and year closes must survive across requests (they were previously isolate-memory only).
+  store.periods = ((await db.prepare("SELECT * FROM fin_periods").all()).results || []).map((r: any) => ({
+    id: r.id, periodYm: r.period_ym, status: r.status, label: r.label || undefined, closedAt: r.closed_at || undefined,
+    closedBy: r.closed_by || undefined, closeReason: r.close_reason || undefined, reopenedAt: r.reopened_at || undefined,
+    reopenedBy: r.reopened_by || undefined, reopenReason: r.reopen_reason || undefined, createdAt: r.created_at, updatedAt: r.updated_at,
+  }));
+  store.policies = ((await db.prepare("SELECT * FROM fin_policies ORDER BY effective_from, created_at").all()).results || []).map((r: any) => ({
+    id: r.id, key: r.key, value: r.value, effectiveFrom: r.effective_from, reason: r.reason, setBy: r.set_by, createdAt: r.created_at,
+  }));
+  store.yearCloses = ((await db.prepare("SELECT * FROM fin_year_closes").all()).results || []).map((r: any) => ({
+    id: r.id, fiscalYear: r.fiscal_year, startDate: r.start_date, endDate: r.end_date, status: r.status,
+    netResultMinor: r.net_result_minor, drawingsMinor: r.drawings_minor, journalId: r.journal_id || undefined,
+    reversalJournalId: r.reversal_journal_id || undefined, closedAt: r.closed_at, closedBy: r.closed_by, reason: r.reason,
+    reopenedAt: r.reopened_at || undefined, reopenReason: r.reopen_reason || undefined,
+  }));
   const jn = await d1NextSeq(db, "journal");
   const inv = await d1NextSeq(db, "invoice");
   store.journalSeq = jn;
@@ -1262,6 +1459,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const j = store.journals.find((x) => x.id === id);
     if (!j) return json({ error: "Not found" }, 404);
     if (j.status !== "posted") return json({ error: "Only posted journals can be reversed" }, 400);
+    if (isClosingJournal(j)) return json({ error: "Year-end closing journals are reversed only through POST year-end/reopen", code: "USE_YEAR_END_REOPEN" }, 409);
     const rev: Journal = {
       id: crypto.randomUUID(),
       number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
@@ -1292,7 +1490,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   if (path === "trial-balance") {
-    return json(trialBalance(url.searchParams.get("asOf") || undefined));
+    return json(trialBalance(url.searchParams.get("asOf") || undefined, url.searchParams.get("preClosing") === "1"));
   }
   if (path === "pnl") {
     return json(pnl(url.searchParams.get("from") || undefined, url.searchParams.get("to") || undefined));
@@ -2156,6 +2354,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const idx = store.journals.findIndex((x) => x.id === id);
     if (idx < 0) return json({ error: "Not found" }, 404);
     const j = store.journals[idx]!;
+    if (isClosingJournal(j)) return json({ error: "Year-end closing journals cannot be deleted; use POST year-end/reopen", code: "USE_YEAR_END_REOPEN" }, 409);
     if (isPeriodClosed(j.entryDate) && String(body.force || "") !== "AFTER_REOPEN") {
       return json({
         error: `Period ${periodYmFromDate(j.entryDate)} is closed. Reopen the period before deleting, or pass force:"AFTER_REOPEN" only after reopen authorization.`,
@@ -2300,6 +2499,131 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       period: p,
       note: "Period reopened. Posting and authorized deletions for this month are allowed again. Prefer adjusting entries when restating issued statements.",
     });
+  }
+
+  // —— Accounting Policy & Rules Engine ——
+  if (path === "policies" && request.method === "GET") {
+    const asOf = url.searchParams.get("asOf") || new Date().toISOString().slice(0, 10);
+    const inForce = Object.fromEntries(Object.keys(POLICY_DEFAULTS).map((k) => [k, { value: policyAt(k, asOf), doc: POLICY_DEFAULTS[k]!.doc }]));
+    return json({ asOf, inForce, history: store.policies.slice().sort((a, b) => a.effectiveFrom.localeCompare(b.effectiveFrom)), keys: Object.keys(POLICY_DEFAULTS) });
+  }
+  if (path === "policies" && request.method === "POST") {
+    const body = await readJson(request);
+    const key = String(body.key || "");
+    const value = String(body.value ?? "");
+    const err = validatePolicy(key, value);
+    if (err) return json({ error: err }, 400);
+    const effectiveFrom = String(body.effectiveFrom || "").slice(0, 10);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(effectiveFrom)) return json({ error: "effectiveFrom required as YYYY-MM-DD" }, 400);
+    const reason = String(body.reason || "").trim();
+    if (reason.length < 3) return json({ error: "reason required (min 3 chars) — policy changes must be documented" }, 400);
+    // A policy cannot silently rewrite closed history: it may not take effect inside a closed period or closed fiscal year.
+    if (isPeriodClosed(effectiveFrom) || store.yearCloses.some((y) => y.status === "closed" && effectiveFrom >= y.startDate && effectiveFrom <= y.endDate)) {
+      return json({ error: "effectiveFrom falls in a closed period/year. Use a formal restatement for retrospective changes." }, 409);
+    }
+    const pol: Policy = { id: crypto.randomUUID(), key, value, effectiveFrom, reason: reason.slice(0, 500), setBy: String(body.setBy || "system").slice(0, 120), createdAt: new Date().toISOString() };
+    store.policies.push(pol);
+    audit("policy", pol.id, "set", `${key}=${value}@${effectiveFrom}`);
+    if (access.db) {
+      await access.db.prepare("INSERT INTO fin_policies (id, key, value, effective_from, reason, set_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+        .bind(pol.id, pol.key, pol.value, pol.effectiveFrom, pol.reason, pol.setBy, pol.createdAt).run();
+      await d1Audit(access.db, "policy", pol.id, "set", `${key}=${value}`);
+    }
+    return json({ policy: pol }, 201);
+  }
+
+  // —— Year-end closing → retained earnings ——
+  if (path === "year-end/status" && request.method === "GET") {
+    return json({ items: store.yearCloses.slice().sort((a, b) => b.fiscalYear - a.fiscalYear) });
+  }
+  if (path === "year-end/preview" && request.method === "GET") {
+    const fy = Number(url.searchParams.get("year"));
+    if (!Number.isInteger(fy) || fy < 2000 || fy > 2100) return json({ error: "year required (e.g. ?year=2026)" }, 400);
+    const r = yearEndChecks(fy);
+    return json({ fiscalYear: fy, ...r, currency: "GHS", note: "Preview only — nothing posted." });
+  }
+  if (path === "year-end/close" && request.method === "POST") {
+    const body = await readJson(request);
+    const fy = Number(body.year);
+    if (!Number.isInteger(fy) || fy < 2000 || fy > 2100) return json({ error: "year required" }, 400);
+    if (String(body.confirm || "") !== "CLOSE_YEAR") return json({ error: "Confirmation required", hint: 'Pass { "year": 2026, "confirm": "CLOSE_YEAR", "reason": "..." } (preview first with GET year-end/preview)' }, 400);
+    const reason = String(body.reason || "").trim();
+    if (reason.length < 3) return json({ error: "reason required (min 3 chars)" }, 400);
+    const checks = yearEndChecks(fy);
+    if (!checks.canClose) return json({ error: "Year-end validation failed; nothing posted", blockers: checks.blockers, warnings: checks.warnings }, 409);
+    const c = checks.closing;
+    const now = new Date().toISOString();
+    let journal: Journal | undefined;
+    if (c.lines.length) {
+      journal = {
+        id: crypto.randomUUID(),
+        number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
+        journalType: "closing",
+        entryDate: c.endDate,
+        description: `Year-end closing FY${fy}: net ${c.netResultMinor >= 0 ? "profit" : "loss"} ${Math.abs(c.netResultMinor)} to ${c.reCode}`,
+        sourceModule: "year_end",
+        sourceId: String(fy),
+        currency: policyAt("functionalCurrency", c.endDate),
+        status: "draft",
+        lines: c.lines.map((l) => ({ id: crypto.randomUUID(), accountId: byCode(l.accountCode)!.id, accountCode: l.accountCode, memo: l.memo, debit: l.debit, credit: l.credit })),
+        createdAt: now,
+      };
+      try { postJournal(journal, { bypassPeriodLock: true }); } catch (e: any) { store.journalSeq--; return json({ error: e.message }, 409); }
+      store.journals.push(journal);
+      audit("journal", journal.id, "created_posted", journal.number);
+      await persistJournal(journal);
+    }
+    // Lock every month of the fiscal year
+    for (const ym of monthsBetween(c.startDate, c.endDate)) {
+      const per = ensurePeriod(ym);
+      per.status = "closed"; per.closedAt = now; per.closedBy = "year_end"; per.closeReason = `FY${fy} year-end close`; per.updatedAt = now;
+      if (access.db) await d1UpsertPeriod(access.db, per);
+    }
+    let yc = store.yearCloses.find((y) => y.fiscalYear === fy);
+    if (!yc) { yc = { id: crypto.randomUUID(), fiscalYear: fy, startDate: c.startDate, endDate: c.endDate, status: "closed", netResultMinor: 0, drawingsMinor: 0, closedAt: now, closedBy: "", reason: "" }; store.yearCloses.push(yc); }
+    Object.assign(yc, { status: "closed", netResultMinor: c.netResultMinor, drawingsMinor: c.drawingsMinor, journalId: journal?.id, reversalJournalId: undefined,
+      closedAt: now, closedBy: String(body.closedBy || "system").slice(0, 120), reason: reason.slice(0, 500), reopenedAt: undefined, reopenReason: undefined });
+    audit("year_end", yc.id, "closed", `FY${fy} net=${c.netResultMinor}`);
+    if (access.db) { await d1UpsertYearClose(access.db, yc); await d1Audit(access.db, "year_end", yc.id, "closed", `FY${fy}`); }
+    const openingTb = trialBalance(undefined);
+    return json({
+      yearClose: yc, journal, warnings: checks.warnings,
+      postClosing: { balanced: openingTb.balanced, retainedEarnings: accountBalance(c.reCode), temporaryAccountsZero: store.accounts.filter((a) => (a.type === "revenue" || a.type === "expense") && accountBalance(a.code, c.endDate) !== 0).length === 0 },
+    }, 201);
+  }
+  if (path === "year-end/reopen" && request.method === "POST") {
+    const body = await readJson(request);
+    const fy = Number(body.year);
+    if (String(body.confirm || "") !== "REOPEN_YEAR") return json({ error: "Confirmation required", hint: 'Pass { "year": 2026, "confirm": "REOPEN_YEAR", "reason": "..." }' }, 400);
+    const reason = String(body.reason || "").trim();
+    if (reason.length < 3) return json({ error: "reason required (min 3 chars)" }, 400);
+    const yc = store.yearCloses.find((y) => y.fiscalYear === fy);
+    if (!yc || yc.status !== "closed") return json({ error: `FY${fy} is not closed` }, 409);
+    const later = store.yearCloses.find((y) => y.fiscalYear > fy && y.status === "closed");
+    if (later) return json({ error: `FY${later.fiscalYear} is closed after it; reopen the later year first` }, 409);
+    const now = new Date().toISOString();
+    const orig = store.journals.find((j) => j.id === yc.journalId);
+    if (orig) {
+      const rev: Journal = {
+        id: crypto.randomUUID(), number: `JE-${String(store.journalSeq++).padStart(5, "0")}`, journalType: "closing", entryDate: orig.entryDate,
+        description: `Reversal of year-end closing FY${fy}: ${reason.slice(0, 200)}`, sourceModule: "year_end", sourceId: `${fy}:reversal`, currency: orig.currency,
+        status: "draft", createdAt: now,
+        lines: orig.lines.map((l) => ({ ...l, id: crypto.randomUUID(), debit: l.credit, credit: l.debit })),
+      };
+      postJournal(rev, { bypassPeriodLock: true });
+      orig.reversedBy = rev.id; // original stays posted; the posted reversal nets it to zero (same convention as journals/:id/reverse)
+      store.journals.push(rev);
+      yc.reversalJournalId = rev.id;
+      await persistJournal(rev); await persistJournal(orig);
+    }
+    for (const ym of monthsBetween(yc.startDate, yc.endDate)) {
+      const per = findPeriod(ym);
+      if (per && per.status === "closed") { per.status = "open"; per.reopenedAt = now; per.reopenedBy = "year_end_reopen"; per.reopenReason = `FY${fy} reopened: ${reason.slice(0, 200)}`; per.updatedAt = now; if (access.db) await d1UpsertPeriod(access.db, per); }
+    }
+    yc.status = "reopened"; yc.reopenedAt = now; yc.reopenReason = reason.slice(0, 500);
+    audit("year_end", yc.id, "reopened", `FY${fy}:${reason.slice(0, 120)}`);
+    if (access.db) { await d1UpsertYearClose(access.db, yc); await d1Audit(access.db, "year_end", yc.id, "reopened", `FY${fy}`); }
+    return json({ yearClose: yc, note: "Closing journal reversed and periods reopened. Correct the books, then close the year again." });
   }
 
   return json({ error: "Not found", path }, 404);
