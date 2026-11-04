@@ -588,3 +588,134 @@ export function toCsv(rows: Record<string, unknown>[]): string {
   };
   return [keys.join(","), ...rows.map((r) => keys.map((k) => esc(r[k])).join(","))].join("\n");
 }
+
+// ── Asset references (local tags on media; no duplicate file storage) ──
+export type AssetRef = {
+  id: number;
+  name: string;
+  media_id?: number | null;
+  url?: string | null;
+  mime_type?: string | null;
+  category?: string | null;
+  tags: string[];
+  brand_id?: number | null;
+  campaign_ids: number[];
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type PageRef = {
+  id: number;
+  title: string;
+  path: string;
+  notes?: string | null;
+  created_at: string;
+};
+
+export type FormRef = {
+  id: number;
+  name: string;
+  form_id?: number | null;
+  notes?: string | null;
+  created_at: string;
+};
+
+export function listAssets(): AssetRef[] {
+  ensureMarketingSeed();
+  return ((load() as any).assets || []).sort((a: AssetRef, b: AssetRef) => b.updated_at.localeCompare(a.updated_at));
+}
+
+export function createAsset(input: Partial<AssetRef> & { name: string }): AssetRef {
+  ensureMarketingSeed();
+  const b = load() as any;
+  const id = seq("asset");
+  const t = now();
+  const row: AssetRef = {
+    id,
+    name: input.name.trim(),
+    media_id: input.media_id ?? null,
+    url: input.url ?? null,
+    mime_type: input.mime_type ?? null,
+    category: input.category ?? null,
+    tags: input.tags || [],
+    brand_id: input.brand_id ?? null,
+    campaign_ids: input.campaign_ids || [],
+    notes: input.notes ?? null,
+    created_at: t,
+    updated_at: t,
+  };
+  save({ assets: [...(b.assets || []), row] });
+  return row;
+}
+
+export function updateAsset(id: number, patch: Partial<AssetRef>): AssetRef | null {
+  const b = load() as any;
+  const list: AssetRef[] = b.assets || [];
+  const i = list.findIndex((x) => x.id === id);
+  if (i < 0) return null;
+  list[i] = { ...list[i], ...patch, id, updated_at: now() };
+  save({ assets: list });
+  return list[i];
+}
+
+export function deleteAsset(id: number) {
+  const b = load() as any;
+  save({ assets: (b.assets || []).filter((x: AssetRef) => x.id !== id) });
+}
+
+export function listPageRefs(): PageRef[] {
+  ensureMarketingSeed();
+  return (load() as any).pageRefs || [];
+}
+
+export function createPageRef(input: { title: string; path: string; notes?: string }): PageRef {
+  ensureMarketingSeed();
+  const b = load() as any;
+  const id = seq("pageRef");
+  const row: PageRef = { id, title: input.title.trim(), path: input.path.trim() || "/", notes: input.notes, created_at: now() };
+  save({ pageRefs: [...(b.pageRefs || []), row] });
+  return row;
+}
+
+export function listFormRefs(): FormRef[] {
+  ensureMarketingSeed();
+  return (load() as any).formRefs || [];
+}
+
+export function createFormRef(input: { name: string; form_id?: number | null; notes?: string }): FormRef {
+  ensureMarketingSeed();
+  const b = load() as any;
+  const id = seq("formRef");
+  const row: FormRef = { id, name: input.name.trim(), form_id: input.form_id ?? null, notes: input.notes, created_at: now() };
+  save({ formRefs: [...(b.formRefs || []), row] });
+  return row;
+}
+
+/** Sync OKR current values from local campaign / lead counts (CALCULATED). */
+export function syncOkrsFromLocalMetrics(metrics: {
+  activeCampaigns: number;
+  leadsGenerated: number;
+  qualifiedLeads: number;
+  contentItems: number;
+}): Objective[] {
+  ensureMarketingSeed();
+  const b = load();
+  const list = (b.objectives || []).map((o) => {
+    const krs = o.key_results.map((kr) => {
+      const n = kr.name.toLowerCase();
+      let current = kr.current;
+      if (n.includes("qualified") && n.includes("lead")) current = metrics.qualifiedLeads;
+      else if (n.includes("lead")) current = metrics.leadsGenerated;
+      else if (n.includes("active campaign") || n.includes("campaign")) current = metrics.activeCampaigns;
+      else if (n.includes("content")) current = metrics.contentItems;
+      const status =
+        current >= kr.target ? "completed" : current >= (kr.baseline + (kr.target - kr.baseline) * 0.5) ? "on_track" : "at_risk";
+      return { ...kr, current, status };
+    });
+    return { ...o, key_results: krs, updated_at: now() };
+  });
+  save({ objectives: list });
+  marketingEmit(MarketingEvents.OKR);
+  return list;
+}

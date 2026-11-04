@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
 import { Plus, Trash2 } from "lucide-react";
-import { marketingIntel } from "@/lib/marketing/api";
+import { marketingIntel, marketingApi, marketingAssets } from "@/lib/marketing/api";
 
 export default function MarketingStrategyPage() {
   const qc = useQueryClient();
@@ -22,7 +22,21 @@ export default function MarketingStrategyPage() {
   const [objOpen, setObjOpen] = useState(false);
   const [objName, setObjName] = useState("");
 
-  useEffect(() => { marketingIntel.ensureSeed(); }, []);
+  useEffect(() => {
+    marketingIntel.ensureSeed();
+    (async () => {
+      try {
+        const ov = await marketingApi.overview();
+        await marketingAssets.syncOkrs({
+          activeCampaigns: ov.kpis.activeCampaigns,
+          leadsGenerated: ov.kpis.leadsGenerated,
+          qualifiedLeads: ov.kpis.qualifiedLeads,
+          contentItems: ov.kpis.contentItems || 0,
+        });
+        qc.invalidateQueries({ queryKey: ["mkt", "objectives"] });
+      } catch { /* ignore */ }
+    })();
+  }, []);
 
   const strategies = useQuery({ queryKey: ["mkt", "strategies"], queryFn: () => marketingIntel.listStrategies() });
   const personas = useQuery({ queryKey: ["mkt", "personas"], queryFn: () => marketingIntel.listPersonas() });

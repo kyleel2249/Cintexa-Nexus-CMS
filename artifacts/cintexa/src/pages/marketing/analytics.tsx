@@ -64,6 +64,37 @@ export default function MarketingAnalyticsPage() {
 
       <Card>
         <CardHeader className="pb-2">
+          <CardTitle className="text-base">Reports</CardTitle>
+          <CardDescription>Download datasets from the local marketing store.</CardDescription>
+        </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={exportCsv}>Campaigns CSV</Button>
+          <Button size="sm" variant="outline" onClick={async () => {
+            const s = await marketingIntel.listStrategies();
+            const csv = marketingIntel.toCsv(s.items as any);
+            const blob = new Blob([csv], { type: "text/csv" });
+            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "strategies.csv"; a.click();
+          }}>Strategies CSV</Button>
+          <Button size="sm" variant="outline" onClick={async () => {
+            const s = await marketingIntel.listPersonas();
+            const csv = marketingIntel.toCsv(s.items as any);
+            const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "personas.csv"; a.click();
+          }}>Personas CSV</Button>
+          <Button size="sm" variant="outline" onClick={async () => {
+            const s = await marketingIntel.listObjectives();
+            const rows = s.items.map((o) => ({ id: o.id, name: o.name, horizon: o.horizon, progress: marketingIntel.objectiveProgress(o), status: o.status }));
+            const csv = marketingIntel.toCsv(rows as any);
+            const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "okrs.csv"; a.click();
+          }}>OKRs CSV</Button>
+          <Button size="sm" variant="outline" onClick={async () => {
+            const json = await marketingIntel.exportJson();
+            const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([json], { type: "application/json" })); a.download = "marketing-full-report.json"; a.click();
+          }}>Full JSON report</Button>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">Provenance legend</CardTitle>
           <CardDescription>
             MEASURED = stored records · CALCULATED = derived · MANUAL = user entered · UNAVAILABLE = missing data.

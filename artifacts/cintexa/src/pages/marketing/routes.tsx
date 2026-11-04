@@ -17,6 +17,7 @@ const Brand = lazy(() => import("./brand"));
 const Landing = lazy(() => import("./landing"));
 const Analytics = lazy(() => import("./analytics"));
 const Settings = lazy(() => import("./settings"));
+const Assets = lazy(() => import("./assets"));
 const Placeholder = lazy(() => import("./placeholder"));
 
 function Spinner() {
@@ -50,7 +51,7 @@ export function MarketingRoutes() {
         <Route path="/marketing/budget" component={Budget} />
         <Route path="/marketing/reports" component={Analytics} />
         <Route path="/marketing/settings" component={Settings} />
-        <Route path="/marketing/assets">{() => <Placeholder title="Asset Library — uses Media Library references" />}</Route>
+        <Route path="/marketing/assets" component={Assets}</Route>
       </Switch>
     </Suspense>
   );

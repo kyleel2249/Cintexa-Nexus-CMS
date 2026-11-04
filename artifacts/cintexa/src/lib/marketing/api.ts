@@ -181,3 +181,20 @@ export const marketingIntel = {
   importJson: (raw: string, mode: "merge" | "replace" = "merge") => Promise.resolve(ent.importMarketingJson(raw, mode)),
   toCsv: ent.toCsv,
 };
+
+// Assets, page/form refs, OKR sync
+export const marketingAssets = {
+  list: () => Promise.resolve({ items: ent.listAssets() }),
+  create: (b: Parameters<typeof ent.createAsset>[0]) => Promise.resolve(ent.createAsset(b)),
+  update: (id: number, b: Parameters<typeof ent.updateAsset>[1]) => {
+    const r = ent.updateAsset(id, b);
+    if (!r) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(r);
+  },
+  remove: (id: number) => { ent.deleteAsset(id); return Promise.resolve(); },
+  listPageRefs: () => Promise.resolve({ items: ent.listPageRefs() }),
+  createPageRef: (b: Parameters<typeof ent.createPageRef>[0]) => Promise.resolve(ent.createPageRef(b)),
+  listFormRefs: () => Promise.resolve({ items: ent.listFormRefs() }),
+  createFormRef: (b: Parameters<typeof ent.createFormRef>[0]) => Promise.resolve(ent.createFormRef(b)),
+  syncOkrs: (m: Parameters<typeof ent.syncOkrsFromLocalMetrics>[0]) => Promise.resolve(ent.syncOkrsFromLocalMetrics(m)),
+};

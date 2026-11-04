@@ -3,6 +3,7 @@ import { WebsiteIntelligenceCard } from "@/components/website-intelligence-card"
 import { SentinelKeyCard } from "@/components/sentinel-key-card";
 import { SalesOverviewWidget } from "@/components/sales/SalesOverviewWidget";
 import { MarketingOverviewWidget } from "@/components/marketing/MarketingOverviewWidget";
+import { StrategyOkrWidget, BrandStatusWidget } from "@/components/marketing/StrategyBrandWidgets";
 import { Link } from "wouter";
 import { FiDashboardWidget } from "@/components/financial-intelligence/FiDashboardWidget";
 import { BdDashboardWidget } from "@/components/business-diary/BdDashboardWidget";
@@ -295,6 +296,8 @@ export default function Dashboard() {
       <motion.div variants={fadeUp}>
         <SalesOverviewWidget compact />
         <MarketingOverviewWidget compact />
+        <StrategyOkrWidget />
+        <BrandStatusWidget />
       </motion.div>
 
       <motion.div variants={fadeUp}>
