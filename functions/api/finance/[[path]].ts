@@ -773,14 +773,18 @@ function assertPeriodOpenForPosting(entryDate: string) {
   }
 }
 
+const DEDUP_TYPES = new Set(["closing", "depreciation"]);
+
 function postJournal(j: Journal, opts: { bypassPeriodLock?: boolean } = {}) {
   const t = lineTotals(j.lines);
   if (!t.balanced) throw new Error(`Unbalanced journal: debit ${t.debit} credit ${t.credit} difference ${t.difference}`);
   if (!j.lines.length) throw new Error("Journal has no lines");
   // Duplicate-posting guard: one live posted journal per (type, source module, source id)
-  if (j.sourceModule && j.sourceId) {
+  if (j.sourceModule && j.sourceId && DEDUP_TYPES.has(j.journalType)) {
+    // depreciation is unique per asset AND month; closing per fiscal year. Other types (e.g. part payments) legitimately repeat.
+    const keyOf = (x: { journalType: string; entryDate: string }) => (x.journalType === "depreciation" ? periodYmFromDate(x.entryDate) : "");
     const dup = store.journals.find((x) => x.id !== j.id && x.status === "posted" && !x.reversedBy && x.journalType === j.journalType
-      && x.sourceModule === j.sourceModule && x.sourceId === j.sourceId);
+      && x.sourceModule === j.sourceModule && x.sourceId === j.sourceId && keyOf(x) === keyOf(j));
     if (dup) throw new Error(`DUPLICATE_POSTING: ${dup.number} already posted for ${j.sourceModule}/${j.sourceId}`);
   }
   if (!opts.bypassPeriodLock) assertPeriodOpenForPosting(j.entryDate || j.postingDate || new Date().toISOString().slice(0, 10));
@@ -1007,6 +1011,36 @@ const FINANCE_SCHEMA_SQL = [
     detail TEXT,
     created_at TEXT NOT NULL
   )`,
+  `CREATE TABLE IF NOT EXISTS fin_fixed_assets (
+    id TEXT PRIMARY KEY,
+    asset_number TEXT NOT NULL UNIQUE,
+    name TEXT NOT NULL,
+    category TEXT NOT NULL,
+    acquisition_date TEXT NOT NULL,
+    in_service_date TEXT NOT NULL,
+    cost_minor INTEGER NOT NULL,
+    residual_minor INTEGER NOT NULL DEFAULT 0,
+    depreciation_rate_bps INTEGER NOT NULL,
+    method TEXT NOT NULL DEFAULT 'straight_line',
+    useful_life_months INTEGER,
+    accumulated_minor INTEGER NOT NULL DEFAULT 0,
+    status TEXT NOT NULL,
+    location TEXT,
+    custodian TEXT,
+    disposal_date TEXT,
+    currency TEXT NOT NULL DEFAULT 'GHS',
+    created_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+  )`,
+  `CREATE TABLE IF NOT EXISTS fin_depreciation_runs (
+    id TEXT PRIMARY KEY,
+    asset_id TEXT NOT NULL,
+    period_ym TEXT NOT NULL,
+    amount_minor INTEGER NOT NULL,
+    journal_id TEXT,
+    created_at TEXT NOT NULL,
+    UNIQUE (asset_id, period_ym)
+  )`,
   `CREATE TABLE IF NOT EXISTS fin_policies (
     id TEXT PRIMARY KEY,
     key TEXT NOT NULL,
@@ -1203,6 +1237,20 @@ async function d1Audit(db: D1Database, entityType: string, entityId: string, act
   ).bind(crypto.randomUUID(), entityType, entityId, action, detail || null, new Date().toISOString()).run();
 }
 
+async function d1UpsertAsset(db: D1Database, a: FixedAsset) {
+  await db.prepare(
+    `INSERT OR REPLACE INTO fin_fixed_assets (id, asset_number, name, category, acquisition_date, in_service_date, cost_minor, residual_minor, depreciation_rate_bps, method, useful_life_months, accumulated_minor, status, location, custodian, disposal_date, currency, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).bind(a.id, a.assetNumber, a.name, a.category, a.acquisitionDate, a.inServiceDate, a.costMinor, a.residualMinor, a.depreciationRateBps, a.method,
+    a.accumulatedMinor, a.status, a.location || null, a.custodian || null, a.disposalDate || null, a.currency, a.createdAt, a.updatedAt).run();
+}
+
+async function d1UpsertDepRun(db: D1Database, r: DepreciationRun) {
+  await db.prepare(
+    "INSERT OR REPLACE INTO fin_depreciation_runs (id, asset_id, period_ym, amount_minor, journal_id, created_at) VALUES (?, ?, ?, ?, ?, ?)",
+  ).bind(r.id, r.assetId, r.periodYm, r.amountMinor, r.journalId || null, r.createdAt).run();
+}
+
 async function d1UpsertPeriod(db: D1Database, p: AccountingPeriod) {
   await db.prepare(
     `INSERT OR REPLACE INTO fin_periods (id, period_ym, status, label, closed_at, closed_by, close_reason, reopened_at, reopened_by, reopen_reason, created_at, updated_at)
@@ -1251,6 +1299,16 @@ async function hydrateFromD1(db: D1Database) {
     reversalJournalId: r.reversal_journal_id || undefined, closedAt: r.closed_at, closedBy: r.closed_by, reason: r.reason,
     reopenedAt: r.reopened_at || undefined, reopenReason: r.reopen_reason || undefined,
   }));
+  store.fixedAssets = ((await db.prepare("SELECT * FROM fin_fixed_assets ORDER BY asset_number").all()).results || []).map((r: any) => ({
+    id: r.id, assetNumber: r.asset_number, name: r.name, category: r.category, acquisitionDate: r.acquisition_date, inServiceDate: r.in_service_date,
+    costMinor: r.cost_minor, residualMinor: r.residual_minor, depreciationRateBps: r.depreciation_rate_bps, method: "straight_line" as const,
+    accumulatedMinor: r.accumulated_minor, status: r.status, location: r.location || undefined, custodian: r.custodian || undefined,
+    disposalDate: r.disposal_date || undefined, currency: r.currency, createdAt: r.created_at, updatedAt: r.updated_at,
+  }));
+  store.depreciationRuns = ((await db.prepare("SELECT * FROM fin_depreciation_runs").all()).results || []).map((r: any) => ({
+    id: r.id, assetId: r.asset_id, periodYm: r.period_ym, amountMinor: r.amount_minor, journalId: r.journal_id || undefined, createdAt: r.created_at,
+  }));
+  store.assetSeq = store.fixedAssets.reduce((m, a) => Math.max(m, parseInt(a.assetNumber.replace("FA-", ""), 10) || 0), 0) + 1;
   const jn = await d1NextSeq(db, "journal");
   const inv = await d1NextSeq(db, "invoice");
   store.journalSeq = jn;
@@ -2249,14 +2307,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     };
     store.fixedAssets.push(a);
     audit("asset", a.id, "created", a.assetNumber);
-    if (access.db) {
-      try {
-        await access.db.prepare(
-          `INSERT OR REPLACE INTO fin_fixed_assets (id, asset_number, name, category, acquisition_date, in_service_date, cost_minor, residual_minor, depreciation_rate_bps, method, useful_life_months, accumulated_minor, status, location, custodian, disposal_date, currency, created_at, updated_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?)`,
-        ).bind(a.id, a.assetNumber, a.name, a.category, a.acquisitionDate, a.inServiceDate, a.costMinor, a.residualMinor, a.depreciationRateBps, a.method, a.accumulatedMinor, a.status, a.location || null, a.custodian || null, a.currency, a.createdAt, a.updatedAt).run();
-      } catch { /* table may not exist yet */ }
-    }
+    if (access.db) { await d1UpsertAsset(access.db, a); await d1Audit(access.db, "asset", a.id, "created", a.assetNumber); }
     return json({
       asset: {
         ...a,
@@ -2289,6 +2340,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       const remaining = depreciableRemaining(a);
       if (remaining <= 0) {
         a.status = "fully_depreciated";
+        if (access.db) await d1UpsertAsset(access.db, a);
         skipped.push({ assetNumber: a.assetNumber, reason: "fully_depreciated" });
         continue;
       }
@@ -2328,6 +2380,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       };
       store.depreciationRuns.push(run);
       await persistJournal(j);
+      if (access.db) { await d1UpsertAsset(access.db, a); await d1UpsertDepRun(access.db, run); }
       created.push({ assetNumber: a.assetNumber, amountMinor: charge, journalNumber: j.number, periodYm: ym });
       audit("asset", a.id, "depreciated", `${ym}:${charge}`);
     }
@@ -2390,6 +2443,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
           asset.updatedAt = new Date().toISOString();
         }
         store.depreciationRuns = store.depreciationRuns.filter((r) => r.journalId !== j.id);
+        if (access.db) {
+          await d1UpsertAsset(access.db, asset);
+          await access.db.prepare("DELETE FROM fin_depreciation_runs WHERE journal_id = ?").bind(j.id).run();
+        }
       }
     }
     store.journals.splice(idx, 1);
