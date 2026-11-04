@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 import { marketingApi } from "@/lib/marketing/api";
+import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
 
 export default function EmailMarketing() {
   const qc = useQueryClient();
@@ -81,6 +82,7 @@ export default function EmailMarketing() {
         </Dialog>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Campaigns</CardTitle>
@@ -124,6 +126,13 @@ export default function EmailMarketing() {
           ))}
         </CardContent>
       </Card>
+      <BrandIntelligencePanel
+        onInsertClaim={(text) => {
+          setBody((b) => (b ? b + "\n\n" + text : text));
+          setOpen(true);
+        }}
+      />
+      </div>
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -8,10 +8,17 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
 import { marketingApi } from "@/lib/marketing/api";
+import { probeSalesLocal } from "@/lib/marketing/sales-bridge";
 import { Link } from "wouter";
 
 export default function LeadGeneration() {
   const qc = useQueryClient();
+  const [salesBridge, setSalesBridge] = useState<string>("");
+  useEffect(() => {
+    probeSalesLocal().then((s) => {
+      setSalesBridge(s.available ? s.note : s.reason);
+    });
+  }, []);
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");

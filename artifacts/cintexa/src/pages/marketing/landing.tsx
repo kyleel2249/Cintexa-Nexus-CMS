@@ -47,7 +47,20 @@ export default function LandingFunnelsPage() {
     onSuccess: () => { qc.invalidateQueries({ queryKey: ["mkt", "formRefs"] }); setFormRefOpen(false); setFormRefName(""); },
   });
 
+  const updateFunnel = useMutation({
+    mutationFn: ({ id, stages }: { id: number; stages: any[] }) => marketingIntel.updateFunnel(id, { stages }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mkt", "funnels"] }),
+  });
+
   const items = funnels.data?.items || [];
+
+  function stageMetrics(stages: { actual_count?: number }[], i: number) {
+    const cur = Number(stages[i]?.actual_count || 0);
+    const prev = i > 0 ? Number(stages[i - 1]?.actual_count || 0) : null;
+    const conv = prev && prev > 0 ? Math.round((cur / prev) * 1000) / 10 : null;
+    const drop = prev != null ? prev - cur : null;
+    return { cur, prev, conv, drop };
+  }
   const pages = pageRefs.data?.items || [];
   const forms = formRefs.data?.items || [];
 
@@ -162,18 +175,40 @@ export default function LandingFunnelsPage() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="flex flex-wrap items-center gap-2">
-              {f.stages.map((st, i) => (
-                <div key={st.id} className="flex items-center gap-2">
-                  <div className="rounded-md border px-2 py-1.5 text-center min-w-[88px]">
-                    <p className="text-xs font-medium">{st.name}</p>
-                    <p className="text-[10px] text-muted-foreground tabular-nums">{st.actual_count ?? 0}</p>
+            <div className="space-y-2">
+              {f.stages.map((st, i) => {
+                const m = stageMetrics(f.stages, i);
+                return (
+                  <div key={st.id} className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2">
+                    <div className="min-w-[120px]">
+                      <p className="text-xs font-medium">{st.name}</p>
+                      {m.conv != null && (
+                        <p className="text-[10px] text-muted-foreground">Conv {m.conv}% · drop {m.drop}</p>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Label className="text-[10px]">Count</Label>
+                      <Input
+                        className="h-8 w-24"
+                        type="number"
+                        defaultValue={st.actual_count ?? 0}
+                        onBlur={(e) => {
+                          const val = Number(e.target.value) || 0;
+                          const stages = f.stages.map((s, idx) =>
+                            idx === i ? { ...s, actual_count: val } : s,
+                          );
+                          updateFunnel.mutate({ id: f.id, stages });
+                        }}
+                      />
+                      <Badge variant="outline" className="text-[9px]">MANUAL</Badge>
+                    </div>
                   </div>
-                  {i < f.stages.length - 1 && <span className="text-muted-foreground">→</span>}
-                </div>
-              ))}
+                );
+              })}
             </div>
-            <p className="text-xs text-muted-foreground mt-2">Stage counts: MANUAL unless you update them. Provenance: MANUAL.</p>
+            <p className="text-xs text-muted-foreground mt-2">
+              Conversion = stage ÷ previous stage. Provenance: MANUAL. Map forms via form registry above.
+            </p>
           </CardContent>
         </Card>
       ))}

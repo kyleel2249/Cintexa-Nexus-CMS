@@ -12,6 +12,8 @@ export default function MarketingSettingsPage() {
   const [currency, setCurrency] = useState("GHS");
   const [importText, setImportText] = useState("");
   const [msg, setMsg] = useState("");
+  const [channels, setChannels] = useState<string[]>([]);
+  const [newChannel, setNewChannel] = useState("");
 
   useEffect(() => { marketingIntel.ensureSeed(); }, []);
 
@@ -24,6 +26,7 @@ export default function MarketingSettingsPage() {
     if (settings.data) {
       setBusinessName(settings.data.business_name);
       setCurrency(settings.data.currency);
+      setChannels(settings.data.channels || []);
     }
   }, [settings.data]);
 
@@ -73,6 +76,65 @@ export default function MarketingSettingsPage() {
             </select>
           </div>
           <Button size="sm" disabled={save.isPending} onClick={() => save.mutate()}>Save</Button>
+        </CardContent>
+      </Card>
+
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Channel management</CardTitle>
+          <CardDescription>Internal classifications for campaigns and analytics — not external integrations.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <div className="flex gap-2">
+            <Input
+              placeholder="New channel name"
+              value={newChannel}
+              onChange={(e) => setNewChannel(e.target.value)}
+              className="max-w-xs"
+            />
+            <Button
+              size="sm"
+              disabled={!newChannel.trim()}
+              onClick={() => {
+                const ch = [...channels];
+                if (!ch.includes(newChannel.trim())) {
+                  ch.push(newChannel.trim());
+                  setChannels(ch);
+                  marketingIntel.updateSettings({ channels: ch }).then(() => {
+                    qc.invalidateQueries({ queryKey: ["mkt", "settings"] });
+                    setNewChannel("");
+                    setMsg("Channel added.");
+                  });
+                }
+              }}
+            >
+              Add
+            </Button>
+          </div>
+          <ul className="space-y-1">
+            {channels.map((c, i) => (
+              <li key={c} className="flex items-center justify-between rounded-md border px-2 py-1 text-sm">
+                <span>{c}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  onClick={() => {
+                    if (!confirm(`Remove channel "${c}"? Campaigns keep historical labels.`)) return;
+                    const ch = channels.filter((x) => x !== c);
+                    setChannels(ch);
+                    marketingIntel.updateSettings({ channels: ch }).then(() => {
+                      qc.invalidateQueries({ queryKey: ["mkt", "settings"] });
+                      setMsg("Channel removed.");
+                    });
+                  }}
+                >
+                  Remove
+                </Button>
+              </li>
+            ))}
+          </ul>
         </CardContent>
       </Card>
 

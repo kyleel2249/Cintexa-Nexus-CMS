@@ -18,7 +18,8 @@ const Landing = lazy(() => import("./landing"));
 const Analytics = lazy(() => import("./analytics"));
 const Settings = lazy(() => import("./settings"));
 const Assets = lazy(() => import("./assets"));
-const Placeholder = lazy(() => import("./placeholder"));
+const OkrEditor = lazy(() => import("./okr-editor"));
+const Reports = lazy(() => import("./reports"));
 
 function Spinner() {
   return (
@@ -34,6 +35,7 @@ export function MarketingRoutes() {
       <Switch>
         <Route path="/marketing" component={Overview} />
         <Route path="/marketing/strategy" component={Strategy} />
+        <Route path="/marketing/okrs" component={OkrEditor} />
         <Route path="/marketing/campaigns" component={Campaigns} />
         <Route path="/marketing/campaigns/:id" component={CampaignDetail} />
         <Route path="/marketing/content" component={ContentStudio} />
@@ -46,12 +48,12 @@ export function MarketingRoutes() {
         <Route path="/marketing/leads" component={Leads} />
         <Route path="/marketing/automation" component={Automation} />
         <Route path="/marketing/brand" component={Brand} />
+        <Route path="/marketing/assets" component={Assets} />
         <Route path="/marketing/landing" component={Landing} />
         <Route path="/marketing/analytics" component={Analytics} />
         <Route path="/marketing/budget" component={Budget} />
-        <Route path="/marketing/reports" component={Analytics} />
+        <Route path="/marketing/reports" component={Reports} />
         <Route path="/marketing/settings" component={Settings} />
-        <Route path="/marketing/assets" component={Assets}</Route>
       </Switch>
     </Suspense>
   );

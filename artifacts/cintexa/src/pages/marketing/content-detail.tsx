@@ -7,6 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { marketingApi } from "@/lib/marketing/api";
+import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
 import { ArrowLeft } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -41,7 +42,7 @@ export default function ContentDetail() {
   if (error || !data) return <div className="p-6 text-sm text-destructive">Content not found.</div>;
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-3xl">
+    <div className="p-4 md:p-6 space-y-4 max-w-5xl">
       <div className="flex items-center gap-3">
         <Link href="/marketing/content"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
         <div className="flex-1 min-w-0">
@@ -57,6 +58,7 @@ export default function ContentDetail() {
         </Button>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
       <Card>
         <CardHeader className="pb-2"><CardTitle className="text-sm">Edit</CardTitle></CardHeader>
         <CardContent className="space-y-3">
@@ -81,6 +83,10 @@ export default function ContentDetail() {
           </p>
         </CardContent>
       </Card>
+      <BrandIntelligencePanel
+        onInsertClaim={(text) => setBody((b) => (b ? b + "\n\n" + text : text))}
+      />
+      </div>
     </div>
   );
 }
