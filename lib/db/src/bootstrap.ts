@@ -6,6 +6,7 @@ import { FINANCE_SCHEMA_STATEMENTS, FINANCE_PHASE4_STATEMENTS, FINANCE_PHASE5_ST
 import { FINANCE_INTEGRATION_STATEMENTS } from "./finance-integration-schema";
 import { CCDI_SCHEMA_STATEMENTS } from "./ccdi-schema";
 import { CCDI_FOUNDATION_SCHEMA_STATEMENTS } from "./ccdi-foundation-schema";
+import { MARKETING_SCHEMA_STATEMENTS } from "./marketing-schema";
 
 /**
  * Idempotent schema bootstrap.
@@ -493,6 +494,7 @@ END $$`,
   ...FINANCE_INTEGRATION_STATEMENTS,
   ...CCDI_SCHEMA_STATEMENTS,
   ...CCDI_FOUNDATION_SCHEMA_STATEMENTS,
+  ...MARKETING_SCHEMA_STATEMENTS,
 ];
 
 let running: Promise<void> | null = null;
