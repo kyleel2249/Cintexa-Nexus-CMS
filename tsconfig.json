@@ -20,6 +20,9 @@
     },
     {
       "path": "./lib/intelligence"
+    },
+    {
+      "path": "./lib/accounting-core"
     }
   ]
 }
