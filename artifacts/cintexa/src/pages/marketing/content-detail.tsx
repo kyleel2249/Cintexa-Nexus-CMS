@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { apiJson } from "@/lib/api";
+import { marketingApi } from "@/lib/marketing/api";
 import { ArrowLeft } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -21,7 +21,7 @@ export default function ContentDetail() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["marketing", "content", id],
     enabled: !!id,
-    queryFn: () => apiJson<any>(`/marketing/content/${id}`),
+    queryFn: () => marketingApi.getContent(Number(id)),
   });
 
   useEffect(() => {
@@ -33,11 +33,7 @@ export default function ContentDetail() {
   }, [data]);
 
   const save = useMutation({
-    mutationFn: () =>
-      apiJson(`/marketing/content/${id}`, {
-        method: "PATCH",
-        body: JSON.stringify({ title, body, status }),
-      }),
+    mutationFn: () => marketingApi.updateContent(Number(id), { title, body, status }),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["marketing", "content"] }),
   });
 

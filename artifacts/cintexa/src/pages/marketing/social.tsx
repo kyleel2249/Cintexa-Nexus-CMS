@@ -9,7 +9,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Check } from "lucide-react";
-import { apiJson } from "@/lib/api";
+import { marketingApi } from "@/lib/marketing/api";
 
 const CHANNELS = ["facebook", "instagram", "linkedin", "tiktok", "x", "youtube", "other"];
 const STATUSES = ["DRAFT", "IN_REVIEW", "APPROVED", "SCHEDULED", "READY_TO_PUBLISH", "PUBLISHED_MANUALLY", "FAILED", "CANCELLED"];
@@ -34,21 +34,18 @@ export default function SocialMediaManager() {
 
   const { data, isLoading } = useQuery({
     queryKey: ["marketing", "calendar"],
-    queryFn: () => apiJson<{ items: CalEvent[]; total: number }>("/marketing/calendar"),
+    queryFn: () => marketingApi.listEvents() as Promise<{ items: CalEvent[]; total: number }>,
   });
 
   const create = useMutation({
     mutationFn: () =>
-      apiJson("/marketing/calendar", {
-        method: "POST",
-        body: JSON.stringify({
-          title,
-          channel,
-          starts_at: startsAt ? new Date(startsAt).toISOString() : new Date().toISOString(),
-          event_type: "social",
-          status: "DRAFT",
-          description: caption,
-        }),
+      marketingApi.createEvent({
+        title,
+        channel,
+        starts_at: startsAt ? new Date(startsAt).toISOString() : new Date().toISOString(),
+        event_type: "social",
+        status: "DRAFT",
+        description: caption,
       }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["marketing", "calendar"] });
@@ -60,8 +57,7 @@ export default function SocialMediaManager() {
   });
 
   const confirmPublish = useMutation({
-    mutationFn: (id: number) =>
-      apiJson(`/marketing/calendar/${id}/confirm-published`, { method: "POST", body: "{}" }),
+    mutationFn: (id: number) => marketingApi.confirmPublished(id),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["marketing", "calendar"] }),
   });
 

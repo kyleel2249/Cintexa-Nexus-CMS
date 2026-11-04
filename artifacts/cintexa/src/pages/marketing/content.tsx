@@ -10,7 +10,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus } from "lucide-react";
-import { apiJson } from "@/lib/api";
+import { marketingApi } from "@/lib/marketing/api";
 
 const TYPES = ["blog", "website", "landing", "social", "video_script", "ad_copy", "email", "newsletter", "press", "product", "case_study", "seo"];
 const STATUSES = ["DRAFT", "IN_REVIEW", "APPROVED", "SCHEDULED", "PUBLISHED", "ARCHIVED"];
@@ -37,20 +37,15 @@ export default function ContentStudio() {
   const { data, isLoading } = useQuery({
     queryKey: ["marketing", "content", typeFilter, statusFilter],
     queryFn: async () => {
-      const q = new URLSearchParams();
-      if (typeFilter !== "all") q.set("type", typeFilter);
-      if (statusFilter !== "all") q.set("status", statusFilter);
-      const qs = q.toString() ? `?${q}` : "";
-      return apiJson<{ items: ContentItem[]; total: number }>(`/marketing/content${qs}`);
+      return marketingApi.listContent(
+        typeFilter !== "all" ? typeFilter : undefined,
+        statusFilter !== "all" ? statusFilter : undefined,
+      ) as Promise<{ items: ContentItem[]; total: number }>;
     },
   });
 
   const create = useMutation({
-    mutationFn: () =>
-      apiJson("/marketing/content", {
-        method: "POST",
-        body: JSON.stringify({ title, type, body, status: "DRAFT" }),
-      }),
+    mutationFn: () => marketingApi.createContent({ title, type, body, status: "DRAFT" }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["marketing", "content"] });
       setOpen(false);

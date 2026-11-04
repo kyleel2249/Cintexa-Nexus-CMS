@@ -3,7 +3,7 @@ import { Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Send, ArrowRight } from "lucide-react";
-import { apiJson } from "@/lib/api";
+import { marketingApi } from "@/lib/marketing/api";
 
 type Overview = {
   kpis: {
@@ -20,7 +20,7 @@ type Overview = {
 export function MarketingOverviewWidget({ compact }: { compact?: boolean }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["marketing", "overview", "widget"],
-    queryFn: () => apiJson<Overview>("/marketing/overview"),
+    queryFn: () => marketingApi.overview() as Promise<Overview>,
     staleTime: 30_000,
     retry: 1,
   });

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search } from "lucide-react";
-import { apiJson } from "@/lib/api";
+import { marketingApi } from "@/lib/marketing/api";
 
 type Campaign = {
   id: number;
@@ -36,19 +36,18 @@ export default function CampaignsPage() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["marketing", "campaigns", statusFilter],
     queryFn: async () => {
-      const q = statusFilter !== "all" ? `?status=${statusFilter}` : "";
-      return apiJson<{ items: Campaign[]; total: number }>(`/marketing/campaigns${q}`);
+      return marketingApi.listCampaigns(statusFilter !== "all" ? statusFilter : undefined) as Promise<{ items: Campaign[]; total: number }>;
     },
   });
 
   const create = useMutation({
     mutationFn: async () => {
-      return apiJson("/marketing/campaigns", { method: "POST", body: JSON.stringify({
+      return marketingApi.createCampaign({
         name,
         objective: objective || undefined,
         budget: budget ? Number(budget) : 0,
         status: "DRAFT",
-      }) });
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["marketing"] });

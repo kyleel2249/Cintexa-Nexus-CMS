@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Gauge, Send, CalendarDays, DollarSign, Users, TrendingUp, Plus } from "lucide-react";
-import { apiJson } from "@/lib/api";
+import { marketingApi } from "@/lib/marketing/api";
 
 type OverviewData = {
   kpis: {
@@ -31,8 +31,7 @@ export default function MarketingOverview() {
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["marketing", "overview"],
     queryFn: async () => {
-      const res = await apiJson<OverviewData>("/marketing/overview");
-      return res;
+      return marketingApi.overview() as Promise<OverviewData>;
     },
   });
 
@@ -58,7 +57,7 @@ export default function MarketingOverview() {
       {error && (
         <Card className="border-destructive/50">
           <CardContent className="pt-4 text-sm text-destructive">
-            Unable to load marketing overview. Ensure the API is running and you are authenticated.
+            Unable to load marketing overview.
           </CardContent>
         </Card>
       )}

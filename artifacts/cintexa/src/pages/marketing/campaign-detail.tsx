@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { apiJson } from "@/lib/api";
+import { marketingApi } from "@/lib/marketing/api";
 import { ArrowLeft } from "lucide-react";
 
 const TRANSITIONS: Record<string, string[]> = {
@@ -24,11 +24,11 @@ export default function CampaignDetail() {
   const { data, isLoading, error } = useQuery({
     queryKey: ["marketing", "campaign", id],
     enabled: !!id,
-    queryFn: () => apiJson<any>(`/marketing/campaigns/${id}`),
+    queryFn: () => marketingApi.getCampaign(Number(id)),
   });
 
   const transition = useMutation({
-    mutationFn: (status: string) => apiJson(`/marketing/campaigns/${id}/transition`, { method: "POST", body: JSON.stringify({ status }) }),
+    mutationFn: (status: string) => marketingApi.transitionCampaign(Number(id), status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["marketing"] }),
   });
 
