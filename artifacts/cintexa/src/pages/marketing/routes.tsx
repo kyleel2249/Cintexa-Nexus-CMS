@@ -4,6 +4,9 @@ import { Route, Switch } from "wouter";
 const Overview = lazy(() => import("./overview"));
 const Campaigns = lazy(() => import("./campaigns"));
 const CampaignDetail = lazy(() => import("./campaign-detail"));
+const ContentStudio = lazy(() => import("./content"));
+const ContentDetail = lazy(() => import("./content-detail"));
+const Social = lazy(() => import("./social"));
 const Placeholder = lazy(() => import("./placeholder"));
 
 function Spinner() {
@@ -21,10 +24,11 @@ export function MarketingRoutes() {
         <Route path="/marketing" component={Overview} />
         <Route path="/marketing/campaigns" component={Campaigns} />
         <Route path="/marketing/campaigns/:id" component={CampaignDetail} />
+        <Route path="/marketing/content" component={ContentStudio} />
+        <Route path="/marketing/content/:id" component={ContentDetail} />
+        <Route path="/marketing/social" component={Social} />
+        <Route path="/marketing/calendar" component={Social} />
         <Route path="/marketing/strategy">{() => <Placeholder title="Marketing Strategy" />}</Route>
-        <Route path="/marketing/calendar">{() => <Placeholder title="Marketing Calendar" />}</Route>
-        <Route path="/marketing/content">{() => <Placeholder title="Content Studio" />}</Route>
-        <Route path="/marketing/social">{() => <Placeholder title="Social Media Manager" />}</Route>
         <Route path="/marketing/email">{() => <Placeholder title="Email Marketing" />}</Route>
         <Route path="/marketing/seo">{() => <Placeholder title="SEO Manager" />}</Route>
         <Route path="/marketing/audience">{() => <Placeholder title="Audience & Insights" />}</Route>
