@@ -73,6 +73,38 @@ interface Payment {
   createdAt: string;
 }
 
+
+interface FixedAsset {
+  id: string;
+  assetNumber: string;
+  name: string;
+  category: "computer" | "laptop" | "server" | "office_equipment" | "furniture" | "other";
+  acquisitionDate: string;
+  inServiceDate: string;
+  costMinor: number;
+  residualMinor: number;
+  /** basis points — computers/laptops mandatory 2500 = 25% */
+  depreciationRateBps: number;
+  method: "straight_line";
+  accumulatedMinor: number;
+  status: "active" | "disposed" | "fully_depreciated";
+  location?: string;
+  custodian?: string;
+  disposalDate?: string;
+  currency: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+interface DepreciationRun {
+  id: string;
+  assetId: string;
+  periodYm: string;
+  amountMinor: number;
+  journalId?: string;
+  createdAt: string;
+}
+
 interface Audit {
   id: string;
   entityType: string;
@@ -87,9 +119,12 @@ interface Store {
   journals: Journal[];
   invoices: Invoice[];
   payments: Payment[];
+  fixedAssets: FixedAsset[];
+  depreciationRuns: DepreciationRun[];
   audit: Audit[];
   journalSeq: number;
   invoiceSeq: number;
+  assetSeq: number;
   seededCoa: boolean;
 }
 
@@ -98,9 +133,12 @@ const store: Store = {
   journals: [],
   invoices: [],
   payments: [],
+  fixedAssets: [],
+  depreciationRuns: [],
   audit: [],
   journalSeq: 1,
   invoiceSeq: 1,
+  assetSeq: 1,
   seededCoa: false,
 };
 
@@ -159,6 +197,8 @@ function ensureCoa() {
     ["1240", "Furniture and Fixtures", "asset", "fixed"],
     ["1270", "Capitalized Software Assets", "asset", "fixed"],
     ["1280", "Accumulated Depreciation", "asset", "contra"],
+    ["1281", "Accumulated Depreciation — Computers and Laptops", "asset", "contra"],
+    ["1282", "Accumulated Depreciation — Office Equipment", "asset", "contra"],
     ["1310", "Acquired Software", "asset", "intangible"],
     ["2010", "Accounts Payable", "liability", "ap"],
     ["2030", "Accrued Expenses", "liability"],
@@ -212,6 +252,7 @@ function ensureCoa() {
     ["6290", "Bank Charges", "expense"],
     ["6300", "Payment Processing Fees", "expense"],
     ["6310", "Depreciation Expense", "expense"],
+    ["6311", "Depreciation Expense — Computer Equipment", "expense"],
     ["6380", "Bad Debt Expense", "expense"],
     ["6390", "Foreign Exchange Loss", "expense"],
     ["6400", "Miscellaneous Operating Expenses", "expense"],
@@ -403,6 +444,61 @@ function balanceSheet(asOf?: string) {
     asOf: asOf || null,
     currency: "GHS",
   };
+}
+
+
+function isComputerCategory(cat: string) {
+  return cat === "computer" || cat === "laptop";
+}
+
+/** Accounting policy: computers & laptops default 25% SL. Other categories use configured rate. */
+function policyRateBps(category: FixedAsset["category"], requested?: number): number {
+  if (isComputerCategory(category)) return 2500; // mandatory 25% accounting depreciation (not Ghana tax CA)
+  if (requested != null && Number.isFinite(requested) && requested >= 0) return Math.round(requested);
+  return 1000; // 10% default for non-computer assets if unspecified
+}
+
+function assetNbv(a: FixedAsset) {
+  return Math.max(0, a.costMinor - a.residualMinor - a.accumulatedMinor);
+}
+
+function depreciableRemaining(a: FixedAsset) {
+  return Math.max(0, a.costMinor - a.residualMinor - a.accumulatedMinor);
+}
+
+/** Monthly straight-line charge in minor units (integer). */
+function monthlyDepreciationMinor(a: FixedAsset): number {
+  const base = a.costMinor - a.residualMinor;
+  if (base <= 0) return 0;
+  const annual = Math.round((base * a.depreciationRateBps) / 10000);
+  return Math.max(0, Math.round(annual / 12));
+}
+
+function periodYm(d = new Date()) {
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+function integrityReport() {
+  const issues: { code: string; message: string; ref?: string }[] = [];
+  for (const j of store.journals) {
+    const d = j.lines.reduce((s, l) => s + l.debit, 0);
+    const c = j.lines.reduce((s, l) => s + l.credit, 0);
+    if (d !== c) issues.push({ code: "UNBALANCED_JOURNAL", message: `Journal ${j.number} debit ${d} != credit ${c}`, ref: j.id });
+    if (j.status === "posted" && j.lines.length < 2) issues.push({ code: "THIN_JOURNAL", message: `Posted journal ${j.number} has fewer than 2 lines`, ref: j.id });
+  }
+  for (const a of store.fixedAssets) {
+    if (a.accumulatedMinor > a.costMinor - a.residualMinor) {
+      issues.push({ code: "OVER_DEPRECIATED", message: `Asset ${a.assetNumber} accumulated exceeds depreciable amount`, ref: a.id });
+    }
+    if (isComputerCategory(a.category) && a.depreciationRateBps !== 2500 && a.status === "active") {
+      issues.push({ code: "POLICY_RATE", message: `Asset ${a.assetNumber} computer/laptop must use 25% (2500 bps)`, ref: a.id });
+    }
+  }
+  const tb = trialBalance();
+  if (!tb.balanced) {
+    issues.push({ code: "TB_OUT_OF_BALANCE", message: `Trial balance out of balance Dr ${tb.totalDebit} Cr ${tb.totalCredit}` });
+  }
+  return { ok: issues.length === 0, issues, journalCount: store.journals.length, assetCount: store.fixedAssets.length };
 }
 
 function postJournal(j: Journal) {
@@ -1530,6 +1626,212 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         : direction === "up"
           ? "Applied ×100 so storage matches true minor units. Roll back with direction:\"down\" if wrong."
           : "Rolled back ÷100.",
+    });
+  }
+
+
+  // —— Accounting integrity ——
+  if (path === "integrity" && request.method === "GET") {
+    return json(integrityReport());
+  }
+
+  // —— Fixed assets ——
+  if (path === "assets" && request.method === "GET") {
+    return json({
+      items: store.fixedAssets.map((a) => ({
+        ...a,
+        monthlyDepreciationMinor: monthlyDepreciationMinor(a),
+        annualDepreciationMinor: Math.round(((a.costMinor - a.residualMinor) * a.depreciationRateBps) / 10000),
+        netBookValueMinor: assetNbv(a),
+        depreciableRemainingMinor: depreciableRemaining(a),
+        policyNote: isComputerCategory(a.category)
+          ? "Accounting depreciation 25% SL (not Ghana tax capital allowance)"
+          : "Configured accounting rate",
+      })),
+    });
+  }
+
+  if (path === "assets" && request.method === "POST") {
+    const body = await readJson(request);
+    const category = String(body.category || "laptop") as FixedAsset["category"];
+    const cost = Math.round(Number(body.costMinor) || 0);
+    if (cost <= 0) return json({ error: "costMinor must be positive integer (minor units)" }, 400);
+    const residual = Math.max(0, Math.round(Number(body.residualMinor) || 0));
+    if (residual >= cost) return json({ error: "residualMinor must be less than costMinor" }, 400);
+    const rate = policyRateBps(category, body.depreciationRateBps != null ? Number(body.depreciationRateBps) : undefined);
+    const a: FixedAsset = {
+      id: crypto.randomUUID(),
+      assetNumber: `FA-${String(store.assetSeq++).padStart(5, "0")}`,
+      name: String(body.name || "Asset").slice(0, 200),
+      category,
+      acquisitionDate: String(body.acquisitionDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
+      inServiceDate: String(body.inServiceDate || body.acquisitionDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
+      costMinor: cost,
+      residualMinor: residual,
+      depreciationRateBps: rate,
+      method: "straight_line",
+      accumulatedMinor: 0,
+      status: "active",
+      location: body.location ? String(body.location).slice(0, 120) : undefined,
+      custodian: body.custodian ? String(body.custodian).slice(0, 120) : undefined,
+      currency: String(body.currency || "GHS"),
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    store.fixedAssets.push(a);
+    audit("asset", a.id, "created", a.assetNumber);
+    if (access.db) {
+      try {
+        await access.db.prepare(
+          `INSERT OR REPLACE INTO fin_fixed_assets (id, asset_number, name, category, acquisition_date, in_service_date, cost_minor, residual_minor, depreciation_rate_bps, method, useful_life_months, accumulated_minor, status, location, custodian, disposal_date, currency, created_at, updated_at)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, NULL, ?, ?, ?)`,
+        ).bind(a.id, a.assetNumber, a.name, a.category, a.acquisitionDate, a.inServiceDate, a.costMinor, a.residualMinor, a.depreciationRateBps, a.method, a.accumulatedMinor, a.status, a.location || null, a.custodian || null, a.currency, a.createdAt, a.updatedAt).run();
+      } catch { /* table may not exist yet */ }
+    }
+    return json({
+      asset: {
+        ...a,
+        monthlyDepreciationMinor: monthlyDepreciationMinor(a),
+        annualDepreciationMinor: Math.round(((a.costMinor - a.residualMinor) * a.depreciationRateBps) / 10000),
+        netBookValueMinor: assetNbv(a),
+      },
+    }, 201);
+  }
+
+  // Run monthly depreciation for all active computer assets (idempotent per asset-period)
+  if (path === "assets/depreciate" && request.method === "POST") {
+    const body = await readJson(request);
+    const ym = String(body.periodYm || periodYm()).slice(0, 7);
+    ensureCoa();
+    const expAcc = byCode("6311") || byCode("6310")!;
+    const accumAcc = byCode("1281") || byCode("1280")!;
+    const created: any[] = [];
+    const skipped: any[] = [];
+    for (const a of store.fixedAssets) {
+      if (a.status !== "active") {
+        skipped.push({ assetNumber: a.assetNumber, reason: "not_active" });
+        continue;
+      }
+      if (store.depreciationRuns.some((r) => r.assetId === a.id && r.periodYm === ym)) {
+        skipped.push({ assetNumber: a.assetNumber, reason: "already_posted_period" });
+        continue;
+      }
+      let charge = monthlyDepreciationMinor(a);
+      const remaining = depreciableRemaining(a);
+      if (remaining <= 0) {
+        a.status = "fully_depreciated";
+        skipped.push({ assetNumber: a.assetNumber, reason: "fully_depreciated" });
+        continue;
+      }
+      if (charge > remaining) charge = remaining;
+      if (charge <= 0) {
+        skipped.push({ assetNumber: a.assetNumber, reason: "zero_charge" });
+        continue;
+      }
+      const j: Journal = {
+        id: crypto.randomUUID(),
+        number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
+        journalType: "depreciation",
+        entryDate: `${ym}-28`,
+        description: `Depreciation ${ym} — ${a.assetNumber} ${a.name} (${(a.depreciationRateBps / 100).toFixed(0)}% SL accounting)`,
+        sourceModule: "fixed_assets",
+        sourceId: a.id,
+        currency: a.currency,
+        status: "draft",
+        lines: [
+          { id: crypto.randomUUID(), accountId: expAcc.id, accountCode: expAcc.code, memo: a.assetNumber, debit: charge, credit: 0 },
+          { id: crypto.randomUUID(), accountId: accumAcc.id, accountCode: accumAcc.code, memo: a.assetNumber, debit: 0, credit: charge },
+        ],
+        createdAt: new Date().toISOString(),
+      };
+      postJournal(j);
+      store.journals.push(j);
+      a.accumulatedMinor += charge;
+      if (depreciableRemaining(a) <= 0) a.status = "fully_depreciated";
+      a.updatedAt = new Date().toISOString();
+      const run: DepreciationRun = {
+        id: crypto.randomUUID(),
+        assetId: a.id,
+        periodYm: ym,
+        amountMinor: charge,
+        journalId: j.id,
+        createdAt: new Date().toISOString(),
+      };
+      store.depreciationRuns.push(run);
+      await persistJournal(j);
+      created.push({ assetNumber: a.assetNumber, amountMinor: charge, journalNumber: j.number, periodYm: ym });
+      audit("asset", a.id, "depreciated", `${ym}:${charge}`);
+    }
+    return json({
+      periodYm: ym,
+      created,
+      skipped,
+      note: "Computers/laptops use mandatory 25% annual SL accounting depreciation. Not Ghana tax capital allowance.",
+    });
+  }
+
+  /**
+   * DELETE posted or draft journal — removes active accounting effect completely.
+   * Body: { confirm: "DELETE_JOURNAL", reason?: string }
+   * Unlinks invoices/payments that pointed at this journal (does not delete invoices automatically).
+   * Audit row retained for evidence.
+   */
+  if (path.startsWith("journals/") && path.split("/").length === 2 && request.method === "DELETE") {
+    const id = path.split("/")[1];
+    const body = await readJson(request);
+    if (String(body.confirm || "") !== "DELETE_JOURNAL") {
+      return json({ error: "Confirmation required", hint: 'Pass { "confirm": "DELETE_JOURNAL", "reason": "..." }' }, 400);
+    }
+    const idx = store.journals.findIndex((x) => x.id === id);
+    if (idx < 0) return json({ error: "Not found" }, 404);
+    const j = store.journals[idx]!;
+    const impact = {
+      number: j.number,
+      status: j.status,
+      entryDate: j.entryDate,
+      description: j.description,
+      lines: j.lines.map((l) => ({ accountCode: l.accountCode, debit: l.debit, credit: l.credit, memo: l.memo })),
+      totals: lineTotals(j.lines),
+    };
+    // Unlink source references
+    for (const inv of store.invoices) {
+      if (inv.journalId === j.id) inv.journalId = undefined;
+    }
+    for (const pay of store.payments) {
+      if (pay.journalId === j.id) pay.journalId = undefined;
+    }
+    for (const run of store.depreciationRuns) {
+      if (run.journalId === j.id) run.journalId = undefined;
+    }
+    // If this was a depreciation journal, roll back accumulated on asset
+    if (j.journalType === "depreciation" && j.sourceId) {
+      const asset = store.fixedAssets.find((a) => a.id === j.sourceId);
+      if (asset) {
+        const depLine = j.lines.find((l) => l.debit > 0);
+        if (depLine) {
+          asset.accumulatedMinor = Math.max(0, asset.accumulatedMinor - depLine.debit);
+          if (asset.status === "fully_depreciated" && depreciableRemaining(asset) > 0) asset.status = "active";
+          asset.updatedAt = new Date().toISOString();
+        }
+        store.depreciationRuns = store.depreciationRuns.filter((r) => r.journalId !== j.id);
+      }
+    }
+    store.journals.splice(idx, 1);
+    audit("journal", j.id, "deleted", `${j.number}:${String(body.reason || "").slice(0, 200)}`);
+    if (access.db) {
+      try {
+        await access.db.prepare("DELETE FROM fin_journal_lines WHERE journal_id = ?").bind(j.id).run();
+        await access.db.prepare("DELETE FROM fin_journals WHERE id = ?").bind(j.id).run();
+        await d1Audit(access.db, "journal", j.id, "deleted", j.number);
+      } catch (e: any) {
+        console.error("journal delete d1", e?.message);
+      }
+    }
+    return json({
+      deleted: true,
+      impact,
+      integrity: integrityReport(),
+      note: "Active ledger effect removed. Audit trail retains deletion event. Re-enter a correct journal if needed.",
     });
   }
 

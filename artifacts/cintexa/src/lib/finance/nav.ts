@@ -2,6 +2,8 @@ export const FINANCE_NAV = [
   { key: "overview", label: "Finance Dashboard", href: "/finance", section: "Overview" },
   { key: "accounts", label: "Chart of Accounts", href: "/finance/accounts", section: "Accounting" },
   { key: "journals", label: "Journal Entries", href: "/finance/journals", section: "Accounting" },
+  { key: "assets", label: "Fixed Assets & Depreciation", href: "/finance/assets", section: "Accounting" },
+  { key: "integrity", label: "Accounting Integrity", href: "/finance/integrity", section: "System" },
   { key: "ledger", label: "General Ledger", href: "/finance/ledger", section: "Accounting" },
   { key: "tb", label: "Trial Balance", href: "/finance/trial-balance", section: "Reports" },
   { key: "pnl", label: "Profit & Loss", href: "/finance/profit-loss", section: "Reports" },

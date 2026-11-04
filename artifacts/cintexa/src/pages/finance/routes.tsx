@@ -13,6 +13,8 @@ export function FinanceRoutes() {
         <Route path="/finance" component={Overview} />
         <Route path="/finance/accounts">{() => <FinancePage mode="accounts" />}</Route>
         <Route path="/finance/journals">{() => <FinancePage mode="journals" />}</Route>
+        <Route path="/finance/assets">{() => <FinancePage mode="assets" />}</Route>
+        <Route path="/finance/integrity">{() => <FinancePage mode="integrity" />}</Route>
         <Route path="/finance/ledger">{() => <FinancePage mode="ledger" />}</Route>
         <Route path="/finance/trial-balance">{() => <FinancePage mode="tb" />}</Route>
         <Route path="/finance/profit-loss">{() => <FinancePage mode="pnl" />}</Route>

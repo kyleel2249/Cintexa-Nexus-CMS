@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { finGet, finPost, formatMinor, formatCurrency, majorToMinor, minorToMajor } from "@/lib/finance/api";
+import { finGet, finPost, finDelete, formatMinor, formatCurrency, majorToMinor, minorToMajor } from "@/lib/finance/api";
 import {
   generateDocumentation,
   explainAccount,
@@ -19,7 +19,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 
 
-type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "discounts" | "audit";
+type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "discounts" | "audit" | "assets" | "integrity";
 
 interface DraftLine {
   key: string;
@@ -77,6 +77,92 @@ export default function FinancePage({ mode }: { mode: Mode }) {
             </div>
           ))}
         </div>
+      </Shell>
+    );
+  }
+
+
+  if (mode === "assets") {
+    const q = useQuery({ queryKey: ["fin", "assets"], queryFn: () => finGet<{ items: any[] }>("/assets") });
+    const [name, setName] = useState("");
+    const [cost, setCost] = useState("8000");
+    const [cat, setCat] = useState("laptop");
+    const create = useMutation({
+      mutationFn: () =>
+        finPost("/assets", {
+          name,
+          category: cat,
+          costMinor: majorToMinor(Number(cost) || 0),
+          residualMinor: 0,
+        }),
+      onSuccess: inv,
+    });
+    const runDep = useMutation({
+      mutationFn: () => finPost("/assets/depreciate", {}),
+      onSuccess: inv,
+    });
+    return (
+      <Shell title="Fixed assets & depreciation" desc="Computers/laptops: mandatory 25% p.a. straight-line accounting depreciation (not Ghana tax capital allowance). Amounts in major units on entry.">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Input placeholder="Asset name e.g. Dell Laptop" value={name} onChange={(e) => setName(e.target.value)} />
+          <select className="h-9 rounded-md border bg-background px-2 text-sm" value={cat} onChange={(e) => setCat(e.target.value)}>
+            <option value="laptop">Laptop</option>
+            <option value="computer">Desktop computer</option>
+            <option value="server">Server</option>
+            <option value="office_equipment">Office equipment</option>
+            <option value="furniture">Furniture</option>
+            <option value="other">Other</option>
+          </select>
+          <Input placeholder="Cost GHS" value={cost} onChange={(e) => setCost(e.target.value)} className="w-32" />
+          <Button disabled={!name || create.isPending} onClick={() => create.mutate()}>Register asset</Button>
+          <Button variant="secondary" disabled={runDep.isPending} onClick={() => runDep.mutate()}>
+            {runDep.isPending ? "Posting…" : "Run monthly depreciation"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Example: cost GH₵ 8,000 → annual GH₵ 2,000 → monthly GH₵ 166.67 (stored as minor units). Idempotent per asset-period.
+        </p>
+        <div className="space-y-2 text-sm">
+          {(q.data?.items || []).map((a) => (
+            <Card key={a.id}>
+              <CardContent className="py-3">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <span className="font-medium">{a.assetNumber} · {a.name}</span>
+                  <span className="text-xs uppercase text-muted-foreground">{a.status}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {a.category} · rate {(a.depreciationRateBps / 100).toFixed(0)}% · cost {formatCurrency(a.costMinor)} · accum {formatCurrency(a.accumulatedMinor)} · NBV {formatCurrency(a.netBookValueMinor)}
+                </p>
+                <p className="text-xs">Monthly charge {formatCurrency(a.monthlyDepreciationMinor)} · {a.policyNote}</p>
+              </CardContent>
+            </Card>
+          ))}
+          {!q.data?.items?.length && <p className="text-muted-foreground">No fixed assets yet.</p>}
+        </div>
+      </Shell>
+    );
+  }
+
+  if (mode === "integrity") {
+    const q = useQuery({ queryKey: ["fin", "integrity"], queryFn: () => finGet<any>("/integrity") });
+    return (
+      <Shell title="Accounting integrity" desc="Detects unbalanced journals, over-depreciation, and trial balance mismatches">
+        {q.data && (
+          <div className="space-y-3">
+            <p className={`text-sm font-medium ${q.data.ok ? "text-emerald-600" : "text-rose-600"}`}>
+              {q.data.ok ? "No integrity issues detected" : `${q.data.issues?.length || 0} issue(s)`}
+            </p>
+            <p className="text-xs text-muted-foreground">Journals: {q.data.journalCount} · Assets: {q.data.assetCount}</p>
+            <div className="space-y-2">
+              {(q.data.issues || []).map((i: any, idx: number) => (
+                <Card key={idx}><CardContent className="py-2 text-sm">
+                  <span className="text-xs uppercase text-muted-foreground">{i.code}</span>
+                  <p>{i.message}</p>
+                </CardContent></Card>
+              ))}
+            </div>
+          </div>
+        )}
       </Shell>
     );
   }
@@ -691,11 +777,26 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
                 <li key={ln.id}>{ln.accountCode} Dr {ln.debit} Cr {ln.credit}</li>
               ))}
             </ul>
-            {j.status === "posted" && !j.reversedBy && (
-              <Button size="sm" variant="outline" className="mt-2" onClick={() => finPost(`/journals/${j.id}/reverse`, {}).then(() => { onPosted(); qc.invalidateQueries({ queryKey: ["fin", "je"] }); })}>
-                Reverse
+            <div className="mt-2 flex flex-wrap gap-2">
+              {j.status === "posted" && !j.reversedBy && (
+                <Button size="sm" variant="outline" onClick={() => finPost(`/journals/${j.id}/reverse`, {}).then(() => { onPosted(); qc.invalidateQueries({ queryKey: ["fin", "je"] }); })}>
+                  Reverse
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => {
+                  if (!window.confirm(`Permanently delete ${j.number}? This removes active ledger effects. Audit retains the deletion event.`)) return;
+                  finDelete(`/journals/${j.id}`, { confirm: "DELETE_JOURNAL", reason: "User correction from journals UI" }).then(() => {
+                    onPosted();
+                    qc.invalidateQueries({ queryKey: ["fin"] });
+                  });
+                }}
+              >
+                Delete
               </Button>
-            )}
+            </div>
           </CardContent></Card>
         ))}
       </div>
