@@ -31,3 +31,4 @@ export {
 } from "./ccdi-foundation-schema";
 /** The transaction client type returned by `pool.connect()` (not derivable via ReturnType: connect() is overloaded). */
 export type { PoolClient } from "pg";
+export { MARKETING_SCHEMA_STATEMENTS } from "./marketing-schema";

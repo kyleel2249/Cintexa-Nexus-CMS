@@ -2,11 +2,14 @@ import { CintexaLogo } from "@/components/SplashScreen";
 import { WebsiteIntelligenceCard } from "@/components/website-intelligence-card";
 import { SentinelKeyCard } from "@/components/sentinel-key-card";
 import { SalesOverviewWidget } from "@/components/sales/SalesOverviewWidget";
+import { MarketingOverviewWidget } from "@/components/marketing/MarketingOverviewWidget";
+import { StrategyOkrWidget, BrandStatusWidget } from "@/components/marketing/StrategyBrandWidgets";
 import { Link } from "wouter";
 import { FiDashboardWidget } from "@/components/financial-intelligence/FiDashboardWidget";
 import { BdDashboardWidget } from "@/components/business-diary/BdDashboardWidget";
 import { SyncStatusWidget } from "@/components/nexus-sync/SyncStatusWidget";
 import { FinanceDashboardWidget } from "@/components/finance/FinanceDashboardWidget";
+import { CsiDashboardWidget } from "@/components/csi/CsiDashboardWidget";
 import { useEffect, useState } from "react";
 import { useGetDashboardSummary, useGetDashboardActivity, useGetDashboardTraffic } from "@workspace/api-client-react";
 import { useQuery } from "@tanstack/react-query";
@@ -292,6 +295,21 @@ export default function Dashboard() {
 
       <motion.div variants={fadeUp}>
         <SalesOverviewWidget compact />
+        <MarketingOverviewWidget compact />
+        <StrategyOkrWidget />
+        <BrandStatusWidget />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <FinanceDashboardWidget />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <CsiDashboardWidget />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <BdDashboardWidget />
       </motion.div>
 
       <motion.div variants={fadeUp}>

@@ -6,8 +6,8 @@ import { NEXUS_SCHEMA_SQL } from "../functions/_lib/nexus-db.ts";
 
 const norm = (s: string) => s.replace(/--[^\n]*/g, "").replace(/\s+/g, " ").replace(/;\s*$/, "").trim();
 
-test("migrations/d1/0006_nexus_sync_v2.sql matches NEXUS_SCHEMA_SQL", () => {
-  const file = readFileSync(new URL("../migrations/d1/0006_nexus_sync_v2.sql", import.meta.url), "utf8");
+test("migrations/d1/0009_nexus_sync_v2.sql matches NEXUS_SCHEMA_SQL", () => {
+  const file = readFileSync(new URL("../migrations/d1/0009_nexus_sync_v2.sql", import.meta.url), "utf8");
   const fromFile = file.split(/;\s*(?:\n|$)/).map(norm).filter(Boolean);
   assert.deepEqual(fromFile, NEXUS_SCHEMA_SQL.map(norm));
 });

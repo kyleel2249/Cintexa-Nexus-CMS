@@ -5,7 +5,7 @@
  * that persists through this file lands in the same D1 so records can be joined and synchronised.
  *
  * Schema is created with CREATE TABLE IF NOT EXISTS on first use per isolate (same approach as CINTEXA Finance), and is
- * mirrored in migrations/d1/0006_nexus_sync_v2.sql for operators who prefer `wrangler d1 execute`.
+ * mirrored in migrations/d1/0009_nexus_sync_v2.sql for operators who prefer `wrangler d1 execute`.
  */
 
 export interface D1Result {

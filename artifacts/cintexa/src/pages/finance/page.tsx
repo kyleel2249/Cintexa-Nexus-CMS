@@ -1,12 +1,25 @@
-import { useMemo, useState } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { finGet, finPost, formatMinor } from "@/lib/finance/api";
+import { finGet, finPost, finDelete, formatMinor, formatCurrency, majorToMinor, minorToMajor } from "@/lib/finance/api";
+import {
+  generateDocumentation,
+  explainAccount,
+  type DocumentationResult,
+} from "@/lib/finance/documentation-engine";
+import {
+  narrativeForFinanceInvoice,
+  narrativeForFinancePayment,
+} from "@/lib/finance/sales-narratives";
+
+
+
 import { AccountSelect, type AccountOption } from "@/components/finance/AccountSelect";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
-type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "invoices" | "payments" | "discounts" | "audit";
+
+type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "cf" | "ar-aging" | "dep-sched" | "equity" | "adjustments" | "invoices" | "payments" | "discounts" | "audit" | "assets" | "integrity" | "periods";
 
 interface DraftLine {
   key: string;
@@ -68,6 +81,296 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     );
   }
 
+
+  if (mode === "assets") {
+    const q = useQuery({ queryKey: ["fin", "assets"], queryFn: () => finGet<{ items: any[] }>("/assets") });
+    const [name, setName] = useState("");
+    const [cost, setCost] = useState("8000");
+    const [cat, setCat] = useState("laptop");
+    const create = useMutation({
+      mutationFn: () =>
+        finPost("/assets", {
+          name,
+          category: cat,
+          costMinor: majorToMinor(Number(cost) || 0),
+          residualMinor: 0,
+        }),
+      onSuccess: inv,
+    });
+    const runDep = useMutation({
+      mutationFn: () => finPost("/assets/depreciate", {}),
+      onSuccess: inv,
+    });
+    return (
+      <Shell title="Fixed assets & depreciation" desc="Computers/laptops: mandatory 25% p.a. straight-line accounting depreciation (not Ghana tax capital allowance). Amounts in major units on entry.">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Input placeholder="Asset name e.g. Dell Laptop" value={name} onChange={(e) => setName(e.target.value)} />
+          <select className="h-9 rounded-md border bg-background px-2 text-sm" value={cat} onChange={(e) => setCat(e.target.value)}>
+            <option value="laptop">Laptop</option>
+            <option value="computer">Desktop computer</option>
+            <option value="server">Server</option>
+            <option value="office_equipment">Office equipment</option>
+            <option value="furniture">Furniture</option>
+            <option value="other">Other</option>
+          </select>
+          <Input placeholder="Cost GHS" value={cost} onChange={(e) => setCost(e.target.value)} className="w-32" />
+          <Button disabled={!name || create.isPending} onClick={() => create.mutate()}>Register asset</Button>
+          <Button variant="secondary" disabled={runDep.isPending} onClick={() => runDep.mutate()}>
+            {runDep.isPending ? "Posting…" : "Run monthly depreciation"}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground mb-3">
+          Example: cost GH₵ 8,000 → annual GH₵ 2,000 → monthly GH₵ 166.67 (stored as minor units). Idempotent per asset-period.
+        </p>
+        <div className="space-y-2 text-sm">
+          {(q.data?.items || []).map((a) => (
+            <Card key={a.id}>
+              <CardContent className="py-3">
+                <div className="flex flex-wrap justify-between gap-2">
+                  <span className="font-medium">{a.assetNumber} · {a.name}</span>
+                  <span className="text-xs uppercase text-muted-foreground">{a.status}</span>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {a.category} · rate {(a.depreciationRateBps / 100).toFixed(0)}% · cost {formatCurrency(a.costMinor)} · accum {formatCurrency(a.accumulatedMinor)} · NBV {formatCurrency(a.netBookValueMinor)}
+                </p>
+                <p className="text-xs">Monthly charge {formatCurrency(a.monthlyDepreciationMinor)} · {a.policyNote}</p>
+              </CardContent>
+            </Card>
+          ))}
+          {!q.data?.items?.length && <p className="text-muted-foreground">No fixed assets yet.</p>}
+        </div>
+      </Shell>
+    );
+  }
+
+
+
+  if (mode === "cf") {
+    const q = useQuery({ queryKey: ["fin", "cf"], queryFn: () => finGet<any>("/cash-flow") });
+    const d = q.data;
+    return (
+      <Shell title="Cash flow statement" desc="Direct method from cash/bank journal lines · posted only · depreciation shown as non-cash">
+        {d && (
+          <div className="space-y-3 text-sm">
+            <p className="text-xs text-muted-foreground">{d.note}</p>
+            <div className="grid gap-3 sm:grid-cols-3">
+              <Card><CardContent className="pt-4"><p className="text-xs uppercase text-muted-foreground">Operating net</p><p className="font-semibold tabular-nums">{formatCurrency(d.operating?.netMinor ?? 0)}</p></CardContent></Card>
+              <Card><CardContent className="pt-4"><p className="text-xs uppercase text-muted-foreground">Investing net</p><p className="font-semibold tabular-nums">{formatCurrency(d.investing?.netMinor ?? 0)}</p></CardContent></Card>
+              <Card><CardContent className="pt-4"><p className="text-xs uppercase text-muted-foreground">Financing net</p><p className="font-semibold tabular-nums">{formatCurrency(d.financing?.netMinor ?? 0)}</p></CardContent></Card>
+            </div>
+            <p>Net change {formatCurrency(d.netChangeMinor ?? 0)} · Closing cash {formatCurrency(d.closingCashMinor ?? 0)}</p>
+            <p className="text-xs text-muted-foreground">Non-cash depreciation {formatCurrency(d.nonCash?.depreciationMinor ?? 0)}</p>
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
+  if (mode === "ar-aging") {
+    const q = useQuery({ queryKey: ["fin", "ar-aging"], queryFn: () => finGet<any>("/ar-aging") });
+    const d = q.data;
+    return (
+      <Shell title="Accounts receivable aging" desc="Open invoice balances by days outstanding">
+        {d && (
+          <div className="space-y-3 text-sm">
+            <div className="grid gap-2 sm:grid-cols-5">
+              {[
+                ["Current", d.buckets?.current],
+                ["1–30", d.buckets?.d1_30],
+                ["31–60", d.buckets?.d31_60],
+                ["61–90", d.buckets?.d61_90],
+                ["90+", d.buckets?.d90_plus],
+              ].map(([l, v]) => (
+                <Card key={l as string}><CardContent className="pt-3"><p className="text-[11px] uppercase text-muted-foreground">{l}</p><p className="font-semibold tabular-nums">{formatCurrency(Number(v) || 0)}</p></CardContent></Card>
+              ))}
+            </div>
+            <p className="font-medium">Total {formatCurrency(d.totalMinor ?? 0)}</p>
+            <div className="space-y-1">
+              {(d.items || []).map((i: any) => (
+                <div key={i.number} className="flex justify-between gap-2 border-b py-1 text-xs">
+                  <span>{i.number} · {i.customerName} · {i.daysOutstanding}d · {i.bucket}</span>
+                  <span className="tabular-nums">{formatCurrency(i.balanceMinor)}</span>
+                </div>
+              ))}
+              {!d.items?.length && <p className="text-muted-foreground">No open receivables.</p>}
+            </div>
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
+  if (mode === "dep-sched") {
+    const q = useQuery({ queryKey: ["fin", "dep-sched"], queryFn: () => finGet<any>("/depreciation-schedule") });
+    return (
+      <Shell title="Depreciation schedule" desc={q.data?.policy || "Fixed asset depreciation schedule"}>
+        <div className="space-y-2 text-sm">
+          {(q.data?.items || []).map((a: any) => (
+            <Card key={a.assetNumber}>
+              <CardContent className="py-3">
+                <p className="font-medium">{a.assetNumber} · {a.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  Cost {formatCurrency(a.costMinor)} · Annual {formatCurrency(a.annualDepreciationMinor)} · Monthly {formatCurrency(a.monthlyDepreciationMinor)} · Accum {formatCurrency(a.accumulatedMinor)} · NBV {formatCurrency(a.netBookValueMinor)}
+                </p>
+              </CardContent>
+            </Card>
+          ))}
+          {!q.data?.items?.length && <p className="text-muted-foreground">No assets in register.</p>}
+        </div>
+      </Shell>
+    );
+  }
+
+  if (mode === "equity") {
+    const q = useQuery({ queryKey: ["fin", "equity"], queryFn: () => finGet<any>("/equity-statement") });
+    const d = q.data;
+    return (
+      <Shell title="Statement of changes in equity" desc="Simplified roll-forward from equity accounts + period P&amp;L">
+        {d && (
+          <div className="space-y-2 text-sm">
+            <p className="text-xs text-muted-foreground">{d.note}</p>
+            <p>Net profit (period) {formatCurrency(d.netProfitMinor ?? 0)}</p>
+            {Object.entries(d.closing || {}).map(([code, bal]) => (
+              <div key={code} className="flex justify-between border-b py-1">
+                <span>{code}</span>
+                <span className="tabular-nums">{formatCurrency(Number(bal) || 0)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
+  if (mode === "adjustments") {
+    const [amount, setAmount] = useState("");
+    const [desc, setDesc] = useState("");
+    const prepaid = useMutation({
+      mutationFn: () => finPost("/adjustments/prepaid", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      onSuccess: inv,
+    });
+    const deferred = useMutation({
+      mutationFn: () => finPost("/adjustments/deferred-revenue", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      onSuccess: inv,
+    });
+    const accrue = useMutation({
+      mutationFn: () => finPost("/adjustments/accrue-expense", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      onSuccess: inv,
+    });
+    return (
+      <Shell title="Period adjustments" desc="Accrual helpers — prepaid recognition, deferred revenue earned, accrued expenses. Major units. Respects closed periods.">
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Input placeholder="Amount GHS" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-32" />
+          <Input placeholder="Description" value={desc} onChange={(e) => setDesc(e.target.value)} className="min-w-[200px]" />
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Button disabled={!amount || prepaid.isPending} onClick={() => prepaid.mutate()}>Recognize prepaid → expense</Button>
+          <Button disabled={!amount || deferred.isPending} variant="secondary" onClick={() => deferred.mutate()}>Recognize deferred revenue</Button>
+          <Button disabled={!amount || accrue.isPending} variant="outline" onClick={() => accrue.mutate()}>Accrue expense</Button>
+        </div>
+        <p className="mt-3 text-xs text-muted-foreground">
+          Prepaid: Dr Expense / Cr 1080 · Deferred: Dr 2110 / Cr Revenue · Accrue: Dr Expense / Cr 2030
+        </p>
+      </Shell>
+    );
+  }
+
+  if (mode === "periods") {
+    const q = useQuery({ queryKey: ["fin", "periods"], queryFn: () => finGet<{ items: any[] }>("/periods") });
+    const [reason, setReason] = useState("");
+    const closeMut = useMutation({
+      mutationFn: (periodYm: string) =>
+        finPost("/periods/close", { periodYm, confirm: "CLOSE_PERIOD", reason: reason || "Month-end close", actor: "finance_user" }),
+      onSuccess: inv,
+    });
+    const reopenMut = useMutation({
+      mutationFn: (periodYm: string) =>
+        finPost("/periods/reopen", { periodYm, confirm: "REOPEN_PERIOD", reason: reason || "Authorized correction", actor: "finance_user" }),
+      onSuccess: inv,
+    });
+    return (
+      <Shell title="Accounting periods" desc="Close a month to block new posts and deletions for that period. Reopen requires a reason (elevated authorization).">
+        <div className="mb-4 flex flex-wrap gap-2 items-end">
+          <div className="flex-1 min-w-[200px]">
+            <label className="text-xs text-muted-foreground">Close / reopen reason</label>
+            <Input value={reason} onChange={(e) => setReason(e.target.value)} placeholder="e.g. Month-end close / Correct posting error" />
+          </div>
+        </div>
+        <div className="space-y-2 text-sm">
+          {(q.data?.items || []).map((p) => (
+            <Card key={p.id || p.periodYm}>
+              <CardContent className="py-3 flex flex-wrap items-center justify-between gap-2">
+                <div>
+                  <p className="font-medium">{p.periodYm} · <span className={p.status === "closed" ? "text-rose-600" : "text-emerald-600"}>{p.status}</span></p>
+                  {p.status === "closed" && (
+                    <p className="text-xs text-muted-foreground">Closed {p.closedAt?.slice(0, 16)} by {p.closedBy}: {p.closeReason}</p>
+                  )}
+                  {p.reopenedAt && (
+                    <p className="text-xs text-muted-foreground">Last reopen {p.reopenedAt?.slice(0, 16)} by {p.reopenedBy}: {p.reopenReason}</p>
+                  )}
+                </div>
+                <div className="flex gap-2">
+                  {p.status === "open" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={closeMut.isPending}
+                      onClick={() => {
+                        if (!window.confirm(`Close period ${p.periodYm}? Posting and deletes for this month will be blocked.`)) return;
+                        closeMut.mutate(p.periodYm);
+                      }}
+                    >
+                      Close period
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      disabled={reopenMut.isPending}
+                      onClick={() => {
+                        if (!reason || reason.length < 3) {
+                          window.alert("Enter a reopen reason (min 3 characters).");
+                          return;
+                        }
+                        if (!window.confirm(`Reopen period ${p.periodYm}? Only for authorized corrections.`)) return;
+                        reopenMut.mutate(p.periodYm);
+                      }}
+                    >
+                      Reopen period
+                    </Button>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </Shell>
+    );
+  }
+
+  if (mode === "integrity") {
+    const q = useQuery({ queryKey: ["fin", "integrity"], queryFn: () => finGet<any>("/integrity") });
+    return (
+      <Shell title="Accounting integrity" desc="Detects unbalanced journals, over-depreciation, and trial balance mismatches">
+        {q.data && (
+          <div className="space-y-3">
+            <p className={`text-sm font-medium ${q.data.ok ? "text-emerald-600" : "text-rose-600"}`}>
+              {q.data.ok ? "No integrity issues detected" : `${q.data.issues?.length || 0} issue(s)`}
+            </p>
+            <p className="text-xs text-muted-foreground">Journals: {q.data.journalCount} · Assets: {q.data.assetCount}</p>
+            <div className="space-y-2">
+              {(q.data.issues || []).map((i: any, idx: number) => (
+                <Card key={idx}><CardContent className="py-2 text-sm">
+                  <span className="text-xs uppercase text-muted-foreground">{i.code}</span>
+                  <p>{i.message}</p>
+                </CardContent></Card>
+              ))}
+            </div>
+          </div>
+        )}
+      </Shell>
+    );
+  }
+
   if (mode === "journals") {
     return <JournalWorkspace onPosted={inv} />;
   }
@@ -103,12 +406,13 @@ export default function FinancePage({ mode }: { mode: Mode }) {
       <Shell title="Profit & Loss" desc={q.data?.note || ""}>
         {q.data && (
           <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-            <Metric label="Gross revenue" value={formatMinor(q.data.grossRevenue ?? q.data.revenue, cur)} />
-            <Metric label="Discount Allowed" value={formatMinor(q.data.discountAllowed || 0, cur)} />
-            <Metric label="Net revenue" value={formatMinor(q.data.netRevenue ?? q.data.revenue, cur)} />
-            <Metric label="Expenses" value={formatMinor(q.data.expense, cur)} />
-            <Metric label="Discount Received" value={formatMinor(q.data.discountReceived || 0, cur)} />
-            <Metric label="Net profit" value={formatMinor(q.data.netProfit, cur)} />
+            <Metric label="Gross revenue" value={formatCurrency(q.data.grossRevenue ?? q.data.revenue, cur)} />
+            <Metric label="Discount Allowed" value={formatCurrency(q.data.discountAllowed || 0, cur)} />
+            <Metric label="Net revenue" value={formatCurrency(q.data.netRevenue ?? q.data.revenue, cur)} />
+            <Metric label="Expenses" value={formatCurrency(q.data.expense, cur)} />
+            <Metric label="Discount Received" value={formatCurrency(q.data.discountReceived || 0, cur)} />
+            <Metric label="Net profit" value={formatCurrency(q.data.netProfit, cur)} />
+
           </div>
         )}
       </Shell>
@@ -122,9 +426,10 @@ export default function FinancePage({ mode }: { mode: Mode }) {
         {q.data && (
           <>
             <div className="grid gap-3 sm:grid-cols-3 mb-2">
-              <Metric label="Assets" value={formatMinor(q.data.assets, cur)} />
-              <Metric label="Liabilities" value={formatMinor(q.data.liabilities, cur)} />
-              <Metric label="Equity" value={formatMinor(q.data.equity, cur)} />
+              <Metric label="Assets" value={formatCurrency(q.data.assets, cur)} />
+              <Metric label="Liabilities" value={formatCurrency(q.data.liabilities, cur)} />
+              <Metric label="Equity" value={formatCurrency(q.data.equity, cur)} />
+
             </div>
             <p className={`text-sm ${q.data.balanced ? "text-emerald-600" : "text-rose-600"}`}>{q.data.equation}</p>
           </>
@@ -136,30 +441,55 @@ export default function FinancePage({ mode }: { mode: Mode }) {
   if (mode === "invoices") {
     const q = useQuery({ queryKey: ["fin", "inv"], queryFn: () => finGet<{ items: any[] }>("/invoices") });
     const [name, setName] = useState("");
-    const [amount, setAmount] = useState("1500000");
+    // Major units in the form (15000 = GH₵ 15,000.00); converted to minor on post
+    const [amount, setAmount] = useState("15000");
     const [rev, setRev] = useState<AccountOption | null>(null);
+    const amountMinor = majorToMinor(Number(amount) || 0);
+    const invNarrative = useMemo(
+      () =>
+        narrativeForFinanceInvoice({
+          customerName: name || "Customer",
+          amountMinor,
+          revenueAccountCode: rev?.code,
+          revenueAccountName: rev?.name,
+        }),
+      [name, amountMinor, rev?.code, rev?.name],
+    );
     const create = useMutation({
       mutationFn: () =>
         finPost("/invoices", {
           customerName: name,
-          amountMinor: Number(amount),
+          amountMinor,
           revenueAccountCode: rev?.code || "4020",
+          description: invNarrative.description,
+          arMemo: invNarrative.arMemo,
+          revenueMemo: invNarrative.revenueMemo,
         }),
       onSuccess: inv,
     });
     return (
-      <Shell title="Invoices / AR" desc="Posts Dr 1050 AR / Cr selected revenue · minor units">
+      <Shell title="Invoices / AR" desc="Posts Dr 1050 AR / Cr selected revenue · enter major units (e.g. 5000 = GH₵ 5,000.00)">
         <div className="grid gap-2 mb-4 sm:grid-cols-2">
           <Input placeholder="Customer name" value={name} onChange={(e) => setName(e.target.value)} />
-          <Input placeholder="Amount (minor)" value={amount} onChange={(e) => setAmount(e.target.value)} />
+          <Input placeholder="Amount (GHS major units)" value={amount} onChange={(e) => setAmount(e.target.value)} />
           <AccountSelect value={rev} onChange={setRev} placeholder="Revenue account (search)…" />
           <Button disabled={!name || create.isPending} onClick={() => create.mutate()}>Issue invoice</Button>
         </div>
+        {name && amountMinor > 0 && (
+          <Card className="mb-4 border-primary/20 bg-primary/5">
+            <CardContent className="py-3 text-xs space-y-1">
+              <p className="font-medium text-sm">Auto documentation</p>
+              <p>{invNarrative.description}</p>
+              <p className="text-muted-foreground">{invNarrative.documentation.financialImpact.summary}</p>
+              <p className="text-muted-foreground">Completeness: {invNarrative.documentation.completenessScore}%</p>
+            </CardContent>
+          </Card>
+        )}
         <div className="space-y-2 text-sm">
           {(q.data?.items || []).map((i) => (
             <Card key={i.id}><CardContent className="py-3">
               <p className="font-medium">{i.number} · {i.customerName}</p>
-              <p className="text-xs text-muted-foreground">{i.issueDate} · {i.status} · {formatMinor(i.amountMinor, i.currency)}</p>
+              <p className="text-xs text-muted-foreground">{i.issueDate} · {i.status} · {formatCurrency(i.amountMinor, i.currency)}</p>
             </CardContent></Card>
           ))}
         </div>
@@ -167,36 +497,67 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     );
   }
 
+
   if (mode === "payments") {
     const invs = useQuery({ queryKey: ["fin", "inv"], queryFn: () => finGet<{ items: any[] }>("/invoices") });
     const pays = useQuery({ queryKey: ["fin", "pay"], queryFn: () => finGet<{ items: any[] }>("/payments") });
     const [invoiceId, setInvoiceId] = useState("");
     const [amount, setAmount] = useState("");
+    const selectedInv = (invs.data?.items || []).find((i) => i.id === invoiceId);
+    const payMinor = majorToMinor(Number(amount) || 0);
+    const payNarrative = useMemo(
+      () =>
+        narrativeForFinancePayment({
+          customerName: selectedInv?.customerName || "Customer",
+          amountMinor: payMinor,
+          invoiceNumber: selectedInv?.number,
+        }),
+      [selectedInv?.customerName, selectedInv?.number, payMinor],
+    );
     const create = useMutation({
-      mutationFn: () => finPost("/payments", { invoiceId, amountMinor: Number(amount), bankAccountCode: "1030" }),
+      mutationFn: () =>
+        finPost("/payments", {
+          invoiceId,
+          amountMinor: payMinor,
+          bankAccountCode: "1030",
+          description: payNarrative.description,
+          bankMemo: payNarrative.bankMemo,
+          arMemo: payNarrative.arMemo,
+        }),
       onSuccess: () => { inv(); setAmount(""); },
     });
     return (
-      <Shell title="Customer payments" desc="Dr Bank 1030 / Cr AR 1050 · no double revenue">
+      <Shell title="Customer payments" desc="Dr Bank 1030 / Cr AR 1050 · enter major units (e.g. 5000 = GH₵ 5,000.00)">
         <div className="flex flex-wrap gap-2 mb-4">
           <select className="h-9 rounded-md border bg-background px-2 text-sm" value={invoiceId} onChange={(e) => setInvoiceId(e.target.value)}>
             <option value="">Select invoice</option>
             {(invs.data?.items || []).filter((i) => i.status !== "paid").map((i) => (
-              <option key={i.id} value={i.id}>{i.number} — {i.customerName}</option>
+              <option key={i.id} value={i.id}>{i.number} — {i.customerName} · {formatCurrency(i.amountMinor, i.currency)}</option>
             ))}
           </select>
-          <Input placeholder="Amount minor" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-32" />
+          <Input placeholder="Amount (GHS)" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-36" />
           <Button disabled={!invoiceId || !amount || create.isPending} onClick={() => create.mutate()}>Record payment</Button>
         </div>
+        {invoiceId && payMinor > 0 && (
+          <Card className="mb-4 border-primary/20 bg-primary/5">
+            <CardContent className="py-3 text-xs space-y-1">
+              <p className="font-medium text-sm">Auto documentation</p>
+              <p>{payNarrative.description}</p>
+              <p className="text-muted-foreground">{payNarrative.documentation.financialImpact.summary}</p>
+            </CardContent>
+          </Card>
+        )}
         {create.isError && <p className="text-sm text-rose-600 mb-2">Payment rejected.</p>}
         <div className="space-y-2 text-sm">
           {(pays.data?.items || []).map((p) => (
-            <Card key={p.id}><CardContent className="py-3">{p.paymentDate}: {formatMinor(p.amountMinor, p.currency)} — {p.customerName}</CardContent></Card>
+            <Card key={p.id}><CardContent className="py-3">{p.paymentDate}: {formatCurrency(p.amountMinor, p.currency)} — {p.customerName}</CardContent></Card>
           ))}
         </div>
       </Shell>
     );
   }
+
+
 
   if (mode === "ledger") {
     const [acc, setAcc] = useState<AccountOption | null>(null);
@@ -248,42 +609,119 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
   const qc = useQueryClient();
   const list = useQuery({ queryKey: ["fin", "je"], queryFn: () => finGet<{ items: any[] }>("/journals") });
   const [desc, setDesc] = useState("");
+  const [descTouched, setDescTouched] = useState(false);
   const [journalType, setJournalType] = useState("general");
   const [entryDate, setEntryDate] = useState(new Date().toISOString().slice(0, 10));
   const [lines, setLines] = useState<DraftLine[]>([
     { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
     { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
   ]);
+  const [docsOpen, setDocsOpen] = useState(true);
 
+  /**
+   * Journal form amounts are MAJOR currency units (e.g. 5000 = GHS 5,000.00).
+   * Storage and API require INTEGER MINOR units (5000 major → 500000 minor).
+   * Converting only at the post boundary prevents the 100× display understatement.
+   */
   const totals = useMemo(() => {
     let d = 0, c = 0;
     for (const l of lines) {
-      d += Math.round(Number(l.debit) || 0);
-      c += Math.round(Number(l.credit) || 0);
+      d += Number(l.debit) || 0;
+      c += Number(l.credit) || 0;
     }
-    return { debit: d, credit: c, difference: d - c, balanced: d === c && d > 0 };
+    // Compare in minor space for exact balance (avoids float noise)
+    const dMin = majorToMinor(d);
+    const cMin = majorToMinor(c);
+    return {
+      debitMajor: d,
+      creditMajor: c,
+      debit: dMin,
+      credit: cMin,
+      difference: dMin - cMin,
+      balanced: dMin === cMin && dMin > 0,
+    };
   }, [lines]);
+
+  const docs: DocumentationResult = useMemo(
+    () =>
+      generateDocumentation({
+        journalType,
+        entryDate,
+        currency: "GHS",
+        description: desc,
+        preserveUserEdits: descTouched,
+        lines: lines.map((l) => ({
+          key: l.key,
+          account: l.account
+            ? {
+                code: l.account.code,
+                name: l.account.name,
+                type: l.account.type as any,
+                subtype: (l.account as any).subtype,
+              }
+            : null,
+          memo: l.memo,
+          // Engine expects minor units for formatCurrency
+          debit: majorToMinor(Number(l.debit) || 0),
+          credit: majorToMinor(Number(l.credit) || 0),
+        })),
+      }),
+    [lines, journalType, entryDate, desc, descTouched],
+  );
+
+
+  // Auto-fill description from engine when user has not manually edited it
+  useEffect(() => {
+    if (!descTouched && docs.journalMemo) {
+      setDesc(docs.journalMemo);
+    }
+  }, [docs.journalMemo, descTouched]);
+
+  // Auto-fill empty line memos from engine notes
+  useEffect(() => {
+    setLines((prev) => {
+      let changed = false;
+      const next = prev.map((l) => {
+        if (l.memo.trim()) return l;
+        const note = docs.lineNotes.find((n) => n.key === l.key);
+        if (note?.autoNote) {
+          changed = true;
+          return { ...l, memo: note.autoNote };
+        }
+        return l;
+      });
+      return changed ? next : prev;
+    });
+  }, [docs.lineNotes]);
 
   const post = useMutation({
     mutationFn: () =>
       finPost("/journals", {
-        description: desc || `${journalType} journal`,
+        description: desc || docs.journalMemo || `${journalType} journal`,
         journalType,
         entryDate,
         post: true,
+        // Explicit contract: debit/credit are integer MINOR units
+        amountUnit: "minor",
         lines: lines
           .filter((l) => l.account && (Number(l.debit) || Number(l.credit)))
-          .map((l) => ({
-            accountCode: l.account!.code,
-            memo: l.memo,
-            debit: Math.round(Number(l.debit) || 0),
-            credit: Math.round(Number(l.credit) || 0),
-          })),
+          .map((l) => {
+            const auto = docs.lineNotes.find((n) => n.key === l.key);
+            return {
+              accountCode: l.account!.code,
+              memo: l.memo || auto?.autoNote || "",
+              // Convert major form values → minor for storage (5000 GHS → 500000)
+              debit: majorToMinor(Number(l.debit) || 0),
+              credit: majorToMinor(Number(l.credit) || 0),
+            };
+          }),
       }),
+
     onSuccess: () => {
       onPosted();
       qc.invalidateQueries({ queryKey: ["fin", "je"] });
       setDesc("");
+      setDescTouched(false);
       setLines([
         { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
         { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" },
@@ -294,6 +732,21 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
   const updateLine = (key: string, patch: Partial<DraftLine>) => {
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)));
   };
+
+  const applyAutoMemo = () => {
+    setDesc(docs.journalMemo);
+    setDescTouched(false);
+  };
+
+  const applyLineNotes = () => {
+    setLines((prev) =>
+      prev.map((l) => {
+        const note = docs.lineNotes.find((n) => n.key === l.key);
+        return note ? { ...l, memo: note.autoNote } : l;
+      }),
+    );
+  };
+
 
   return (
     <Shell title="General Journal / Journal Entries" desc="Searchable Chart of Accounts on every line · posts only when balanced">
@@ -311,18 +764,40 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
           <Input type="date" className="mt-1" value={entryDate} onChange={(e) => setEntryDate(e.target.value)} />
         </div>
         <div>
-          <label className="text-xs text-muted-foreground">Description</label>
-          <Input className="mt-1" value={desc} onChange={(e) => setDesc(e.target.value)} placeholder="Narration" />
+          <label className="text-xs text-muted-foreground">Description / journal memo</label>
+          <Input
+            className="mt-1"
+            value={desc}
+            onChange={(e) => {
+              setDesc(e.target.value);
+              setDescTouched(true);
+            }}
+            placeholder="Auto-generated from accounts — edit freely"
+          />
+          <button
+            type="button"
+            className="mt-1 text-[11px] text-primary hover:underline"
+            onClick={applyAutoMemo}
+          >
+            Regenerate from accounts
+          </button>
         </div>
       </div>
 
+
+      <p className="mb-2 text-[11px] text-muted-foreground">
+        Enter amounts in <strong className="text-foreground">major units</strong> (e.g. type{" "}
+        <code className="text-xs">5000</code> for GH₵ 5,000.00). Values are converted to minor units on post so the
+        ledger and dashboard stay consistent.
+      </p>
       <div className="mb-2 hidden grid-cols-12 gap-2 text-[11px] uppercase text-muted-foreground sm:grid">
         <div className="col-span-5">Account</div>
         <div className="col-span-3">Memo</div>
-        <div className="col-span-1 text-right">Debit</div>
-        <div className="col-span-1 text-right">Credit</div>
+        <div className="col-span-1 text-right">Debit (GHS)</div>
+        <div className="col-span-1 text-right">Credit (GHS)</div>
         <div className="col-span-2" />
       </div>
+
 
       <div className="space-y-3 mb-4">
         {lines.map((l) => (
@@ -346,19 +821,150 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
         ))}
       </div>
 
-      <div className="flex flex-wrap items-center justify-between gap-3 mb-6">
+      <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <Button type="button" variant="outline" size="sm" onClick={() => setLines((p) => [...p, { key: crypto.randomUUID(), account: null, memo: "", debit: "", credit: "" }])}>
           Add line
         </Button>
         <div className="text-sm tabular-nums">
-          Dr <strong>{totals.debit}</strong> · Cr <strong>{totals.credit}</strong> · Diff{" "}
-          <strong className={totals.difference === 0 ? "text-emerald-600" : "text-rose-600"}>{totals.difference}</strong>
+          Dr <strong>{formatCurrency(totals.debit)}</strong> · Cr <strong>{formatCurrency(totals.credit)}</strong> · Diff{" "}
+          <strong className={totals.difference === 0 ? "text-emerald-600" : "text-rose-600"}>
+            {formatCurrency(Math.abs(totals.difference))}
+          </strong>
         </div>
+
         <Button disabled={!totals.balanced || post.isPending} onClick={() => post.mutate()}>
           {post.isPending ? "Posting…" : "Post balanced journal"}
         </Button>
       </div>
       {post.isError && <p className="text-sm text-rose-600 mb-4">Post rejected — check balance and accounts.</p>}
+
+      {/* Automatic accounting documentation panel */}
+      <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card">
+        <CardHeader className="py-3 flex flex-row items-center justify-between gap-2">
+          <div>
+            <CardTitle className="text-base">Accounting documentation & intelligence</CardTitle>
+            <CardDescription>
+              Deterministic notes from Chart of Accounts and line structure — no external AI keys.
+              Completeness score: <strong className="text-foreground">{docs.completenessScore}%</strong>
+            </CardDescription>
+          </div>
+          <div className="flex gap-2">
+            <Button type="button" size="sm" variant="outline" onClick={applyLineNotes}>
+              Apply line notes
+            </Button>
+            <Button type="button" size="sm" variant="ghost" onClick={() => setDocsOpen((o) => !o)}>
+              {docsOpen ? "Collapse" : "Expand"}
+            </Button>
+          </div>
+        </CardHeader>
+        {docsOpen && (
+          <CardContent className="space-y-4 text-sm">
+            <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+              {docs.completeness.map((c) => (
+                <div
+                  key={c.id}
+                  className={`rounded-md border px-2 py-1.5 text-xs ${
+                    c.status === "complete"
+                      ? "border-emerald-500/30 bg-emerald-500/5"
+                      : c.status === "partial"
+                        ? "border-yellow-500/30 bg-yellow-500/5"
+                        : "border-muted bg-muted/30"
+                  }`}
+                >
+                  <span className="font-medium">{c.label}</span>
+                  <span className="ml-1 uppercase text-[10px] text-muted-foreground">{c.status}</span>
+                  {c.detail && <p className="text-muted-foreground">{c.detail}</p>}
+                </div>
+              ))}
+            </div>
+
+            <div>
+              <p className="text-[11px] uppercase text-muted-foreground">Journal memo</p>
+              <p className="mt-0.5">{docs.journalMemo || "—"}</p>
+            </div>
+
+            {docs.lineNotes.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase text-muted-foreground mb-1">Line explanations</p>
+                <ul className="space-y-1.5">
+                  {docs.lineNotes.map((n) => (
+                    <li key={`${n.accountCode}-${n.side}`} className="rounded border px-2 py-1.5 text-xs">
+                      <span className="font-medium">
+                        {n.side === "debit" ? "Dr" : "Cr"} {n.accountCode} {n.accountName}
+                      </span>{" "}
+                      <span className="tabular-nums text-muted-foreground">{formatCurrency(n.amount)}</span>
+                      <p className="text-muted-foreground mt-0.5">{n.autoNote}</p>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            <div>
+              <p className="text-[11px] uppercase text-muted-foreground">Financial impact</p>
+              <p className="mt-0.5 text-xs">{docs.financialImpact.summary}</p>
+              <div className="mt-1 flex flex-wrap gap-2 text-[11px]">
+                <span>Assets: {docs.financialImpact.assets}</span>
+                <span>Liabilities: {docs.financialImpact.liabilities}</span>
+                <span>Cash: {docs.financialImpact.cash}</span>
+                <span>Profit: {docs.financialImpact.profit}</span>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-[11px] uppercase text-muted-foreground">Accounting treatment</p>
+              <p className="mt-0.5 text-xs">
+                <span className="font-medium">{docs.treatment.classification}</span> — {docs.treatment.principle}
+              </p>
+              {docs.treatment.alternatives && (
+                <p className="text-xs text-muted-foreground mt-0.5">Alternative: {docs.treatment.alternatives}</p>
+              )}
+            </div>
+
+            {docs.accountExplanations.length > 0 && (
+              <div>
+                <p className="text-[11px] uppercase text-muted-foreground mb-1">Account context</p>
+                <ul className="space-y-1">
+                  {docs.accountExplanations.map((a) => (
+                    <li key={a.code} className="text-xs text-muted-foreground">
+                      <span className="font-medium text-foreground">{a.code} {a.name}:</span> {a.explanation}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
+            {docs.alerts.length > 0 && (
+              <div className="space-y-2">
+                <p className="text-[11px] uppercase text-muted-foreground">Intelligence alerts</p>
+                {docs.alerts.map((a) => (
+                  <div
+                    key={a.id}
+                    className={`rounded-md border px-3 py-2 text-xs ${
+                      a.severity === "critical"
+                        ? "border-red-500/40 bg-red-500/5"
+                        : a.severity === "caution"
+                          ? "border-yellow-500/40 bg-yellow-500/5"
+                          : "border-sky-500/30 bg-sky-500/5"
+                    }`}
+                  >
+                    <p className="font-medium">
+                      <span className="uppercase text-[10px] text-muted-foreground mr-1">{a.severity}</span>
+                      {a.title}
+                    </p>
+                    <p className="mt-0.5 text-muted-foreground">{a.observation}</p>
+                    <p className="mt-0.5">
+                      <span className="font-medium">Recommendation:</span> {a.recommendation}
+                    </p>
+                    <p className="text-muted-foreground mt-0.5">{a.reason}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </CardContent>
+        )}
+      </Card>
+
 
       <h2 className="text-sm font-semibold mb-2">Posted / draft journals</h2>
       <div className="space-y-2 text-sm">
@@ -375,11 +981,26 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
                 <li key={ln.id}>{ln.accountCode} Dr {ln.debit} Cr {ln.credit}</li>
               ))}
             </ul>
-            {j.status === "posted" && !j.reversedBy && (
-              <Button size="sm" variant="outline" className="mt-2" onClick={() => finPost(`/journals/${j.id}/reverse`, {}).then(() => { onPosted(); qc.invalidateQueries({ queryKey: ["fin", "je"] }); })}>
-                Reverse
+            <div className="mt-2 flex flex-wrap gap-2">
+              {j.status === "posted" && !j.reversedBy && (
+                <Button size="sm" variant="outline" onClick={() => finPost(`/journals/${j.id}/reverse`, {}).then(() => { onPosted(); qc.invalidateQueries({ queryKey: ["fin", "je"] }); })}>
+                  Reverse
+                </Button>
+              )}
+              <Button
+                size="sm"
+                variant="destructive"
+                onClick={() => {
+                  if (!window.confirm(`Permanently delete ${j.number}? This removes active ledger effects. Audit retains the deletion event.`)) return;
+                  finDelete(`/journals/${j.id}`, { confirm: "DELETE_JOURNAL", reason: "User correction from journals UI" }).then(() => {
+                    onPosted();
+                    qc.invalidateQueries({ queryKey: ["fin"] });
+                  });
+                }}
+              >
+                Delete
               </Button>
-            )}
+            </div>
           </CardContent></Card>
         ))}
       </div>

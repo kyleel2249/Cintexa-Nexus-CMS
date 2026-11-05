@@ -1,6 +1,11 @@
 /**
  * CINTEXA Finance Financial Intelligence — Cloudflare Pages Function (/api/fi/*)
- * Zero third-party API keys. Optional D1 binding `FI_DB`; otherwise isolate memory.
+ * Zero third-party API keys.
+ *
+ * SINGLE SOURCE OF TRUTH: every figure is derived from the CINTEXA Finance ledger
+ * (D1 binding FIN_DB: fin_accounts / fin_journals / fin_journal_lines — integer MINOR units).
+ * FI never keeps its own books. Manual entries posted here are forwarded to Finance.
+ * Only org display settings, FX rates and alert acknowledgements live in isolate memory.
  */
 // Note: CF bundler may not resolve frontend path; inline minimal engine mirror for Worker isolation.
 
@@ -28,8 +33,67 @@ const defaultStore = (): Store => ({
 });
 
 let memory: Store = defaultStore();
+/** Demo overlay — never mixed into the ledger; merged only when ?includeDemo=1 */
+let demoEntries: Entry[] = [];
 
-type Env = { FI_DB?: D1Database; API_ORIGIN?: string };
+/** Map a Finance account to the FI statement type (keeps FI profit identical to Finance profit). */
+function fiType(type: string, subtype?: string | null): LineType {
+  if (subtype === "cos" || subtype === "discount_received") return "cogs"; // discount received reduces cost
+  if (subtype === "discount_allowed") return "revenue"; // contra-revenue: debit reduces revenue
+  if (type === "asset" || type === "liability" || type === "equity" || type === "revenue" || type === "expense") return type;
+  return "expense";
+}
+
+type LedgerResult = { entries: Entry[]; source: "finance-d1" | "finance-api" | "unavailable"; error?: string };
+
+/** Load posted Finance journals as FI entries. Amounts are already minor units — never rescaled here. */
+async function loadLedger(env: Env, origin: string): Promise<LedgerResult> {
+  try {
+    if (env.FIN_DB) {
+      const accRows = (await env.FIN_DB.prepare("SELECT code, name, type, subtype FROM fin_accounts").all()).results || [];
+      const acc = new Map<string, any>(accRows.map((r: any) => [String(r.code), r]));
+      const rows = (await env.FIN_DB.prepare(
+        `SELECT j.id AS jid, j.entry_date, j.currency, j.description, l.account_code, l.debit, l.credit
+         FROM fin_journals j JOIN fin_journal_lines l ON l.journal_id = j.id
+         WHERE j.status = 'posted' AND j.journal_type <> 'closing' ORDER BY j.entry_date, j.number`,
+      ).all()).results || [];
+      const byId = new Map<string, Entry>();
+      for (const r of rows as any[]) {
+        let e = byId.get(r.jid);
+        if (!e) {
+          e = { id: r.jid, date: String(r.entry_date), currency: r.currency || "GHS", lines: [], status: "posted", memo: r.description || undefined };
+          byId.set(r.jid, e);
+        }
+        const a = acc.get(String(r.account_code));
+        e.lines.push({
+          accountCode: String(r.account_code),
+          accountName: a?.name || String(r.account_code),
+          type: fiType(a?.type || "expense", a?.subtype),
+          debit: Number(r.debit) || 0,
+          credit: Number(r.credit) || 0,
+        });
+      }
+      return { entries: [...byId.values()], source: "finance-d1" };
+    }
+    // No D1 binding (local/dev): read the Finance API in the same deployment.
+    const [jr, ar] = await Promise.all([fetch(`${origin}/api/finance/journals`), fetch(`${origin}/api/finance/accounts`)]);
+    if (!jr.ok || !ar.ok) throw new Error(`Finance API unavailable (${jr.status}/${ar.status})`);
+    const journals = ((await jr.json()) as any).items || [];
+    const accounts = new Map<string, any>((((await ar.json()) as any).items || []).map((a: any) => [String(a.code), a]));
+    const entries: Entry[] = journals.filter((j: any) => j.status === "posted" && j.journalType !== "closing").map((j: any) => ({
+      id: j.id, date: String(j.entryDate), currency: j.currency || "GHS", status: "posted" as const, memo: j.description || undefined,
+      lines: (j.lines || []).map((l: any) => {
+        const a = accounts.get(String(l.accountCode));
+        return { accountCode: String(l.accountCode), accountName: a?.name || String(l.accountCode), type: fiType(a?.type || "expense", a?.subtype), debit: Number(l.debit) || 0, credit: Number(l.credit) || 0 };
+      }),
+    }));
+    return { entries, source: "finance-api" };
+  } catch (e: any) {
+    return { entries: [], source: "unavailable", error: String(e?.message || e) };
+  }
+}
+
+type Env = { FIN_DB?: D1Database; FI_DB?: D1Database; API_ORIGIN?: string };
 
 const CORS = {
   "access-control-allow-origin": "*",
@@ -173,31 +237,35 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const from = url.searchParams.get("from") || undefined;
   const to = url.searchParams.get("to") || undefined;
 
-  // Optional: prefer Express if API_ORIGIN and finance re-added later — FI is self-contained here.
+  const includeDemo = url.searchParams.get("includeDemo") === "1";
+  const ledger = await loadLedger(env, url.origin);
+  const entries: Entry[] = includeDemo ? [...ledger.entries, ...demoEntries] : ledger.entries;
+  const ledgerInfo = { source: ledger.source, error: ledger.error || null, postedJournals: ledger.entries.length };
 
   if (path === "" || path === "dashboard") {
-    const p = pnl(memory.entries, from, to);
-    const bs = balanceSheet(memory.entries, to);
-    const h = health(memory.entries);
-    const alerts = buildAlerts(memory.entries, memory.org.currency).filter((a) => !memory.alertsAck.includes(a.id));
+    const p = pnl(entries, from, to);
+    const bs = balanceSheet(entries, to);
+    const h = health(entries);
+    const alerts = buildAlerts(entries, memory.org.currency).filter((a) => !memory.alertsAck.includes(a.id));
     return json({
       org: memory.org,
       currency: memory.org.currency,
       asOf: to || new Date().toISOString().slice(0, 10),
-      hasPostings: memory.entries.some((e) => e.status === "posted"),
+      hasPostings: entries.some((e) => e.status === "posted"),
       pnl: p,
       balanceSheet: bs,
       health: h,
       alerts,
-      engine: "native-fi-v1",
+      ledger: ledgerInfo,
+      engine: "native-fi-v2-finance-ledger",
     });
   }
 
-  if (path === "pnl") return json({ currency: memory.org.currency, ...pnl(memory.entries, from, to) });
-  if (path === "balance-sheet") return json({ currency: memory.org.currency, ...balanceSheet(memory.entries, to) });
+  if (path === "pnl") return json({ currency: memory.org.currency, ...pnl(entries, from, to) });
+  if (path === "balance-sheet") return json({ currency: memory.org.currency, ...balanceSheet(entries, to) });
   if (path === "ratios") {
-    const bs = balanceSheet(memory.entries, to);
-    const p = pnl(memory.entries, from, to);
+    const bs = balanceSheet(entries, to);
+    const p = pnl(entries, from, to);
     const currentRatio = bs.liabilities === 0 ? null : Math.round((bs.assets / bs.liabilities) * 100) / 100;
     return json({
       currency: memory.org.currency,
@@ -215,9 +283,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     });
   }
 
-  if (path === "health") return json(health(memory.entries));
+  if (path === "health") return json(health(entries));
   if (path === "forecast") {
-    const series = monthlyRevenue(memory.entries);
+    const series = monthlyRevenue(entries);
     const ahead = Math.min(12, Math.max(1, Number(url.searchParams.get("ahead") || 3)));
     return json({
       series,
@@ -228,7 +296,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   if (path === "scenarios" && request.method === "POST") {
     const body = await readJson(request);
-    const base = pnl(memory.entries, from, to);
+    const base = pnl(entries, from, to);
     const rg = Number(body.revenueGrowthPct) || 0;
     const eg = Number(body.expenseGrowthPct) || 0;
     const revenue = Math.round(base.revenue * (1 + rg / 100));
@@ -247,32 +315,33 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   if (path === "entries" && request.method === "GET") {
-    return json({ items: memory.entries, currency: memory.org.currency });
+    return json({ items: entries, currency: memory.org.currency, ledger: ledgerInfo });
   }
 
   if (path === "entries" && request.method === "POST") {
+    // Rebuilt: FI no longer keeps a private ledger. The entry is validated here and posted to Finance.
     const body = await readJson(request);
-    const lines: Line[] = Array.isArray(body.lines) ? body.lines : [];
+    const lines: any[] = Array.isArray(body.lines) ? body.lines : [];
     if (!lines.length) return json({ error: "lines required" }, 400);
-    const debit = lines.reduce((s, l) => s + (Number(l.debit) || 0), 0);
-    const credit = lines.reduce((s, l) => s + (Number(l.credit) || 0), 0);
-    if (debit !== credit) return json({ error: "Entry must balance (debits = credits)", debit, credit }, 400);
-    const entry: Entry = {
-      id: crypto.randomUUID(),
-      date: String(body.date || new Date().toISOString().slice(0, 10)),
-      currency: String(body.currency || memory.org.currency),
-      lines: lines.map((l) => ({
-        accountCode: String(l.accountCode || ""),
-        accountName: String(l.accountName || l.accountCode || ""),
-        type: l.type,
-        debit: Math.round(Number(l.debit) || 0),
-        credit: Math.round(Number(l.credit) || 0),
-      })),
-      status: body.status === "draft" ? "draft" : "posted",
-      memo: body.memo ? String(body.memo).slice(0, 500) : undefined,
-    };
-    memory.entries.push(entry);
-    return json({ entry }, 201);
+    const debit = lines.reduce((t, l) => t + (Number(l.debit) || 0), 0);
+    const credit = lines.reduce((t, l) => t + (Number(l.credit) || 0), 0);
+    if (Math.round(debit) !== Math.round(credit)) return json({ error: "Entry must balance (debits = credits)", debit, credit }, 400);
+    const res = await fetch(`${url.origin}/api/finance/journals`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        journalType: "general",
+        entryDate: body.date,
+        description: body.memo || "Entry posted from Financial Intelligence",
+        currency: body.currency || memory.org.currency,
+        sourceModule: "fi",
+        post: body.status !== "draft",
+        // amounts are MINOR units, identical to the Finance contract
+        lines: lines.map((l) => ({ accountCode: String(l.accountCode || ""), memo: l.accountName, debit: Math.round(Number(l.debit) || 0), credit: Math.round(Number(l.credit) || 0) })),
+      }),
+    });
+    const out: any = await res.json().catch(() => ({}));
+    return json(res.ok ? { entry: out.journal, ledger: "finance" } : out, res.status);
   }
 
   if (path === "org" && request.method === "GET") return json(memory.org);
@@ -308,12 +377,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   if (path === "seed-demo" && request.method === "POST") {
     // Deterministic demo pack — clearly labelled, not live market data
-    if (memory.entries.some((e) => e.memo === "DEMO_SEED")) return json({ ok: true, message: "Demo already seeded" });
+    if (demoEntries.length) return json({ ok: true, message: "Demo overlay already loaded" });
     const cur = memory.org.currency;
     const mk = (date: string, lines: Line[], memo: string): Entry => ({
       id: crypto.randomUUID(), date, currency: cur, lines, status: "posted", memo,
     });
-    memory.entries.push(
+    demoEntries.push(
       mk("2026-01-15", [
         { accountCode: "1000", accountName: "Cash", type: "asset", debit: 5000000, credit: 0 },
         { accountCode: "3000", accountName: "Capital", type: "equity", debit: 0, credit: 5000000 },
@@ -331,15 +400,16 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         { accountCode: "4000", accountName: "Sales", type: "revenue", debit: 0, credit: 900000 },
       ], "DEMO_SEED"),
     );
-    return json({ ok: true, message: "Demo posted entries added (memo=DEMO_SEED). Not live market data." });
+    return json({ ok: true, message: "Demo overlay loaded in memory only. It is NOT written to the Finance ledger; view it with ?includeDemo=1. Not live market data." });
   }
 
   if (path === "meta") {
     return json({
       name: "CINTEXA Finance Financial Intelligence",
       version: "1.0.0",
-      storage: env.FI_DB ? "d1" : "isolate-memory",
-      engine: "native-fi-v1",
+      storage: "finance-ledger",
+      ledger: ledgerInfo,
+      engine: "native-fi-v2-finance-ledger",
     });
   }
 

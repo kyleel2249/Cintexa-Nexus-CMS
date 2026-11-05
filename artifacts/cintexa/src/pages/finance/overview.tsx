@@ -1,6 +1,7 @@
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
-import { finGet, formatMinor } from "@/lib/finance/api";
+import { finGet, formatCurrency, formatMinor } from "@/lib/finance/api";
+
 import { FINANCE_NAV } from "@/lib/finance/nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -73,17 +74,28 @@ export default function FinanceOverview() {
   }
 
   const d = q.data;
-  const m = (n: number) => formatMinor(n, d.currency || "GHS");
+  const currency = d.currency || "GHS";
+  // KPI cards use formatCurrency (symbol + forced two decimals + grouping).
+  // formatMinor remains available for dense tables and remains correct after the engine fix.
+  const m = (n: number) => formatCurrency(Number(n) || 0, currency);
 
   return (
     <div className="space-y-6 p-4 md:p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">CINTEXA Finance</h1>
-        <p className="text-sm text-muted-foreground">
-          Double-entry · {d.engine} · storage: {d.storage}
-          {d.d1Configured === false ? " (bind FIN_DB)" : ""} · API keys: none
-        </p>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-semibold">CINTEXA Finance</h1>
+          <p className="text-sm text-muted-foreground">
+            Double-entry · {d.engine} · storage: {d.storage}
+            {d.d1Configured === false ? " (bind FIN_DB)" : ""} · API keys: none
+          </p>
+        </div>
+        <Link href="/financial-intelligence">
+          <span className="inline-flex items-center rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary hover:bg-primary/20 cursor-pointer">
+            Financial Intelligence →
+          </span>
+        </Link>
       </div>
+
       {d.schemaError && (
         <Card className="border-amber-500/30 bg-amber-500/5">
           <CardContent className="py-3 text-xs text-muted-foreground">
@@ -113,11 +125,12 @@ export default function FinanceOverview() {
           <Card key={l as string}>
             <CardContent className="pt-4">
               <p className="text-[11px] uppercase text-muted-foreground">{l}</p>
-              <p className="mt-1 text-lg font-semibold tabular-nums">{v}</p>
+              <p className="mt-1 text-lg font-semibold tabular-nums tracking-tight">{v}</p>
             </CardContent>
           </Card>
         ))}
       </div>
+
       <p className="text-xs text-muted-foreground">
         Metrics from posted journals only. Empty books show zeros — no fabricated demo balances.
       </p>

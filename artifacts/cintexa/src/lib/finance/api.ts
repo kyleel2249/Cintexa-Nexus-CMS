@@ -16,4 +16,21 @@ export function finPost<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-export { formatMinor, formatMoney, parseToMinor } from "./money";
+export function finDelete<T>(path: string, body?: unknown): Promise<T> {
+  return apiJson<T>(`${F}${path.startsWith("/") ? path : `/${path}`}`, {
+    method: "DELETE",
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+}
+
+export {
+  formatMinor,
+  formatMoney,
+  formatCurrency,
+  formatMinorPlain,
+  parseToMinor,
+  majorToMinor,
+  minorToMajor,
+  currencyMeta,
+} from "./money";
+

@@ -6,7 +6,7 @@
 - One Cloudflare D1 database as the shared store
 
 ## Database
-All sync and Diary-entry data lives in one D1 database: `NEXUS_DB` if bound, otherwise the existing `FIN_DB` (CINTEXA Finance). No new binding is required. Tables are created automatically on first use (`CREATE TABLE IF NOT EXISTS`); `migrations/d1/0006_nexus_sync_v2.sql` is the same schema for operators who prefer `wrangler d1 execute` (a test fails if the two drift). `0003_nexus_sync.sql` is superseded and was never used by the application.
+All sync and Diary-entry data lives in one D1 database: `NEXUS_DB` if bound, otherwise the existing `FIN_DB` (CINTEXA Finance). No new binding is required. Tables are created automatically on first use (`CREATE TABLE IF NOT EXISTS`); `migrations/d1/0009_nexus_sync_v2.sql` is the same schema for operators who prefer `wrangler d1 execute` (a test fails if the two drift). `0003_nexus_sync.sql` is superseded and was never used by the application.
 
 Without any D1 binding the sync routes answer **503** and `GET /api/sync/meta` reports `persistent: false`. Events are never held in isolate memory.
 

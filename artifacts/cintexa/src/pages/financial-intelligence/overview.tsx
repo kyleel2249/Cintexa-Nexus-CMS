@@ -1,6 +1,10 @@
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { fiGet, fiPost, formatMinor } from "@/lib/financial-intelligence/api";
+import { fiGet, fiPost, formatCurrency, formatMinor } from "@/lib/financial-intelligence/api";
+import { generateFinancialClues, type FinancialClue } from "@/lib/financial-intelligence/engine";
+import { AnimatedKpiCard } from "@/components/financial-intelligence/AnimatedKpiCard";
+
+
 import { publishNexusEvent } from "@/lib/nexus-sync/api";
 import { FI_NAV, FI_SECTIONS } from "@/lib/financial-intelligence/nav";
 import { Button } from "@/components/ui/button";
@@ -70,7 +74,21 @@ export default function FiOverview() {
   }
 
   const d = q.data;
-  const money = (n: number) => formatMinor(n, d.currency);
+  const money = (n: number) => formatCurrency(n, d.currency || "GHS");
+  const clues: FinancialClue[] = generateFinancialClues({
+    currency: d.currency || "GHS",
+    periodLabel: d.asOf || "current period",
+    revenue: d.pnl?.revenue ?? 0,
+    expense: d.pnl?.operatingExpenses ?? d.pnl?.expenses ?? 0,
+    netProfit: d.pnl?.netProfit ?? 0,
+    cash: 0, // cash is not always on the FI dashboard payload; AR/assets used as proxies where needed
+    accountsReceivable: 0,
+    assets: d.balanceSheet?.assets,
+    liabilities: d.balanceSheet?.liabilities,
+    equity: d.balanceSheet?.equity,
+    trialBalanceBalanced: d.balanceSheet?.balanced,
+  });
+
 
   return (
     <div className="space-y-6 p-4 md:p-6">
@@ -82,11 +100,15 @@ export default function FiOverview() {
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
+          <Link href="/finance">
+            <Button size="sm" variant="outline">Standard Finance</Button>
+          </Link>
           <Button size="sm" variant="outline" disabled={seed.isPending} onClick={() => seed.mutate()}>
             {seed.isPending ? "Seeding…" : "Load demo journals"}
           </Button>
           <Link href="/financial-intelligence/entries"><Button size="sm">Journal entries</Button></Link>
         </div>
+
       </div>
 
       <Card className="border-emerald-500/20 bg-emerald-500/5">
@@ -107,26 +129,111 @@ export default function FiOverview() {
       )}
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        {[
-          ["Revenue", money(d.pnl.revenue), "/financial-intelligence/profit-loss"],
-          ["Operating expenses", money(d.pnl.operatingExpenses), "/financial-intelligence/profit-loss"],
-          ["Gross profit", money(d.pnl.grossProfit), "/financial-intelligence/profit-loss"],
-          ["Net profit", money(d.pnl.netProfit), "/financial-intelligence/profit-loss"],
-          ["Assets", money(d.balanceSheet.assets), "/financial-intelligence/balance-sheet"],
-          ["Liabilities", money(d.balanceSheet.liabilities), "/financial-intelligence/balance-sheet"],
-          ["Equity", money(d.balanceSheet.equity), "/financial-intelligence/balance-sheet"],
-          ["Health score", d.health.score != null ? String(d.health.score) : "—", "/financial-intelligence/health"],
-        ].map(([label, value, href]) => (
-          <Link key={label as string} href={href as string}>
-            <Card className="h-full transition hover:border-primary/40 cursor-pointer">
-              <CardContent className="pt-4">
-                <p className="text-[11px] uppercase tracking-wide text-muted-foreground">{label}</p>
-                <p className="mt-1 text-lg font-semibold tabular-nums">{value}</p>
-              </CardContent>
-            </Card>
-          </Link>
-        ))}
+        <AnimatedKpiCard
+          label="Revenue"
+          value={money(d.pnl.revenue)}
+          href="/financial-intelligence/profit-loss"
+          tone={(d.pnl.revenue ?? 0) > 0 ? "positive" : "default"}
+        />
+        <AnimatedKpiCard
+          label="Operating expenses"
+          value={money(d.pnl.operatingExpenses)}
+          href="/financial-intelligence/profit-loss"
+          tone="default"
+        />
+        <AnimatedKpiCard
+          label="Gross profit"
+          value={money(d.pnl.grossProfit)}
+          href="/financial-intelligence/profit-loss"
+          tone={(d.pnl.grossProfit ?? 0) >= 0 ? "positive" : "critical"}
+        />
+        <AnimatedKpiCard
+          label="Net profit"
+          value={money(d.pnl.netProfit)}
+          href="/financial-intelligence/profit-loss"
+          tone={(d.pnl.netProfit ?? 0) > 0 ? "positive" : (d.pnl.netProfit ?? 0) < 0 ? "critical" : "default"}
+        />
+        <AnimatedKpiCard
+          label="Assets"
+          value={money(d.balanceSheet.assets)}
+          href="/financial-intelligence/balance-sheet"
+          tone="gold"
+        />
+        <AnimatedKpiCard
+          label="Liabilities"
+          value={money(d.balanceSheet.liabilities)}
+          href="/financial-intelligence/balance-sheet"
+        />
+        <AnimatedKpiCard
+          label="Equity"
+          value={money(d.balanceSheet.equity)}
+          href="/financial-intelligence/balance-sheet"
+          tone={(d.balanceSheet.equity ?? 0) >= 0 ? "positive" : "critical"}
+        />
+        <AnimatedKpiCard
+          label="Health score"
+          value={d.health.score != null ? String(d.health.score) : "—"}
+          href="/financial-intelligence/health"
+          tone={
+            d.health.score == null
+              ? "default"
+              : d.health.score >= 70
+                ? "positive"
+                : d.health.score >= 40
+                  ? "caution"
+                  : "critical"
+          }
+        />
       </div>
+
+
+      {clues.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base">Intelligent visual clues</CardTitle>
+            <CardDescription>
+              Deterministic interpretations of posted ledger figures — no external AI, no fabricated metrics.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {clues.map((c) => {
+              const tone =
+                c.severity === "positive" || c.severity === "opportunity"
+                  ? "border-emerald-500/30 bg-emerald-500/5"
+                  : c.severity === "critical"
+                    ? "border-red-500/30 bg-red-500/5"
+                    : c.severity === "elevated"
+                      ? "border-orange-500/30 bg-orange-500/5"
+                      : c.severity === "caution"
+                        ? "border-yellow-500/30 bg-yellow-500/5"
+                        : "border-sky-500/20 bg-sky-500/5";
+              return (
+                <div key={c.id} className={`rounded-lg border px-3 py-3 text-sm ${tone}`}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                      {c.severity}
+                    </span>
+                    <span className="text-[10px] text-muted-foreground">· {c.confidence} confidence</span>
+                  </div>
+                  <p className="mt-1 font-medium">{c.title}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">{c.whatHappened}</p>
+                  <p className="mt-1 text-xs"><span className="font-medium">Why it matters:</span> {c.whyItMatters}</p>
+                  <p className="mt-1 text-xs"><span className="font-medium">Recommended:</span> {c.recommendedAction}</p>
+                  {Object.keys(c.supportingFigures).length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-2">
+                      {Object.entries(c.supportingFigures).map(([k, v]) => (
+                        <span key={k} className="rounded bg-background/60 px-2 py-0.5 text-[11px] tabular-nums">
+                          {k}: {v}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {d.alerts?.length > 0 && (
         <Card>
@@ -145,6 +252,7 @@ export default function FiOverview() {
           </CardContent>
         </Card>
       )}
+
 
       <div className="space-y-4">
         {FI_SECTIONS.filter((s) => s !== "Overview").map((section) => {

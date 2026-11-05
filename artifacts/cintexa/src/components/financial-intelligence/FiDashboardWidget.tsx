@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Landmark, ArrowRight } from "lucide-react";
-import { fiGet, formatMinor } from "@/lib/financial-intelligence/api";
+import { fiGet, formatCurrency } from "@/lib/financial-intelligence/api";
+
 
 export function FiDashboardWidget() {
   const { data, isLoading, isError } = useQuery({
@@ -45,9 +46,9 @@ export function FiDashboardWidget() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              ["Revenue", formatMinor(data.pnl?.revenue ?? 0, data.currency)],
-              ["Net profit", formatMinor(data.pnl?.netProfit ?? 0, data.currency)],
-              ["Cash/assets", formatMinor(data.balanceSheet?.assets ?? 0, data.currency)],
+              ["Revenue", formatCurrency(data.pnl?.revenue ?? 0, data.currency || "GHS")],
+              ["Net profit", formatCurrency(data.pnl?.netProfit ?? 0, data.currency || "GHS")],
+              ["Cash/assets", formatCurrency(data.balanceSheet?.assets ?? 0, data.currency || "GHS")],
               ["Health", data.health?.score ?? "—"],
             ].map(([l, v]) => (
               <div key={l as string} className="rounded-lg border p-3">

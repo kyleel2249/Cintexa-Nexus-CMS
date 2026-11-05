@@ -3,16 +3,19 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Landmark, Sparkles, Shield,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Landmark, Sparkles, Shield, Send,
 } from "lucide-react";
 import { BD_NAV, activeBdKey } from "@/lib/business-diary/nav";
 import { FINANCE_NAV, activeFinanceKey } from "@/lib/finance/nav";
+import { CSI_NAV, activeCsiKey } from "@/lib/csi/nav";
 import { cn } from "@/lib/utils";
 import { AnimatePresence } from "framer-motion";
 import { SitePreview } from "@/components/site-preview";
 import { CintexaLogo } from "@/components/SplashScreen";
 import { useSalesOptional } from "@/context/SalesContext";
 import { SALES_NAV, SALES_AI_NAV, SALES_GLOSSARY_NAV, SALES_ENRICH_NAV, showAiNav } from "@/lib/sales/nav";
+import { MARKETING_NAV, activeMarketingKey } from "@/lib/marketing/nav";
+import { MARKETING_NAV_ICONS } from "@/lib/marketing/nav-icons";
 import { lookupTerm } from "@/lib/sales/glossary";
 import { useSalesQuery } from "@/lib/sales/hooks";
 import { activeNavKey } from "@/lib/sales/nav";
@@ -92,6 +95,36 @@ function SalesGroup({ location, onNavigate }: { location: string; onNavigate?: (
 }
 
 
+
+function MarketingGroup({ location, onNavigate }: { location: string; onNavigate?: () => void }) {
+  const onM = location === "/marketing" || location.startsWith("/marketing/");
+  const [open, setOpen] = useState(onM);
+  const active = activeMarketingKey(location.split("?")[0]!);
+  const sections = [...new Set(MARKETING_NAV.map((i) => i.section).filter(Boolean))];
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center gap-2 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+        <Send className="h-3.5 w-3.5" /><span>Marketing Management</span><ChevronDown className={cn("ml-auto h-3.5 w-3.5 transition-transform", open || onM ? "rotate-180" : "")} />
+      </button>
+      {(open || onM) && (
+        <nav aria-label="Marketing Management" className="space-y-1">
+          {sections.map((sec) => (
+            <div key={sec} className="space-y-1">
+              <p className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{sec}</p>
+              {MARKETING_NAV.filter((i) => i.section === sec).map((i) => {
+                const Icon = MARKETING_NAV_ICONS[i.icon] || Send;
+                return (
+                  <NavLink key={i.key} href={i.href} label={i.label} Icon={Icon} active={active === i.key} onNavigate={onNavigate} />
+                );
+              })}
+            </div>
+          ))}
+        </nav>
+      )}
+    </div>
+  );
+}
+
 function BusinessDiaryGroup({ location, onNavigate }: { location: string; onNavigate?: () => void }) {
   const onBd = location === "/business-diary" || location.startsWith("/business-diary/");
   const [open, setOpen] = useState(onBd);
@@ -145,6 +178,33 @@ function CintexaFinanceGroup({ location, onNavigate }: { location: string; onNav
   );
 }
 
+
+function CorporateStrategyGroup({ location, onNavigate }: { location: string; onNavigate?: () => void }) {
+  const onC = location === "/corporate-strategy" || location.startsWith("/corporate-strategy/");
+  const [open, setOpen] = useState(onC);
+  const active = activeCsiKey(location);
+  const sections = [...new Set(CSI_NAV.map((i) => i.section))];
+  return (
+    <div className="space-y-2">
+      <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center gap-2 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
+        <Target className="h-3.5 w-3.5" /><span>Corporate Strategy</span><ChevronDown className={cn("ml-auto h-3.5 w-3.5 transition-transform", open || onC ? "rotate-180" : "")} />
+      </button>
+      {(open || onC) && (
+        <nav aria-label="CINTEXA Corporate Strategy & Intelligence" className="space-y-1">
+          {sections.map((sec) => (
+            <div key={sec} className="space-y-1">
+              <p className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{sec}</p>
+              {CSI_NAV.filter((i) => i.section === sec).map((i) => (
+                <NavLink key={i.key} href={i.href} label={i.label} Icon={Target} active={active === i.key} onNavigate={onNavigate} />
+              ))}
+            </div>
+          ))}
+        </nav>
+      )}
+    </div>
+  );
+}
+
 function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
   const [location] = useLocation();
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -152,8 +212,10 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
     <>
       <div className="flex-1 overflow-y-auto py-6 px-4 space-y-8">
         {navGroups.slice(0, 1).map((group) => <Group key={group.title} group={group} location={location} onNavigate={onNavigate} />)}
-        <SalesGroup location={location} onNavigate={onNavigate} />
+        <MarketingGroup location={location} onNavigate={onNavigate} />
+          <SalesGroup location={location} onNavigate={onNavigate} />
         <CintexaFinanceGroup location={location} onNavigate={onNavigate} />
+        <CorporateStrategyGroup location={location} onNavigate={onNavigate} />
         <BusinessDiaryGroup location={location} onNavigate={onNavigate} />
         {navGroups.slice(1).map((group) => <Group key={group.title} group={group} location={location} onNavigate={onNavigate} />)}
       </div>

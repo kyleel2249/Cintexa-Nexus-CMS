@@ -3,7 +3,8 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Landmark, ArrowRight } from "lucide-react";
-import { finGet, formatMinor } from "@/lib/finance/api";
+import { finGet, formatCurrency } from "@/lib/finance/api";
+
 
 export function FinanceDashboardWidget() {
   const { data, isLoading, isError } = useQuery({
@@ -35,10 +36,10 @@ export function FinanceDashboardWidget() {
         ) : (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
             {[
-              ["Revenue", formatMinor(data.revenue, data.currency)],
-              ["Net profit", formatMinor(data.netProfit, data.currency)],
-              ["Cash", formatMinor(data.cash, data.currency)],
-              ["AR", formatMinor(data.accountsReceivable, data.currency)],
+              ["Revenue", formatCurrency(data.revenue, data.currency || "GHS")],
+              ["Net profit", formatCurrency(data.netProfit, data.currency || "GHS")],
+              ["Cash", formatCurrency(data.cash, data.currency || "GHS")],
+              ["AR", formatCurrency(data.accountsReceivable, data.currency || "GHS")],
             ].map(([l, v]) => (
               <div key={l as string} className="rounded-lg border p-3">
                 <p className="text-[11px] uppercase text-muted-foreground">{l}</p>

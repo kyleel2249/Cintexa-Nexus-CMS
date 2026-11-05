@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import { markFormsSessionAvailable } from "@/lib/marketing/cms-cache/sessionMarkers";
 import { useGetForms, useCreateForm, useUpdateForm, useDeleteForm, useGetFormSubmissions, getGetFormsQueryKey, getGetFormSubmissionsQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,9 @@ const DEFAULT_FIELDS = JSON.stringify(
 export default function Forms() {
   const { data: formsData, isLoading, refetch } = useGetForms();
   const forms = useMemo(() => (Array.isArray(formsData) ? formsData : []), [formsData]);
+  useEffect(() => {
+    if (forms.length > 0) markFormsSessionAvailable();
+  }, [forms]);
   const create = useCreateForm();
   const qc = useQueryClient();
   const { toast } = useToast();

@@ -261,11 +261,321 @@ export function scenarioAdjust(
   };
 }
 
-export function formatMinor(minor: Minor, currency = "GHS", fractionDigits = 2): string {
-  const v = minor / Math.pow(10, fractionDigits);
-  try {
-    return new Intl.NumberFormat(undefined, { style: "currency", currency, maximumFractionDigits: fractionDigits }).format(v);
-  } catch {
-    return `${currency} ${v.toFixed(fractionDigits)}`;
+/** Prefer the centralized formatter; re-export for any engine consumers. */
+export { formatMinor, formatCurrency, formatMoney } from "@/lib/finance/money";
+
+
+/* --------------------------------------------------------------------------
+ * Intelligent visual clues — pure TypeScript, deterministic, no external AI.
+ * Interprets actual posted figures and produces colour-coded guidance.
+ * -------------------------------------------------------------------------- */
+
+export type ClueSeverity = "positive" | "caution" | "elevated" | "critical" | "neutral" | "opportunity";
+
+export interface FinancialClue {
+  id: string;
+  severity: ClueSeverity;
+  title: string;
+  whatHappened: string;
+  whyItMatters: string;
+  potentialConsequences: string;
+  recommendedAction: string;
+  supportingFigures: Record<string, string>;
+  periodLabel?: string;
+  confidence: "high" | "medium" | "estimate";
+  metricKeys: string[];
+}
+
+export interface ClueInput {
+  currency?: string;
+  periodLabel?: string;
+  revenue: Minor;
+  grossRevenue?: Minor;
+  discountAllowed?: Minor;
+  expense: Minor;
+  netProfit: Minor;
+  cash: Minor;
+  accountsReceivable: Minor;
+  accountsPayable?: Minor;
+  assets?: Minor;
+  liabilities?: Minor;
+  equity?: Minor;
+  workingCapital?: Minor;
+  previous?: {
+    revenue?: Minor;
+    expense?: Minor;
+    netProfit?: Minor;
+    cash?: Minor;
+  };
+  trialBalanceBalanced?: boolean;
+}
+
+function money(n: Minor, currency = "GHS"): string {
+  // local helper to avoid circular import issues at module evaluation time
+  const abs = Math.abs(Math.round(n || 0));
+  const whole = Math.floor(abs / 100);
+  const frac = abs % 100;
+  const sign = n < 0 ? "-" : "";
+  const body = `${whole.toLocaleString("en-US")}.${String(frac).padStart(2, "0")}`;
+  return `GH₵ ${sign}${body}`.replace("GH₵ -", "GH₵ -");
+}
+
+/**
+ * Generate contextual financial clues from real KPI values.
+ * All conclusions are rule-based and fully reproducible.
+ */
+export function generateFinancialClues(input: ClueInput): FinancialClue[] {
+  const currency = input.currency || "GHS";
+  const period = input.periodLabel || "current period";
+  const clues: FinancialClue[] = [];
+  const rev = input.revenue || 0;
+  const exp = input.expense || 0;
+  const profit = input.netProfit || 0;
+  const cash = input.cash || 0;
+  const ar = input.accountsReceivable || 0;
+  const prev = input.previous || {};
+
+  // Trial balance integrity
+  if (input.trialBalanceBalanced === false) {
+    clues.push({
+      id: "tb-unbalanced",
+      severity: "critical",
+      title: "Trial balance is out of balance",
+      whatHappened: "Total debits do not equal total credits in the posted ledger.",
+      whyItMatters: "An unbalanced trial balance indicates a data integrity problem in the general ledger.",
+      potentialConsequences: "Financial statements may be unreliable until the imbalance is resolved.",
+      recommendedAction: "Review recent journal entries, reverse incorrect postings, and re-run the trial balance.",
+      supportingFigures: {},
+      periodLabel: period,
+      confidence: "high",
+      metricKeys: ["trialBalance"],
+    });
+  }
+
+  // Profitability
+  if (rev > 0 && profit > 0) {
+    const margin = Math.round((profit / rev) * 10000) / 100;
+    clues.push({
+      id: "profit-positive",
+      severity: margin >= 15 ? "positive" : "neutral",
+      title: margin >= 15 ? "Healthy net profit margin" : "Business is profitable",
+      whatHappened: `Net profit of ${money(profit, currency)} on revenue of ${money(rev, currency)} (${margin}% margin).`,
+      whyItMatters: "Positive profitability indicates the core business model is generating surplus after expenses.",
+      potentialConsequences: "Sustained profits support growth, reserves and investor confidence.",
+      recommendedAction: margin < 10
+        ? "Review cost structure and pricing to improve margin while protecting volume."
+        : "Maintain cost discipline and consider allocating a portion of surplus to cash reserves.",
+      supportingFigures: {
+        revenue: money(rev, currency),
+        netProfit: money(profit, currency),
+        margin: `${margin}%`,
+      },
+      periodLabel: period,
+      confidence: "high",
+      metricKeys: ["netProfit", "revenue"],
+    });
+  } else if (rev > 0 && profit < 0) {
+    clues.push({
+      id: "loss-making",
+      severity: "critical",
+      title: "Net loss recorded",
+      whatHappened: `Expenses of ${money(exp, currency)} exceeded revenue of ${money(rev, currency)}, producing a loss of ${money(profit, currency)}.`,
+      whyItMatters: "Continued losses erode equity and can create liquidity pressure.",
+      potentialConsequences: "Working capital may tighten; external funding or cost reduction may become necessary.",
+      recommendedAction: "Identify the largest expense categories, defer non-essential spend, and accelerate collections.",
+      supportingFigures: {
+        revenue: money(rev, currency),
+        expenses: money(exp, currency),
+        netProfit: money(profit, currency),
+      },
+      periodLabel: period,
+      confidence: "high",
+      metricKeys: ["netProfit", "expense", "revenue"],
+    });
+  }
+
+  // Cash vs receivables
+  if (ar > 0 && cash >= 0) {
+    if (ar > cash * 2 && ar > 50000) {
+      // AR more than 2× cash and material
+      clues.push({
+        id: "ar-cash-gap",
+        severity: "elevated",
+        title: "Receivables significantly exceed available cash",
+        whatHappened: `Accounts receivable (${money(ar, currency)}) are large relative to cash (${money(cash, currency)}).`,
+        whyItMatters: "High receivables with low cash indicate collection lag and potential liquidity risk.",
+        potentialConsequences: "Inability to meet short-term obligations even though the P&L looks healthy.",
+        recommendedAction: "Prioritise collection of overdue invoices, tighten credit terms, and review ageing analysis.",
+        supportingFigures: {
+          accountsReceivable: money(ar, currency),
+          cash: money(cash, currency),
+        },
+        periodLabel: period,
+        confidence: "high",
+        metricKeys: ["accountsReceivable", "cash"],
+      });
+    } else if (cash > ar * 2 && cash > 100000) {
+      clues.push({
+        id: "strong-cash",
+        severity: "opportunity",
+        title: "Strong cash position relative to receivables",
+        whatHappened: `Cash (${money(cash, currency)}) comfortably exceeds outstanding receivables (${money(ar, currency)}).`,
+        whyItMatters: "Liquidity is healthy, giving flexibility for investment or debt reduction.",
+        potentialConsequences: "Idle cash may under-perform if not deployed according to policy.",
+        recommendedAction: "Review treasury policy; consider short-term instruments or planned capital expenditure.",
+        supportingFigures: {
+          cash: money(cash, currency),
+          accountsReceivable: money(ar, currency),
+        },
+        periodLabel: period,
+        confidence: "high",
+        metricKeys: ["cash", "accountsReceivable"],
+      });
+    }
+  }
+
+  // Low / zero cash
+  if (cash <= 0 && (rev > 0 || ar > 0)) {
+    clues.push({
+      id: "cash-critical",
+      severity: "critical",
+      title: "Cash and bank balance is zero or negative",
+      whatHappened: `Available cash is ${money(cash, currency)} while the business still records activity.`,
+      whyItMatters: "Without cash the organisation cannot settle obligations as they fall due.",
+      potentialConsequences: "Immediate liquidity crisis, potential supplier and payroll disruption.",
+      recommendedAction: "Accelerate collections, arrange short-term financing, and halt non-critical payments.",
+      supportingFigures: { cash: money(cash, currency) },
+      periodLabel: period,
+      confidence: "high",
+      metricKeys: ["cash"],
+    });
+  }
+
+  // Period-over-period revenue change
+  if (prev.revenue != null && prev.revenue > 0) {
+    const delta = rev - prev.revenue;
+    const pctChange = Math.round((delta / prev.revenue) * 10000) / 100;
+    if (pctChange >= 10) {
+      clues.push({
+        id: "revenue-growth",
+        severity: "positive",
+        title: "Revenue increased versus prior period",
+        whatHappened: `Revenue rose ${pctChange}% from ${money(prev.revenue, currency)} to ${money(rev, currency)}.`,
+        whyItMatters: "Growth in the top line is a primary driver of long-term value.",
+        potentialConsequences: "If costs are controlled, profitability and cash generation should improve.",
+        recommendedAction: "Identify the products, customers or channels driving growth and protect those engines.",
+        supportingFigures: {
+          previousRevenue: money(prev.revenue, currency),
+          currentRevenue: money(rev, currency),
+          change: `+${pctChange}%`,
+        },
+        periodLabel: period,
+        confidence: "high",
+        metricKeys: ["revenue"],
+      });
+    } else if (pctChange <= -10) {
+      clues.push({
+        id: "revenue-decline",
+        severity: "elevated",
+        title: "Revenue declined versus prior period",
+        whatHappened: `Revenue fell ${Math.abs(pctChange)}% from ${money(prev.revenue, currency)} to ${money(rev, currency)}.`,
+        whyItMatters: "Sustained revenue decline reduces capacity to cover fixed costs.",
+        potentialConsequences: "Margin compression and potential cash shortfalls if the trend continues.",
+        recommendedAction: "Analyse lost volume by customer and product; review pricing and sales pipeline.",
+        supportingFigures: {
+          previousRevenue: money(prev.revenue, currency),
+          currentRevenue: money(rev, currency),
+          change: `${pctChange}%`,
+        },
+        periodLabel: period,
+        confidence: "high",
+        metricKeys: ["revenue"],
+      });
+    }
+  }
+
+  // Expense growth faster than revenue
+  if (prev.revenue != null && prev.expense != null && prev.revenue > 0 && rev > 0) {
+    const revGrowth = (rev - prev.revenue) / prev.revenue;
+    const expGrowth = (exp - prev.expense) / (prev.expense || 1);
+    if (expGrowth > revGrowth + 0.05 && exp > prev.expense) {
+      clues.push({
+        id: "expense-outpacing",
+        severity: "caution",
+        title: "Expenses growing faster than revenue",
+        whatHappened: "Cost growth is outpacing revenue growth, putting pressure on margins.",
+        whyItMatters: "If the trend continues, profitability will deteriorate even if the top line expands.",
+        potentialConsequences: "Lower net profit margin and reduced ability to self-fund growth.",
+        recommendedAction: "Review variable and discretionary spend; set expense targets relative to revenue.",
+        supportingFigures: {
+          revenue: money(rev, currency),
+          expenses: money(exp, currency),
+        },
+        periodLabel: period,
+        confidence: "medium",
+        metricKeys: ["expense", "revenue"],
+      });
+    }
+  }
+
+  // Discount pressure
+  if ((input.discountAllowed || 0) > 0 && rev > 0) {
+    const disc = input.discountAllowed || 0;
+    const discPct = Math.round((disc / (rev + disc)) * 10000) / 100;
+    if (discPct >= 8) {
+      clues.push({
+        id: "high-discount",
+        severity: "caution",
+        title: "Material discounts granted",
+        whatHappened: `Discounts allowed of ${money(disc, currency)} represent approximately ${discPct}% of gross revenue.`,
+        whyItMatters: "Heavy discounting reduces realised margin and can train customers to expect lower prices.",
+        potentialConsequences: "Erosion of list-price integrity and pressure on net profitability.",
+        recommendedAction: "Review discount authority matrix and analyse whether volume gains justify the margin sacrifice.",
+        supportingFigures: {
+          discountAllowed: money(disc, currency),
+          estimatedShare: `${discPct}%`,
+        },
+        periodLabel: period,
+        confidence: "medium",
+        metricKeys: ["discountAllowed", "revenue"],
+      });
+    }
+  }
+
+  // Empty books
+  if (rev === 0 && exp === 0 && cash === 0 && ar === 0) {
+    clues.push({
+      id: "empty-ledger",
+      severity: "neutral",
+      title: "No posted financial activity yet",
+      whatHappened: "The ledger contains no posted revenue, expense, cash or receivable balances for the selected period.",
+      whyItMatters: "Dashboards and intelligence views will show zeros until journals are posted.",
+      potentialConsequences: "None — this is the expected state for a new or empty book set.",
+      recommendedAction: "Post opening balances or day-to-day journals to begin seeing live intelligence.",
+      supportingFigures: {},
+      periodLabel: period,
+      confidence: "high",
+      metricKeys: [],
+    });
+  }
+
+  return clues;
+}
+
+/** Map severity to UI colour tokens used by the CINTEXA design system. */
+export function clueSeverityColour(severity: ClueSeverity): string {
+  switch (severity) {
+    case "positive":
+      return "emerald";
+    case "opportunity":
+      return "amber";
+    case "caution":
+      return "yellow";
+    case "elevated":
+      return "orange";
+    case "critical":
+      return "red";
+    default:
+      return "sky";
   }
 }
