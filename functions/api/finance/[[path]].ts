@@ -1125,20 +1125,52 @@ function payrollRuleAt(date: string) {
   for (const r of docsOf("payrollRules")) if (r.effectiveFrom <= date && (!best || r.effectiveFrom > best.effectiveFrom)) best = r;
   return best;
 }
-function payrollCalc(rule: any, emp: any, adj: any) {
+/**
+ * Payroll line for one employee under one effective-dated rule. All rule fields beyond the PAYE bands and the two
+ * pension rates are optional, so a country without them (or a rule that omits them) simply skips that treatment.
+ *  - pension base clamped to the insurable-earnings floor/cap (pensionBaseMinMinor / pensionBaseMaxMinor)
+ *  - bonus: concessional flat rate up to a share of annual basic (year-to-date aware), excess taxed as ordinary income
+ *  - overtime: junior-staff concession (low rate up to a share of basic, higher rate above), else ordinary income
+ *  - non-residents: flat rate on chargeable income, separate flat rate on bonus/overtime
+ */
+function payrollCalc(rule: any, emp: any, adj: any, ytdBonusConcessionMinor = 0) {
   const basic = Math.round(emp.basicMinor || 0);
   const allowances = Object.values(emp.allowances || {}).reduce((t: number, v: any) => t + Math.round(Number(v) || 0), 0);
   const overtime = Math.round(adj?.overtimeMinor || 0), bonus = Math.round(adj?.bonusMinor || 0), commission = Math.round(adj?.commissionMinor || 0);
   const other = Math.round(adj?.otherDeductionsMinor || 0);
   const gross = basic + allowances + overtime + bonus + commission;
-  const base = rule.pensionBase === "gross" ? gross : basic;
   const enrolled = emp.pensionEnrolled !== false;
+  let base = rule.pensionBase === "gross" ? gross : basic;
+  if (rule.pensionBaseMaxMinor != null) base = Math.min(base, rule.pensionBaseMaxMinor);
+  if (rule.pensionBaseMinMinor != null) base = Math.max(base, rule.pensionBaseMinMinor);
   const employeePension = enrolled ? mulDiv(base, rule.employeePensionBps, 10000) : 0;
   const employerPension = enrolled ? mulDiv(base, rule.employerPensionBps, 10000) : 0;
-  const taxable = Math.max(0, gross - (rule.pensionDeductibleForPaye === false ? 0 : employeePension));
-  const paye = payeOn(taxable, rule.payeBands);
+  const relief = rule.pensionDeductibleForPaye === false ? 0 : employeePension;
+  const nonResident = emp.nonResident === true && rule.nonResidentFlatBps != null;
+
+  let ordinary = basic + allowances + commission;
+  let bonusConcession = 0, bonusTax = 0, overtimeTax = 0, taxable: number, paye: number;
+  if (nonResident) {
+    taxable = Math.max(0, ordinary - relief);
+    paye = mulDiv(taxable, rule.nonResidentFlatBps, 10000) + mulDiv(bonus + overtime, rule.nonResidentBonusOvertimeBps ?? rule.nonResidentFlatBps, 10000);
+  } else {
+    if (bonus > 0 && rule.bonusConcessionBps != null) {
+      const cap = mulDiv(basic * 12, rule.bonusCapBps ?? 0, 10000);
+      bonusConcession = Math.min(bonus, Math.max(0, cap - ytdBonusConcessionMinor));
+      bonusTax = mulDiv(bonusConcession, rule.bonusConcessionBps, 10000);
+      ordinary += bonus - bonusConcession;           // excess bonus is ordinary income
+    } else ordinary += bonus;
+    const juniorOvertime = overtime > 0 && emp.juniorStaff === true && rule.overtimeLowBps != null
+      && (basic + allowances) * 12 <= (rule.overtimeJuniorIncomeLimitMinor ?? 0);
+    if (juniorOvertime) {
+      const lowBand = mulDiv(basic, rule.overtimeBasicThresholdBps ?? 5000, 10000);
+      overtimeTax = mulDiv(Math.min(overtime, lowBand), rule.overtimeLowBps, 10000) + mulDiv(Math.max(0, overtime - lowBand), rule.overtimeHighBps ?? rule.overtimeLowBps, 10000);
+    } else ordinary += overtime;
+    taxable = Math.max(0, ordinary - relief);
+    paye = payeOn(taxable, rule.payeBands) + bonusTax + overtimeTax;
+  }
   const net = gross - employeePension - paye - other;
-  return { employeeId: emp.id, name: emp.name, basic, allowances, overtime, bonus, commission, gross, employeePension, employerPension, taxable, paye, otherDeductions: other, net };
+  return { employeeId: emp.id, name: emp.name, basic, allowances, overtime, bonus, commission, gross, insurableBase: base, employeePension, employerPension, taxable, bonusConcession, bonusTax, overtimeTax, paye, otherDeductions: other, net };
 }
 
 // ── Restatement statements ──
@@ -1173,6 +1205,50 @@ function applyAdjustments(maps: { cum: Map<string, number>; act: Map<string, num
   }
   return { cum, act };
 }
+
+// ── Statutory presets (DATA, not logic). Each rule is effective-dated and cites its source. ──
+// Ghana, verified 2026-11-05 against the GRA PAYE page and the SSNIT public notice of 13 Jan 2026.
+const PAYROLL_PRESETS = [
+  {
+    key: "ghana-2026",
+    country: "GH",
+    label: "Ghana 2026 (GRA PAYE · SSNIT)",
+    verifiedOn: "2026-11-05",
+    reviewBy: "2026-12-31",
+    caution: "Ghana's Budget Statement (November) can change bands and the SSNIT insurable-earnings limits from January. Confirm the figures before each year's first payroll.",
+    sources: [
+      "https://gra.gov.gh/domestic-tax/tax-types/paye/ — monthly bands effective 1 Sep 2026 (Income Tax (Amendment) Act 2026, Act 1178); SSNIT 5.5% of basic deductible; bonus, overtime and non-resident rules",
+      "https://www.ssnit.org.gh/wp-content/uploads/2026/01/Public-Notice-Min-Max-Insurable.pdf — insurable earnings GHS 587.80 to GHS 69,000 per month from 1 Jan 2026",
+      "SSNIT contribution split 5.5% employee / 13% employer of basic salary (SSNIT guidance as summarised by payroll references)",
+    ],
+    common: {
+      employeePensionBps: 550, employerPensionBps: 1300, pensionBase: "basic", pensionDeductibleForPaye: true,
+      pensionBaseMinMinor: 58780, pensionBaseMaxMinor: 6900000,
+      bonusConcessionBps: 500, bonusCapBps: 1500,
+      overtimeLowBps: 500, overtimeHighBps: 1000, overtimeBasicThresholdBps: 5000, overtimeJuniorIncomeLimitMinor: 1800000,
+      nonResidentFlatBps: 2500, nonResidentBonusOvertimeBps: 2000,
+    },
+    rules: [
+      {
+        effectiveFrom: "2026-01-01",
+        source: "monthly PAYE bands in force 1 Jan–31 Aug 2026 (first band GHS 490/month per GRA's statement of the previous rate); remaining bands are the annual scale 5,880 / 1,320 / 1,560 / 38,000 / 192,000 / 366,240 ÷ 12 from published payroll references — confirm against the GRA schedule if you pay prior months",
+        // cumulative monthly upper limits in pesewas
+        payeBands: [
+          { upToMinor: 49000, rateBps: 0 }, { upToMinor: 60000, rateBps: 500 }, { upToMinor: 73000, rateBps: 1000 },
+          { upToMinor: 389667, rateBps: 1750 }, { upToMinor: 1989667, rateBps: 2500 }, { upToMinor: 5041667, rateBps: 3000 }, { upToMinor: null, rateBps: 3500 },
+        ],
+      },
+      {
+        effectiveFrom: "2026-09-01",
+        source: "GRA monthly PAYE table, Year of Assessment 2026, effective 1 Sep 2026 (588 / next 80 / next 100 / next 2,900 / next 16,000 / next 30,332 / above 50,000)",
+        payeBands: [
+          { upToMinor: 58800, rateBps: 0 }, { upToMinor: 66800, rateBps: 500 }, { upToMinor: 76800, rateBps: 1000 },
+          { upToMinor: 366800, rateBps: 1750 }, { upToMinor: 1966800, rateBps: 2500 }, { upToMinor: 5000000, rateBps: 3000 }, { upToMinor: null, rateBps: 3500 },
+        ],
+      },
+    ],
+  },
+] as const;
 
 type Env = {
   FIN_DB?: D1Database;
@@ -3305,6 +3381,28 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       }
 
       // ───────── Payroll ─────────
+      const saveRule = async (rule: any) => {
+        await putDoc("payrollRules", rule.id, rule);
+        audit("payroll_rule", rule.id, "set", rule.effectiveFrom);
+        return json({ rule, note: "Rates are configuration, not code. Enter them from the current statutory schedule; add a new effective-dated rule when they change." }, 201);
+      };
+      if (path === "payroll/presets" && M === "GET") {
+        return json({ items: PAYROLL_PRESETS.map((p) => ({ ...p, loaded: p.rules.every((r) => docsOf("payrollRules").some((x) => x.presetKey === `${p.key}:${r.effectiveFrom}`)) })) });
+      }
+      if (seg[0] === "payroll" && seg[1] === "presets" && seg[2] && M === "POST") {
+        const preset = PAYROLL_PRESETS.find((p) => p.key === seg[2]);
+        if (!preset) throw new EngineError("Unknown preset", "NOT_FOUND", 404);
+        const created: any[] = [], skipped: string[] = [];
+        for (const r of preset.rules) {
+          const presetKey = `${preset.key}:${r.effectiveFrom}`;
+          if (docsOf("payrollRules").some((x) => x.presetKey === presetKey)) { skipped.push(r.effectiveFrom); continue; }
+          const rule = { id: crypto.randomUUID(), effectiveFrom: r.effectiveFrom, payeBands: r.payeBands, ...preset.common, source: `${preset.label} — ${r.source}`.slice(0, 600), presetKey, reviewBy: preset.reviewBy, createdAt: now() };
+          await putDoc("payrollRules", rule.id, rule);
+          audit("payroll_rule", rule.id, "preset_loaded", presetKey);
+          created.push(rule);
+        }
+        return json({ created, skipped, note: skipped.length ? "Rules already loaded were left untouched." : `Loaded ${created.length} rule(s). Verify against the cited sources before your first payroll.` }, created.length ? 201 : 200);
+      }
       if (path === "payroll/rules" && M === "GET") return json({ items: docsOf("payrollRules").sort((a, b) => b.effectiveFrom.localeCompare(a.effectiveFrom)) });
       if (path === "payroll/rules" && M === "POST") {
         const b = await readJson(request);
@@ -3315,18 +3413,35 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         if (![ee, er].every((x) => Number.isInteger(x) && x >= 0 && x <= 10000)) throw new EngineError("employeePensionBps and employerPensionBps required (basis points)", "BAD_RATE", 400);
         const source = String(b.source || "").trim();
         if (source.length < 3) throw new EngineError("source required — cite the current GRA/SSNIT schedule you copied the rates from", "SOURCE_REQUIRED", 400);
-        const rule = { id: crypto.randomUUID(), effectiveFrom: isoDate(b.effectiveFrom), payeBands: bands, employeePensionBps: ee, employerPensionBps: er,
-          pensionBase: b.pensionBase === "gross" ? "gross" : "basic", pensionDeductibleForPaye: b.pensionDeductibleForPaye !== false, source: source.slice(0, 300), createdAt: now() };
-        await putDoc("payrollRules", rule.id, rule);
-        audit("payroll_rule", rule.id, "set", rule.effectiveFrom);
-        return json({ rule, note: "Rates are configuration, not code. Enter them from the current statutory schedule; add a new effective-dated rule when they change." }, 201);
+        const opt = (k: string, min = 0, max = 1e12): number | undefined => {
+          if (b[k] == null || b[k] === "") return undefined;
+          const n = Math.round(Number(b[k]));
+          if (!Number.isInteger(n) || n < min || n > max) throw new EngineError(`${k} must be an integer ${min}..${max}`, "BAD_RULE_FIELD", 400);
+          return n;
+        };
+        const extra: Record<string, number | undefined> = {
+          pensionBaseMinMinor: opt("pensionBaseMinMinor"), pensionBaseMaxMinor: opt("pensionBaseMaxMinor"),
+          bonusConcessionBps: opt("bonusConcessionBps", 0, 10000), bonusCapBps: opt("bonusCapBps", 0, 10000),
+          overtimeLowBps: opt("overtimeLowBps", 0, 10000), overtimeHighBps: opt("overtimeHighBps", 0, 10000), overtimeBasicThresholdBps: opt("overtimeBasicThresholdBps", 0, 100000),
+          overtimeJuniorIncomeLimitMinor: opt("overtimeJuniorIncomeLimitMinor"),
+          nonResidentFlatBps: opt("nonResidentFlatBps", 0, 10000), nonResidentBonusOvertimeBps: opt("nonResidentBonusOvertimeBps", 0, 10000),
+        };
+        if (extra.pensionBaseMinMinor != null && extra.pensionBaseMaxMinor != null && extra.pensionBaseMinMinor > extra.pensionBaseMaxMinor)
+          throw new EngineError("pensionBaseMinMinor cannot exceed pensionBaseMaxMinor", "BAD_RULE_FIELD", 400);
+        const reviewBy = b.reviewBy ? isoDate(b.reviewBy) : undefined;
+        const rule: any = { id: crypto.randomUUID(), effectiveFrom: isoDate(b.effectiveFrom), payeBands: bands, employeePensionBps: ee, employerPensionBps: er,
+          pensionBase: b.pensionBase === "gross" ? "gross" : "basic", pensionDeductibleForPaye: b.pensionDeductibleForPaye !== false, source: source.slice(0, 600), reviewBy, createdAt: now() };
+        for (const [k, v] of Object.entries(extra)) if (v !== undefined) rule[k] = v;
+        return await saveRule(rule);
+
       }
       if (path === "payroll/employees" && M === "GET") return json({ items: docsOf("employees") });
       if (path === "payroll/employees" && M === "POST") {
         const b = await readJson(request);
         const basic = Math.round(Number(b.basicMinor));
         if (!b.name || !(basic > 0)) throw new EngineError("name and basicMinor (monthly, minor units) required", "BAD_EMPLOYEE", 400);
-        const e = { id: crypto.randomUUID(), name: String(b.name).slice(0, 200), basicMinor: basic, allowances: b.allowances && typeof b.allowances === "object" ? b.allowances : {}, pensionEnrolled: b.pensionEnrolled !== false, active: true, createdAt: now() };
+        const e = { id: crypto.randomUUID(), name: String(b.name).slice(0, 200), basicMinor: basic, allowances: b.allowances && typeof b.allowances === "object" ? b.allowances : {}, pensionEnrolled: b.pensionEnrolled !== false,
+          juniorStaff: b.juniorStaff === true, nonResident: b.nonResident === true, active: true, createdAt: now() };
         await putDoc("employees", e.id, e);
         return json({ employee: e }, 201);
       }
@@ -3342,10 +3457,15 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         const adj: Record<string, any> = {}; for (const a of Array.isArray(b.adjustments) ? b.adjustments : []) adj[String(a.employeeId)] = a;
         const emps = docsOf("employees").filter((e) => e.active);
         if (!emps.length) throw new EngineError("No active employees", "NO_EMPLOYEES");
-        const lines = emps.map((e) => payrollCalc(rule, e, adj[e.id]));
+        const yr = ym.slice(0, 4);
+        const ytdConc = (empId: string) => docsOf("payrollRuns").filter((r) => r.status !== "void" && r.periodYm.slice(0, 4) === yr && r.periodYm < ym)
+          .reduce((t, r) => t + (r.lines.find((l: any) => l.employeeId === empId)?.bonusConcession || 0), 0);
+        const lines = emps.map((e) => payrollCalc(rule, e, adj[e.id], ytdConc(e.id)));
+        const warnings: string[] = [];
+        if (rule.reviewBy && end > rule.reviewBy) warnings.push(`The statutory rule in force (effective ${rule.effectiveFrom}) was due for review by ${rule.reviewBy}. Confirm current GRA/SSNIT rates and add a new rule if they changed.`);
         const sum = (k: string) => lines.reduce((t, l: any) => t + l[k], 0);
         const run = { id: crypto.randomUUID(), periodYm: ym, status: "calculated", ruleId: rule.id, lines,
-          totals: { gross: sum("gross"), employeePension: sum("employeePension"), employerPension: sum("employerPension"), paye: sum("paye"), otherDeductions: sum("otherDeductions"), net: sum("net") }, createdAt: now() };
+          warnings, totals: { gross: sum("gross"), employeePension: sum("employeePension"), employerPension: sum("employerPension"), paye: sum("paye"), otherDeductions: sum("otherDeductions"), net: sum("net") }, createdAt: now() };
         await putDoc("payrollRuns", run.id, run);
         audit("payroll_run", run.id, "calculated", ym);
         return json({ run }, 201);

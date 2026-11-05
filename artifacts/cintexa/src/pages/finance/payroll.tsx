@@ -28,9 +28,34 @@ export default function PayrollPage() {
   );
 }
 
+function Presets({ refresh }: { refresh: () => void }) {
+  const q = useQuery({ queryKey: ["fin", "payroll", "presets"], queryFn: () => finGet<{ items: any[] }>("/payroll/presets") });
+  const load = useMutation({ mutationFn: (key: string) => finPost<any>(`/payroll/presets/${key}`), onSuccess: refresh });
+  return (
+    <>
+      {(q.data?.items || []).map((p) => (
+        <Section key={p.key} title={`${p.label}`} hint={`Verified ${p.verifiedOn} against the official sources below. ${p.caution}`}>
+          <div className="flex flex-wrap items-center gap-2">
+            {p.loaded ? <Badge2 tone="ok">loaded</Badge2> : <Badge2 tone="warn">not loaded</Badge2>}
+            <span className="text-xs text-muted-foreground">Review by {p.reviewBy}. Rules: {p.rules.map((r: any) => `from ${r.effectiveFrom}`).join(" · ")}</span>
+          </div>
+          <ul className="list-disc space-y-1 pl-5 text-xs text-muted-foreground">{p.sources.map((s: string, i: number) => <li key={i} className="break-words">{s}</li>)}</ul>
+          <p className="text-xs text-muted-foreground">
+            Employee pension {p.common.employeePensionBps / 100}% and employer {p.common.employerPensionBps / 100}% of basic, insurable earnings {money(p.common.pensionBaseMinMinor)}–{money(p.common.pensionBaseMaxMinor)} a month; bonus {p.common.bonusConcessionBps / 100}% up to {p.common.bonusCapBps / 100}% of annual basic; junior-staff overtime {p.common.overtimeLowBps / 100}% / {p.common.overtimeHighBps / 100}%; non-residents {p.common.nonResidentFlatBps / 100}%.
+          </p>
+          <Button disabled={p.loaded || load.isPending} onClick={() => load.mutate(p.key)}>{p.loaded ? "Already loaded" : `Load ${p.country === "GH" ? "Ghana" : ""} statutory rates`}</Button>
+          <Notice error={load.error} ok={load.data ? load.data.note : null} />
+        </Section>
+      ))}
+    </>
+  );
+}
+
 function Rules({ refresh }: { refresh: () => void }) {
   const q = useQuery({ queryKey: ["fin", "payroll", "rules"], queryFn: () => finGet<{ items: any[] }>("/payroll/rules") });
   const [f, setF] = useState({ effectiveFrom: today(), ee: "", er: "", base: "basic", deductible: true, source: "" });
+  const [x, setX] = useState({ min: "", max: "", bonusPct: "", bonusCap: "", otLow: "", otHigh: "", otThreshold: "", otLimit: "", nrFlat: "", nrBonus: "", reviewBy: "" });
+  const [adv, setAdv] = useState(false);
   const [bands, setBands] = useState([{ upTo: "", rate: "" }]);
   const m = useMutation({
     mutationFn: () => {
@@ -39,12 +64,20 @@ function Rules({ refresh }: { refresh: () => void }) {
         rateBps: Math.round(Number(b.rate) * 100),
       }));
       if (payeBands.some((b) => !Number.isFinite(b.rateBps))) throw new Error("Enter a rate for every band.");
-      return finPost("/payroll/rules", { effectiveFrom: f.effectiveFrom, employeePensionBps: Math.round(Number(f.ee) * 100), employerPensionBps: Math.round(Number(f.er) * 100), pensionBase: f.base, pensionDeductibleForPaye: f.deductible, source: f.source, payeBands });
+      const pct = (v: string) => (v === "" ? undefined : Math.round(Number(v) * 100));
+      const gh = (v: string, label: string) => (v === "" ? undefined : toMinor(v, "GHS", label));
+      return finPost("/payroll/rules", {
+        effectiveFrom: f.effectiveFrom, employeePensionBps: Math.round(Number(f.ee) * 100), employerPensionBps: Math.round(Number(f.er) * 100), pensionBase: f.base, pensionDeductibleForPaye: f.deductible, source: f.source, payeBands,
+        pensionBaseMinMinor: gh(x.min, "Insurable minimum"), pensionBaseMaxMinor: gh(x.max, "Insurable maximum"),
+        bonusConcessionBps: pct(x.bonusPct), bonusCapBps: pct(x.bonusCap), overtimeLowBps: pct(x.otLow), overtimeHighBps: pct(x.otHigh), overtimeBasicThresholdBps: pct(x.otThreshold),
+        overtimeJuniorIncomeLimitMinor: gh(x.otLimit, "Junior income limit"), nonResidentFlatBps: pct(x.nrFlat), nonResidentBonusOvertimeBps: pct(x.nrBonus), reviewBy: x.reviewBy || undefined,
+      });
     },
     onSuccess: refresh,
   });
   return (
     <div className="space-y-4">
+      <Presets refresh={refresh} />
       <Section title="Add statutory rule" hint="Enter the figures from the current official schedule. When rates change, add a new rule with a new effective date; earlier months keep the rule that applied to them.">
         <div className="flex flex-wrap gap-2">
           <Field label="Effective from"><Input type="date" value={f.effectiveFrom} onChange={(e) => setF({ ...f, effectiveFrom: e.target.value })} /></Field>
@@ -72,15 +105,40 @@ function Rules({ refresh }: { refresh: () => void }) {
           })}
           <Button size="sm" variant="outline" onClick={() => setBands([...bands.slice(0, -1), { upTo: "", rate: "" }, bands[bands.length - 1]!])}>Add band</Button>
         </div>
+        <div>
+          <button className="text-sm underline" onClick={() => setAdv(!adv)}>{adv ? "Hide" : "Show"} optional treatments (insurable-earnings limits, bonus, overtime, non-residents)</button>
+          {adv && (
+            <div className="mt-2 flex flex-wrap gap-2">
+              <Field label="Pension base minimum (GHS / month)"><Input inputMode="decimal" value={x.min} onChange={(e) => setX({ ...x, min: e.target.value })} /></Field>
+              <Field label="Pension base maximum (GHS / month)"><Input inputMode="decimal" value={x.max} onChange={(e) => setX({ ...x, max: e.target.value })} /></Field>
+              <Field label="Bonus concessional rate (%)"><Input inputMode="decimal" value={x.bonusPct} onChange={(e) => setX({ ...x, bonusPct: e.target.value })} /></Field>
+              <Field label="…up to % of annual basic"><Input inputMode="decimal" value={x.bonusCap} onChange={(e) => setX({ ...x, bonusCap: e.target.value })} /></Field>
+              <Field label="Junior overtime low rate (%)"><Input inputMode="decimal" value={x.otLow} onChange={(e) => setX({ ...x, otLow: e.target.value })} /></Field>
+              <Field label="…rate above threshold (%)"><Input inputMode="decimal" value={x.otHigh} onChange={(e) => setX({ ...x, otHigh: e.target.value })} /></Field>
+              <Field label="…threshold (% of monthly basic)"><Input inputMode="decimal" value={x.otThreshold} onChange={(e) => setX({ ...x, otThreshold: e.target.value })} /></Field>
+              <Field label="Junior annual income limit (GHS)"><Input inputMode="decimal" value={x.otLimit} onChange={(e) => setX({ ...x, otLimit: e.target.value })} /></Field>
+              <Field label="Non-resident flat rate (%)"><Input inputMode="decimal" value={x.nrFlat} onChange={(e) => setX({ ...x, nrFlat: e.target.value })} /></Field>
+              <Field label="Non-resident bonus/overtime (%)"><Input inputMode="decimal" value={x.nrBonus} onChange={(e) => setX({ ...x, nrBonus: e.target.value })} /></Field>
+              <Field label="Review by (date)"><Input type="date" value={x.reviewBy} onChange={(e) => setX({ ...x, reviewBy: e.target.value })} /></Field>
+            </div>
+          )}
+        </div>
         <Button disabled={m.isPending || !f.ee || !f.er || !f.source} onClick={() => m.mutate()}>Save rule</Button>
         <Notice error={m.error} ok={m.isSuccess ? "Rule saved." : null} />
       </Section>
       <Section title="Rules on file">
-        <Table head={["Effective from", "Employee %", "Employer %", "Base", "Bands", "Source"]} empty={q.data && !q.data.items.length ? "No rules yet." : undefined}>
+        <Table head={["Effective from", "Employee %", "Employer %", "Base", "Bands", "Limits & treatments", "Source"]} empty={q.data && !q.data.items.length ? "No rules yet." : undefined}>
           {(q.data?.items || []).map((r) => (
             <tr key={r.id} className="border-b align-top">
               <Td>{r.effectiveFrom}</Td><Td right>{r.employeePensionBps / 100}</Td><Td right>{r.employerPensionBps / 100}</Td><Td>{r.pensionBase}</Td>
               <Td className="text-xs">{r.payeBands.map((b: any, i: number) => <div key={i}>{b.upToMinor == null ? "remainder" : `to ${money(b.upToMinor)}`} @ {b.rateBps / 100}%</div>)}</Td>
+              <Td className="text-xs">
+                {r.pensionBaseMinMinor != null && <div>Insurable {money(r.pensionBaseMinMinor)}–{money(r.pensionBaseMaxMinor)}</div>}
+                {r.bonusConcessionBps != null && <div>Bonus {r.bonusConcessionBps / 100}% to {r.bonusCapBps / 100}% of annual basic</div>}
+                {r.overtimeLowBps != null && <div>Junior overtime {r.overtimeLowBps / 100}% / {r.overtimeHighBps / 100}%</div>}
+                {r.nonResidentFlatBps != null && <div>Non-resident {r.nonResidentFlatBps / 100}%</div>}
+                {r.reviewBy && <div className="text-amber-700">Review by {r.reviewBy}</div>}
+              </Td>
               <Td className="text-xs text-muted-foreground">{r.source}</Td>
             </tr>
           ))}
@@ -92,14 +150,14 @@ function Rules({ refresh }: { refresh: () => void }) {
 
 function Employees({ refresh }: { refresh: () => void }) {
   const q = useQuery({ queryKey: ["fin", "payroll", "employees"], queryFn: () => finGet<{ items: any[] }>("/payroll/employees") });
-  const [f, setF] = useState({ name: "", basic: "", enrolled: true });
+  const [f, setF] = useState({ name: "", basic: "", enrolled: true, junior: false, nonRes: false });
   const [allow, setAllow] = useState<{ name: string; amount: string }[]>([]);
   const m = useMutation({
     mutationFn: () => finPost("/payroll/employees", {
-      name: f.name, basicMinor: toMinor(f.basic, "GHS", "Monthly basic"), pensionEnrolled: f.enrolled,
+      name: f.name, basicMinor: toMinor(f.basic, "GHS", "Monthly basic"), pensionEnrolled: f.enrolled, juniorStaff: f.junior, nonResident: f.nonRes,
       allowances: Object.fromEntries(allow.filter((a) => a.name && a.amount).map((a) => [a.name, toMinor(a.amount, "GHS", `Allowance ${a.name}`)])),
     }),
-    onSuccess: () => { refresh(); setF({ name: "", basic: "", enrolled: true }); setAllow([]); },
+    onSuccess: () => { refresh(); setF({ name: "", basic: "", enrolled: true, junior: false, nonRes: false }); setAllow([]); },
   });
   return (
     <div className="space-y-4">
@@ -118,6 +176,8 @@ function Employees({ refresh }: { refresh: () => void }) {
         <div className="flex flex-wrap items-center gap-3">
           <Button size="sm" variant="outline" onClick={() => setAllow([...allow, { name: "", amount: "" }])}>Add allowance</Button>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.enrolled} onChange={(e) => setF({ ...f, enrolled: e.target.checked })} />Enrolled in pension</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.junior} onChange={(e) => setF({ ...f, junior: e.target.checked })} />Junior staff (overtime concession)</label>
+          <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={f.nonRes} onChange={(e) => setF({ ...f, nonRes: e.target.checked })} />Non-resident for tax</label>
         </div>
         <Button disabled={m.isPending || !f.name || !f.basic} onClick={() => m.mutate()}>Add employee</Button>
         <Notice error={m.error} />
@@ -128,7 +188,7 @@ function Employees({ refresh }: { refresh: () => void }) {
             <tr key={e.id} className="border-b">
               <Td>{e.name}</Td><Td right>{money(e.basicMinor)}</Td>
               <Td className="text-xs">{Object.entries(e.allowances || {}).map(([k, v]) => `${k}: ${money(Number(v))}`).join(" · ") || "—"}</Td>
-              <Td>{e.pensionEnrolled ? "enrolled" : "not enrolled"}</Td>
+              <Td>{e.pensionEnrolled ? "enrolled" : "not enrolled"}{e.juniorStaff ? " · junior" : ""}{e.nonResident ? " · non-resident" : ""}</Td>
             </tr>
           ))}
         </Table>
@@ -199,13 +259,14 @@ function Runs({ refresh }: { refresh: () => void }) {
                 {r.status === "approved" && <Button size="sm" disabled={pay.isPending} onClick={() => { if (window.confirm(`Record payment of net salaries ${money(r.totals.net)}?`)) pay.mutate(r.id); }}>Record payment</Button>}
               </div>
             </div>
+            {r.warnings?.length > 0 && r.warnings.map((w: string, i: number) => <p key={i} className="mt-2 text-xs text-amber-700">! {w}</p>)}
             {open === r.id && (
               <div className="mt-3">
-                <Table head={["Employee", "Gross", "Employee pension", "PAYE", "Other", "Net pay", "Employer pension"]}>
+                <Table head={["Employee", "Gross", "Pension base", "Employee pension", "PAYE", "Other", "Net pay", "Employer pension"]}>
                   {r.lines.map((l: any) => (
-                    <tr key={l.employeeId} className="border-b"><Td>{l.name}</Td><Td right>{money(l.gross)}</Td><Td right>{money(l.employeePension)}</Td><Td right>{money(l.paye)}</Td><Td right>{money(l.otherDeductions)}</Td><Td right>{money(l.net)}</Td><Td right>{money(l.employerPension)}</Td></tr>
+                    <tr key={l.employeeId} className="border-b"><Td>{l.name}</Td><Td right>{money(l.gross)}</Td><Td right>{money(l.insurableBase)}</Td><Td right>{money(l.employeePension)}</Td><Td right>{money(l.paye)}</Td><Td right>{money(l.otherDeductions)}</Td><Td right>{money(l.net)}</Td><Td right>{money(l.employerPension)}</Td></tr>
                   ))}
-                  <tr className="font-medium"><Td>Total</Td><Td right>{money(r.totals.gross)}</Td><Td right>{money(r.totals.employeePension)}</Td><Td right>{money(r.totals.paye)}</Td><Td right>{money(r.totals.otherDeductions)}</Td><Td right>{money(r.totals.net)}</Td><Td right>{money(r.totals.employerPension)}</Td></tr>
+                  <tr className="font-medium"><Td>Total</Td><Td right>{money(r.totals.gross)}</Td><Td /><Td right>{money(r.totals.employeePension)}</Td><Td right>{money(r.totals.paye)}</Td><Td right>{money(r.totals.otherDeductions)}</Td><Td right>{money(r.totals.net)}</Td><Td right>{money(r.totals.employerPension)}</Td></tr>
                 </Table>
                 {r.approvedBy && <p className="mt-2 text-xs text-muted-foreground">Approved by {r.approvedBy} · {r.approvedAt?.slice(0, 16)}</p>}
               </div>
