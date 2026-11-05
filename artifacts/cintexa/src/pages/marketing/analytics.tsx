@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,26 +17,64 @@ function Metric({ label, value, provenance }: { label: string; value: string | n
   );
 }
 
+type RangeKey = "all" | "7" | "30" | "90" | "month";
+
+function inRange(iso: string | undefined, range: RangeKey): boolean {
+  if (range === "all" || !iso) return range === "all";
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return false;
+  const now = Date.now();
+  if (range === "7") return t >= now - 7 * 864e5;
+  if (range === "30") return t >= now - 30 * 864e5;
+  if (range === "90") return t >= now - 90 * 864e5;
+  if (range === "month") {
+    const d = new Date();
+    return new Date(iso).getMonth() === d.getMonth() && new Date(iso).getFullYear() === d.getFullYear();
+  }
+  return true;
+}
+
 export default function MarketingAnalyticsPage() {
-  useEffect(() => { marketingIntel.ensureSeed(); }, []);
+  const [range, setRange] = useState<RangeKey>("all");
+  const [campaignId, setCampaignId] = useState<string>("all");
+
+  useEffect(() => {
+    marketingIntel.ensureSeed();
+  }, []);
 
   const overview = useQuery({ queryKey: ["marketing", "overview"], queryFn: () => marketingApi.overview() });
+  const campaigns = useQuery({ queryKey: ["marketing", "campaigns"], queryFn: () => marketingApi.listCampaigns() });
   const objectives = useQuery({ queryKey: ["mkt", "objectives"], queryFn: () => marketingIntel.listObjectives() });
   const funnels = useQuery({ queryKey: ["mkt", "funnels"], queryFn: () => marketingIntel.listFunnels() });
+
+  const filteredCampaigns = useMemo(() => {
+    let list = campaigns.data?.items || [];
+    if (campaignId !== "all") list = list.filter((c) => String(c.id) === campaignId);
+    list = list.filter((c) => inRange(c.updated_at || c.created_at, range));
+    return list;
+  }, [campaigns.data, campaignId, range]);
+
   const k = overview.data?.kpis;
+  const active = filteredCampaigns.filter((c) => c.status === "ACTIVE").length;
+  const budget = filteredCampaigns.reduce((s, c) => s + Number(c.budget || 0), 0);
+  const spent = filteredCampaigns.reduce((s, c) => s + Number(c.spent || 0), 0);
+  const util = budget > 0 ? Math.round((spent / budget) * 1000) / 10 : 0;
 
   const exportCsv = () => {
-    const rows = (overview.data?.recentCampaigns || []).map((c) => ({
-      id: c.id, name: c.name, status: c.status, number: (c as any).number,
+    const rows = filteredCampaigns.map((c) => ({
+      id: c.id,
+      name: c.name,
+      status: c.status,
+      number: (c as any).number,
+      budget: c.budget,
+      spent: c.spent,
     }));
     const csv = marketingIntel.toCsv(rows as any);
     const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
-    a.href = url;
-    a.download = "marketing-campaigns.csv";
+    a.href = URL.createObjectURL(blob);
+    a.download = "marketing-campaigns-filtered.csv";
     a.click();
-    URL.revokeObjectURL(url);
   };
 
   return (
@@ -45,62 +83,81 @@ export default function MarketingAnalyticsPage() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Marketing Analytics</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Metrics from local marketing records only. No fabricated traffic, opens or ad impressions.
+            Local records only. Filters use campaign updated/created timestamps when present.
           </p>
         </div>
-        <Button size="sm" variant="outline" onClick={exportCsv}>Export campaigns CSV</Button>
+        <Button size="sm" variant="outline" onClick={exportCsv}>Export filtered CSV</Button>
+      </div>
+
+      <div className="flex flex-wrap gap-2">
+        <select className="h-9 rounded-md border bg-background px-2 text-sm" value={range} onChange={(e) => setRange(e.target.value as RangeKey)}>
+          <option value="all">All time</option>
+          <option value="7">Last 7 days</option>
+          <option value="30">Last 30 days</option>
+          <option value="90">Last 90 days</option>
+          <option value="month">This month</option>
+        </select>
+        <select className="h-9 rounded-md border bg-background px-2 text-sm min-w-[160px]" value={campaignId} onChange={(e) => setCampaignId(e.target.value)}>
+          <option value="all">All campaigns</option>
+          {(campaigns.data?.items || []).map((c) => (
+            <option key={c.id} value={c.id}>{c.name}</option>
+          ))}
+        </select>
+        <Badge variant="secondary" className="self-center text-[10px]">{filteredCampaigns.length} campaigns in filter</Badge>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <Metric label="Active campaigns" value={k?.activeCampaigns ?? "—"} provenance="CALCULATED" />
-        <Metric label="Leads generated" value={k?.leadsGenerated ?? "—"} provenance="MEASURED" />
+        <Metric label="Campaigns in filter" value={filteredCampaigns.length} provenance="CALCULATED" />
+        <Metric label="Active (filtered)" value={active} provenance="CALCULATED" />
+        <Metric label="Budget (filtered)" value={budget} provenance="CALCULATED" />
+        <Metric label="Utilisation" value={`${util}%`} provenance="CALCULATED" />
+        <Metric label="Leads (all local)" value={k?.leadsGenerated ?? "—"} provenance="MEASURED" />
         <Metric label="Qualified leads" value={k?.qualifiedLeads ?? "—"} provenance="MEASURED" />
-        <Metric label="Budget utilisation" value={k ? `${k.budgetUtilization}%` : "—"} provenance="CALCULATED" />
-        <Metric label="Content items" value={k?.contentItems ?? "—"} provenance="MEASURED" />
-        <Metric label="Email campaigns" value={k?.emailCampaigns ?? "—"} provenance="MEASURED" />
         <Metric label="Objectives" value={objectives.data?.items.length ?? "—"} provenance="MEASURED" />
         <Metric label="Funnels" value={funnels.data?.items.length ?? "—"} provenance="MEASURED" />
       </div>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Reports</CardTitle>
-          <CardDescription>Download datasets from the local marketing store.</CardDescription>
+          <CardTitle className="text-base">Campaign drill-down</CardTitle>
+          <CardDescription>Spend and status from stored campaign records. ROI requires revenue — not invented.</CardDescription>
         </CardHeader>
-        <CardContent className="flex flex-wrap gap-2">
-          <Button size="sm" variant="outline" onClick={exportCsv}>Campaigns CSV</Button>
-          <Button size="sm" variant="outline" onClick={async () => {
-            const s = await marketingIntel.listStrategies();
-            const csv = marketingIntel.toCsv(s.items as any);
-            const blob = new Blob([csv], { type: "text/csv" });
-            const a = document.createElement("a"); a.href = URL.createObjectURL(blob); a.download = "strategies.csv"; a.click();
-          }}>Strategies CSV</Button>
-          <Button size="sm" variant="outline" onClick={async () => {
-            const s = await marketingIntel.listPersonas();
-            const csv = marketingIntel.toCsv(s.items as any);
-            const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "personas.csv"; a.click();
-          }}>Personas CSV</Button>
-          <Button size="sm" variant="outline" onClick={async () => {
-            const s = await marketingIntel.listObjectives();
-            const rows = s.items.map((o) => ({ id: o.id, name: o.name, horizon: o.horizon, progress: marketingIntel.objectiveProgress(o), status: o.status }));
-            const csv = marketingIntel.toCsv(rows as any);
-            const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" })); a.download = "okrs.csv"; a.click();
-          }}>OKRs CSV</Button>
-          <Button size="sm" variant="outline" onClick={async () => {
-            const json = await marketingIntel.exportJson();
-            const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob([json], { type: "application/json" })); a.download = "marketing-full-report.json"; a.click();
-          }}>Full JSON report</Button>
+        <CardContent className="space-y-2">
+          {filteredCampaigns.map((c) => {
+            const b = Number(c.budget || 0);
+            const s = Number(c.spent || 0);
+            const u = b > 0 ? Math.round((s / b) * 1000) / 10 : null;
+            return (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 rounded-md border px-3 py-2 text-sm">
+                <div>
+                  <p className="font-medium">{c.name}</p>
+                  <p className="text-xs text-muted-foreground">{c.status} · budget {b} · spent {s}</p>
+                </div>
+                <div className="text-xs text-right">
+                  <p>Util {u != null ? `${u}%` : "—"}</p>
+                  <p className="text-muted-foreground">ROI: INSUFFICIENT DATA</p>
+                </div>
+              </div>
+            );
+          })}
+          {!filteredCampaigns.length && <p className="text-sm text-muted-foreground text-center py-6">No campaigns in this filter.</p>}
         </CardContent>
       </Card>
 
       <Card>
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Provenance legend</CardTitle>
-          <CardDescription>
-            MEASURED = stored records · CALCULATED = derived · MANUAL = user entered · UNAVAILABLE = missing data.
-            External channel metrics are intentionally not invented.
-          </CardDescription>
+          <CardTitle className="text-base">Reports</CardTitle>
         </CardHeader>
+        <CardContent className="flex flex-wrap gap-2">
+          <Button size="sm" variant="outline" onClick={exportCsv}>Campaigns CSV</Button>
+          <Button size="sm" variant="outline" onClick={async () => {
+            const json = await marketingIntel.exportJson();
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(new Blob([json], { type: "application/json" }));
+            a.download = "marketing-full-report.json";
+            a.click();
+          }}>Full JSON</Button>
+        </CardContent>
       </Card>
     </div>
   );

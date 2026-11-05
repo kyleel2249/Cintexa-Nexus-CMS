@@ -114,8 +114,36 @@ export default function MarketingSettingsPage() {
           </div>
           <ul className="space-y-1">
             {channels.map((c, i) => (
-              <li key={c} className="flex items-center justify-between rounded-md border px-2 py-1 text-sm">
-                <span>{c}</span>
+              <li key={c} className="flex items-center justify-between rounded-md border px-2 py-1 text-sm gap-2">
+                <span className="flex-1">{c}</span>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  disabled={i === 0}
+                  onClick={() => {
+                    const ch = [...channels];
+                    [ch[i - 1], ch[i]] = [ch[i], ch[i - 1]];
+                    setChannels(ch);
+                    marketingIntel.updateSettings({ channels: ch }).then(() => qc.invalidateQueries({ queryKey: ["mkt", "settings"] }));
+                  }}
+                >
+                  Up
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 text-xs"
+                  disabled={i === channels.length - 1}
+                  onClick={() => {
+                    const ch = [...channels];
+                    [ch[i], ch[i + 1]] = [ch[i + 1], ch[i]];
+                    setChannels(ch);
+                    marketingIntel.updateSettings({ channels: ch }).then(() => qc.invalidateQueries({ queryKey: ["mkt", "settings"] }));
+                  }}
+                >
+                  Down
+                </Button>
                 <Button
                   size="sm"
                   variant="ghost"

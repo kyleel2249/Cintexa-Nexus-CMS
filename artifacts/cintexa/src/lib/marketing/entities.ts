@@ -556,6 +556,31 @@ export function updateSettings(patch: Partial<MarketingSettings>): MarketingSett
   return next;
 }
 
+
+export function archiveObjective(id: number): Objective | null {
+  return updateObjective(id, { status: "ARCHIVED" });
+}
+
+export function duplicateObjective(id: number): Objective | null {
+  const src = listObjectives().find((o) => o.id === id);
+  if (!src) return null;
+  return createObjective({
+    name: `${src.name} (copy)`,
+    description: src.description,
+    horizon: src.horizon,
+    status: "ACTIVE",
+    key_results: src.key_results.map((kr) => ({
+      ...kr,
+      id: crypto.randomUUID(),
+      current: kr.baseline,
+      status: "on_track",
+    })),
+    campaign_ids: [...(src.campaign_ids || [])],
+    persona_ids: [...(src.persona_ids || [])],
+    owner: src.owner,
+  });
+}
+
 export function exportMarketingJson(): string {
   ensureMarketingSeed();
   const data = load();

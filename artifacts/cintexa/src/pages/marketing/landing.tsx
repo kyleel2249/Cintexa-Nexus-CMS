@@ -229,8 +229,30 @@ export default function LandingFunnelsPage() {
               })}
             </div>
             <p className="text-xs text-muted-foreground mt-2">
-              Conversion = stage ÷ previous stage. Provenance: MANUAL. Map forms via form registry above.
+              Conversion = stage ÷ previous stage. Default provenance: MANUAL.
             </p>
+            {f.form_ref && forms.some((fr) => fr.name === f.form_ref && fr.notes?.includes("submissions=")) && (
+              <div className="mt-2 flex flex-wrap items-center gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    const fr = forms.find((x) => x.name === f.form_ref);
+                    const m = fr?.notes?.match(/submissions=(\d+)/);
+                    const count = m ? Number(m[1]) : null;
+                    if (count == null || !confirm(`Apply CMS CACHE submission count (${count}) to the "Form submission" or last conversion-like stage? This is an explicit override.`)) return;
+                    const stages = f.stages.map((s) => ({ ...s }));
+                    let idx = stages.findIndex((s) => /form|submission|convert/i.test(s.name));
+                    if (idx < 0) idx = Math.min(3, stages.length - 1);
+                    stages[idx] = { ...stages[idx], actual_count: count };
+                    updateFunnel.mutate({ id: f.id, stages });
+                  }}
+                >
+                  Apply CMS count to stage
+                </Button>
+                <Badge variant="outline" className="text-[9px]">CMS CACHE → MANUAL OVERRIDE when applied</Badge>
+              </div>
+            )}
           </CardContent>
         </Card>
       ))}

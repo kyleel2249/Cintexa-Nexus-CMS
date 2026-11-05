@@ -156,6 +156,16 @@ export const marketingIntel = {
     return Promise.resolve(o);
   },
   objectiveProgress: ent.objectiveProgress,
+  archiveObjective: (id: number) => {
+    const o = ent.archiveObjective(id);
+    if (!o) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(o);
+  },
+  duplicateObjective: (id: number) => {
+    const o = ent.duplicateObjective(id);
+    if (!o) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(o);
+  },
 
   listBrands: () => Promise.resolve({ items: ent.listBrands() }),
   getDefaultBrand: () => Promise.resolve(ent.getDefaultBrand()),

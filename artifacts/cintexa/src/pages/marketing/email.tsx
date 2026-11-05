@@ -10,6 +10,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Plus } from "lucide-react";
 import { marketingApi } from "@/lib/marketing/api";
 import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
+import { scanBrandCompliance } from "@/lib/marketing/brand-compliance";
+import { marketingIntel } from "@/lib/marketing/api";
+import { useQuery } from "@tanstack/react-query";
 
 export default function EmailMarketing() {
   const qc = useQueryClient();
@@ -71,6 +74,7 @@ export default function EmailMarketing() {
               <div><Label>Subject line</Label><Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="What’s new this month" /></div>
               <div><Label>Audience note</Label><Input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="Subscribers · product updates" /></div>
               <div><Label>Body</Label><Textarea value={body} onChange={(e) => setBody(e.target.value)} rows={8} placeholder="Write the email body…" /></div>
+              <EmailComplianceHint text={body} />
             </div>
             <DialogFooter>
               <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
@@ -133,6 +137,29 @@ export default function EmailMarketing() {
         }}
       />
       </div>
+    </div>
+  );
+}
+
+
+function EmailComplianceHint({ text }: { text: string }) {
+  const brandQ = useQuery({ queryKey: ["mkt", "brands"], queryFn: () => marketingIntel.listBrands() });
+  const brand = brandQ.data?.items?.find((b) => b.is_default) || brandQ.data?.items?.[0];
+  const claimsQ = useQuery({
+    queryKey: ["mkt", "claims", brand?.id],
+    enabled: !!brand?.id,
+    queryFn: () => marketingIntel.listClaims(brand!.id),
+  });
+  if (!text.trim()) return null;
+  const issues = scanBrandCompliance(text, brand, claimsQ.data?.items || []);
+  return (
+    <div className="rounded-md border px-2 py-1.5 space-y-1 max-h-28 overflow-y-auto">
+      <p className="text-[10px] font-medium">Brand consistency (assistant)</p>
+      {issues.slice(0, 4).map((i) => (
+        <p key={i.id} className="text-[10px] text-muted-foreground">
+          <span className="uppercase">{i.severity}</span> — {i.message}
+        </p>
+      ))}
     </div>
   );
 }

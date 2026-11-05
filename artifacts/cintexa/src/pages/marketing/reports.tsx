@@ -84,6 +84,33 @@ export default function MarketingReportsPage() {
         </section>
 
         <section>
+          <h3 className="text-lg font-semibold mb-2">2b. SWOT Action Matrix</h3>
+          <p className="text-xs text-muted-foreground mb-2">Recommended actions from SWOT entries. Assumptions labelled. Not confirmed business facts.</p>
+          <table className="w-full text-xs border-collapse">
+            <thead>
+              <tr className="border-b text-left">
+                <th className="py-1 pr-2">Category</th>
+                <th className="py-1 pr-2">Finding</th>
+                <th className="py-1 pr-2">Action</th>
+                <th className="py-1 pr-2">Priority</th>
+                <th className="py-1">Evidence</th>
+              </tr>
+            </thead>
+            <tbody>
+              {(swot.data?.items || []).map((item) => (
+                <tr key={item.id} className="border-b border-border/40 align-top">
+                  <td className="py-1 pr-2 capitalize">{item.quadrant}</td>
+                  <td className="py-1 pr-2">{item.title}{item.assumption ? " (assumption)" : ""}</td>
+                  <td className="py-1 pr-2">{item.recommended_action || "—"}</td>
+                  <td className="py-1 pr-2">{item.priority}</td>
+                  <td className="py-1">{item.evidence || "—"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+
+        <section>
           <h3 className="text-lg font-semibold mb-2">3. OKRs</h3>
           {(objectives.data?.items || []).map((o) => (
             <Card key={o.id} className="mb-3 print:shadow-none">

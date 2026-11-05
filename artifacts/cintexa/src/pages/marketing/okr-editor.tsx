@@ -108,7 +108,8 @@ export default function OkrEditorPage() {
     saveObj.mutate({ id: objId, patch: { key_results: krs.filter((k) => k.id !== krId) } });
   };
 
-  const items = objectives.data?.items || [];
+  const [showArchived, setShowArchived] = useState(false);
+  const items = (objectives.data?.items || []).filter((o) => showArchived || o.status !== "ARCHIVED");
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -119,6 +120,10 @@ export default function OkrEditorPage() {
             Full objective and key-result editing. Progress = (current − baseline) ÷ (target − baseline). Currents can auto-sync from local leads/campaigns.
           </p>
         </div>
+        <div className="flex gap-2">
+        <Button size="sm" variant="outline" onClick={() => setShowArchived((v) => !v)}>
+          {showArchived ? "Hide archived" : "Show archived"}
+        </Button>
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
             <Button size="sm"><Plus className="h-4 w-4 mr-1" /> Objective</Button>
@@ -143,6 +148,7 @@ export default function OkrEditorPage() {
             </DialogFooter>
           </DialogContent>
         </Dialog>
+        </div>
       </div>
 
       {items.map((o) => {
@@ -155,9 +161,13 @@ export default function OkrEditorPage() {
                   <CardTitle className="text-base">{o.name}</CardTitle>
                   {o.description && <CardDescription>{o.description}</CardDescription>}
                 </div>
-                <div className="flex gap-1">
+                <div className="flex flex-wrap gap-1 items-center">
                   <Badge variant="secondary">{o.horizon}</Badge>
                   <Badge variant="outline">{o.status}</Badge>
+                  <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => marketingIntel.duplicateObjective(o.id).then(() => qc.invalidateQueries({ queryKey: ["mkt"] }))}>Duplicate</Button>
+                  {o.status !== "ARCHIVED" && (
+                    <Button size="sm" variant="ghost" className="h-7 text-xs" onClick={() => marketingIntel.archiveObjective(o.id).then(() => qc.invalidateQueries({ queryKey: ["mkt"] }))}>Archive</Button>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-2 pt-2">
