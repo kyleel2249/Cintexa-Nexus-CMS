@@ -31,8 +31,12 @@ export default function CampaignsPage() {
   const qc = useQueryClient();
   const strategies = useQuery({ queryKey: ["mkt", "strategies"], queryFn: () => marketingIntel.listStrategies() });
   const objectives = useQuery({ queryKey: ["mkt", "objectives"], queryFn: () => marketingIntel.listObjectives() });
+  const personas = useQuery({ queryKey: ["mkt", "personas"], queryFn: () => marketingIntel.listPersonas() });
+  const funnels = useQuery({ queryKey: ["mkt", "funnels"], queryFn: () => marketingIntel.listFunnels() });
   const strategyName = (id?: number | null) => strategies.data?.items?.find((s) => s.id === id)?.name;
   const objectiveName = (id?: number | null) => objectives.data?.items?.find((o) => o.id === id)?.name;
+  const personaName = (id?: number | null) => personas.data?.items?.find((x) => x.id === id)?.name;
+  const funnelName = (id?: number | null) => funnels.data?.items?.find((x) => x.id === id)?.name;
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
@@ -158,6 +162,12 @@ export default function CampaignsPage() {
                     )}
                     {c.metadata?.objective_id != null && objectiveName(c.metadata.objective_id) && (
                       <span className="text-[10px] text-muted-foreground ml-1">OKR: {objectiveName(c.metadata.objective_id)}</span>
+                    )}
+                    {c.metadata?.persona_id != null && personaName(c.metadata.persona_id) && (
+                      <span className="text-[10px] text-muted-foreground ml-1">Persona: {personaName(c.metadata.persona_id)}</span>
+                    )}
+                    {c.metadata?.funnel_id != null && funnelName(c.metadata.funnel_id) && (
+                      <span className="text-[10px] text-muted-foreground ml-1">Funnel: {funnelName(c.metadata.funnel_id)}</span>
                     )}</Badge></td>
                     <td className="px-4 py-3">{c.priority}</td>
                     <td className="px-4 py-3 tabular-nums">{Number(c.budget || 0).toLocaleString()}</td>

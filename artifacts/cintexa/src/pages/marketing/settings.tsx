@@ -94,6 +94,8 @@ export default function MarketingSettingsPage() {
     } else if (kind === "campaigns") {
       const c = await (await import("@/lib/marketing/api")).marketingApi.listCampaigns();
       rows = c.items as any;
+    } else if (kind === "activity") {
+      rows = (await marketingIntel.listActivity(200)) as any;
     }
     const csv = marketingIntel.toCsv(rows);
     const a = document.createElement("a");
@@ -284,6 +286,7 @@ export default function MarketingSettingsPage() {
           <Button size="sm" variant="outline" onClick={() => exportSelective("channels")}>Channels CSV</Button>
           <Button size="sm" variant="outline" onClick={() => exportSelective("kpis")}>KPIs CSV</Button>
           <Button size="sm" variant="outline" onClick={() => exportSelective("campaigns")}>Campaigns CSV</Button>
+          <Button size="sm" variant="outline" onClick={() => exportSelective("activity")}>Activity CSV</Button>
         </CardContent>
       </Card>
 

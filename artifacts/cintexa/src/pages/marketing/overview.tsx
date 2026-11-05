@@ -114,6 +114,29 @@ export default function MarketingOverview() {
             {!(activity.data || []).length && (
               <p className="text-xs text-muted-foreground text-center py-4">No activity recorded yet.</p>
             )}
+            {(activity.data || []).length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="mt-2"
+                onClick={() => {
+                  const rows = (activity.data || []).map((a: any) => ({
+                    at: a.at,
+                    action: a.action,
+                    entity_type: a.entity_type,
+                    entity_id: a.entity_id,
+                    summary: a.summary,
+                  }));
+                  const csv = marketingIntel.toCsv(rows);
+                  const a = document.createElement("a");
+                  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+                  a.download = "marketing-activity.csv";
+                  a.click();
+                }}
+              >
+                Export activity CSV
+              </Button>
+            )}
           </CardContent>
         </Card>
 

@@ -61,8 +61,8 @@ export default function CampaignDetail() {
   });
 
   const saveLinks = useMutation({
-    mutationFn: () =>
-      marketingApi.updateCampaign(id, {
+    mutationFn: async () => {
+      const row = await marketingApi.updateCampaign(id, {
         metadata: {
           ...((campaign.data as any)?.metadata || {}),
           strategy_id: strategyId ? Number(strategyId) : null,
@@ -71,8 +71,22 @@ export default function CampaignDetail() {
           funnel_id: funnelId ? Number(funnelId) : null,
           brand_id: brandId ? Number(brandId) : null,
         },
-      } as any),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["marketing", "campaign", id] }),
+      } as any);
+      try {
+        await marketingIntel.logActivity({
+          action: "linked",
+          entity_type: "campaign",
+          entity_id: id,
+          summary: `Campaign links updated: ${campaign.data?.name || id}`,
+        });
+      } catch { /* */ }
+      return row;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["marketing", "campaign", id] });
+      qc.invalidateQueries({ queryKey: ["mkt", "activity"] });
+      qc.invalidateQueries({ queryKey: ["marketing", "campaigns"] });
+    },
   });
 
   const linkAsset = useMutation({
@@ -163,6 +177,13 @@ export default function CampaignDetail() {
                 <Button size="sm" disabled={saveLinks.isPending} onClick={() => saveLinks.mutate()}>
                   {saveLinks.isPending ? "Saving…" : "Save links"}
                 </Button>
+              </div>
+              <div className="sm:col-span-2 text-xs text-muted-foreground space-y-0.5">
+                {strategyId && <p>Strategy: {(strategies.data?.items || []).find((s) => String(s.id) === strategyId)?.name || strategyId}</p>}
+                {objectiveId && <p>OKR: {(objectives.data?.items || []).find((o) => String(o.id) === objectiveId)?.name || objectiveId}</p>}
+                {personaId && <p>Persona: {(personas.data?.items || []).find((p) => String(p.id) === personaId)?.name || personaId}</p>}
+                {funnelId && <p>Funnel: {(funnels.data?.items || []).find((f) => String(f.id) === funnelId)?.name || funnelId}</p>}
+                {brandId && <p>Brand: {(brands.data?.items || []).find((b) => String(b.id) === brandId)?.name || brandId}</p>}
               </div>
             </CardContent>
           </Card>
