@@ -52,6 +52,7 @@ export default function CampaignsPage() {
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [linkFilter, setLinkFilter] = useState<string>("all");
+  const [sortBy, setSortBy] = useState<string>("updated");
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [objective, setObjective] = useState("");
@@ -82,14 +83,23 @@ export default function CampaignsPage() {
     },
   });
 
-  const items = (data?.items || []).filter((c: Campaign) => {
-    if (linkFilter === "all") return true;
-    const n = integrationScore(c.metadata);
-    if (linkFilter === "unlinked") return n === 0;
-    if (linkFilter === "partial") return n >= 1 && n <= 3;
-    if (linkFilter === "strong") return n >= 4;
-    return true;
-  });
+  const items = (data?.items || [])
+    .filter((c: Campaign) => {
+      if (linkFilter === "all") return true;
+      const n = integrationScore(c.metadata);
+      if (linkFilter === "unlinked") return n === 0;
+      if (linkFilter === "partial") return n >= 1 && n <= 3;
+      if (linkFilter === "strong") return n >= 4;
+      return true;
+    })
+    .slice()
+    .sort((a, b) => {
+      if (sortBy === "links_desc") return integrationScore(b.metadata) - integrationScore(a.metadata);
+      if (sortBy === "links_asc") return integrationScore(a.metadata) - integrationScore(b.metadata);
+      if (sortBy === "name") return (a.name || "").localeCompare(b.name || "");
+      // updated (default): rely on list order from store
+      return 0;
+    });
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -147,6 +157,15 @@ export default function CampaignsPage() {
             <SelectItem value="unlinked">Unlinked (0/5)</SelectItem>
             <SelectItem value="partial">Partial (1–3/5)</SelectItem>
             <SelectItem value="strong">Strong (4–5/5)</SelectItem>
+          </SelectContent>
+        </Select>
+        <Select value={sortBy} onValueChange={setSortBy}>
+          <SelectTrigger className="w-[160px]"><SelectValue placeholder="Sort" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="updated">Default order</SelectItem>
+            <SelectItem value="links_desc">Most linked</SelectItem>
+            <SelectItem value="links_asc">Least linked</SelectItem>
+            <SelectItem value="name">Name A–Z</SelectItem>
           </SelectContent>
         </Select>
         <span className="text-xs text-muted-foreground ml-auto">{items.length} shown · {data?.total ?? 0} total</span>

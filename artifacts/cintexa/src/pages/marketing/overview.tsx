@@ -122,6 +122,14 @@ export default function MarketingOverview() {
                     <div className="h-full bg-primary" style={{ width: `${(avg / 5) * 100}%` }} />
                   </div>
                   <Badge variant="outline" className="text-[10px]">CALCULATED from local metadata</Badge>
+                  {full < list.length && (
+                    <p className="text-xs pt-1">
+                      <Link href="/marketing/campaigns" className="underline">
+                        {list.length - full} recent campaign(s) still need links
+                      </Link>
+                      {" "}— open a campaign and complete strategy, OKR, persona, funnel, and brand.
+                    </p>
+                  )}
                 </>
               );
             })()}
