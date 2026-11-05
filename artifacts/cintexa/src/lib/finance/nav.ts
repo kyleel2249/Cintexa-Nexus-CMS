@@ -17,6 +17,10 @@ export const FINANCE_NAV = [
   { key: "invoices", label: "Invoices / AR", href: "/finance/invoices", section: "Receivables" },
   { key: "discounts", label: "Discounts & Prof. Services", href: "/finance/discounts", section: "Receivables" },
   { key: "payments", label: "Payments", href: "/finance/payments", section: "Receivables" },
+  { key: "fx", label: "Foreign Exchange", href: "/finance/fx", section: "Accounting Engine" },
+  { key: "inventory", label: "Inventory & COGS", href: "/finance/inventory", section: "Accounting Engine" },
+  { key: "payroll", label: "Payroll", href: "/finance/payroll", section: "Accounting Engine" },
+  { key: "restatements", label: "Restatements & Year-End", href: "/finance/restatements", section: "Accounting Engine" },
   { key: "audit", label: "Audit Trail", href: "/finance/audit", section: "System" },
 ] as const;
 
