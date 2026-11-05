@@ -37,6 +37,18 @@ export default function CampaignsPage() {
   const objectiveName = (id?: number | null) => objectives.data?.items?.find((o) => o.id === id)?.name;
   const personaName = (id?: number | null) => personas.data?.items?.find((x) => x.id === id)?.name;
   const funnelName = (id?: number | null) => funnels.data?.items?.find((x) => x.id === id)?.name;
+  const brands = useQuery({ queryKey: ["mkt", "brands"], queryFn: () => marketingIntel.listBrands() });
+  const brandName = (id?: number | null) => brands.data?.items?.find((x) => x.id === id)?.name;
+  function integrationScore(m?: Campaign["metadata"]) {
+    if (!m) return 0;
+    let n = 0;
+    if (m.strategy_id != null) n++;
+    if (m.objective_id != null) n++;
+    if (m.persona_id != null) n++;
+    if (m.funnel_id != null) n++;
+    if (m.brand_id != null) n++;
+    return n;
+  }
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
@@ -168,7 +180,17 @@ export default function CampaignsPage() {
                     )}
                     {c.metadata?.funnel_id != null && funnelName(c.metadata.funnel_id) && (
                       <span className="text-[10px] text-muted-foreground ml-1">Funnel: {funnelName(c.metadata.funnel_id)}</span>
-                    )}</Badge></td>
+                    )}
+                    {c.metadata?.brand_id != null && brandName(c.metadata.brand_id) && (
+                      <span className="text-[10px] text-muted-foreground ml-1">Brand: {brandName(c.metadata.brand_id)}</span>
+                    )}
+                    <Badge
+                      variant={integrationScore(c.metadata) >= 4 ? "default" : integrationScore(c.metadata) >= 2 ? "secondary" : "outline"}
+                      className="text-[9px] ml-1"
+                      title="Links: strategy, OKR, persona, funnel, brand"
+                    >
+                      {integrationScore(c.metadata)}/5 linked
+                    </Badge></Badge></td>
                     <td className="px-4 py-3">{c.priority}</td>
                     <td className="px-4 py-3 tabular-nums">{Number(c.budget || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">

@@ -178,12 +178,26 @@ export default function CampaignDetail() {
                   {saveLinks.isPending ? "Saving…" : "Save links"}
                 </Button>
               </div>
-              <div className="sm:col-span-2 text-xs text-muted-foreground space-y-0.5">
-                {strategyId && <p>Strategy: {(strategies.data?.items || []).find((s) => String(s.id) === strategyId)?.name || strategyId}</p>}
-                {objectiveId && <p>OKR: {(objectives.data?.items || []).find((o) => String(o.id) === objectiveId)?.name || objectiveId}</p>}
-                {personaId && <p>Persona: {(personas.data?.items || []).find((p) => String(p.id) === personaId)?.name || personaId}</p>}
-                {funnelId && <p>Funnel: {(funnels.data?.items || []).find((f) => String(f.id) === funnelId)?.name || funnelId}</p>}
-                {brandId && <p>Brand: {(brands.data?.items || []).find((b) => String(b.id) === brandId)?.name || brandId}</p>}
+              <div className="sm:col-span-2 space-y-2">
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-medium">Integration completeness</span>
+                  <Badge variant="outline" className="text-[10px]">
+                    {[strategyId, objectiveId, personaId, funnelId, brandId].filter(Boolean).length}/5
+                  </Badge>
+                </div>
+                <div className="h-1.5 rounded bg-muted overflow-hidden">
+                  <div
+                    className="h-full bg-primary transition-all"
+                    style={{ width: `${([strategyId, objectiveId, personaId, funnelId, brandId].filter(Boolean).length / 5) * 100}%` }}
+                  />
+                </div>
+                <div className="text-xs text-muted-foreground space-y-0.5">
+                  <p className={strategyId ? "" : "opacity-50"}>Strategy: {(strategies.data?.items || []).find((s) => String(s.id) === strategyId)?.name || "—"}</p>
+                  <p className={objectiveId ? "" : "opacity-50"}>OKR: {(objectives.data?.items || []).find((o) => String(o.id) === objectiveId)?.name || "—"}</p>
+                  <p className={personaId ? "" : "opacity-50"}>Persona: {(personas.data?.items || []).find((p) => String(p.id) === personaId)?.name || "—"}</p>
+                  <p className={funnelId ? "" : "opacity-50"}>Funnel: {(funnels.data?.items || []).find((f) => String(f.id) === funnelId)?.name || "—"}</p>
+                  <p className={brandId ? "" : "opacity-50"}>Brand: {(brands.data?.items || []).find((b) => String(b.id) === brandId)?.name || "—"}</p>
+                </div>
               </div>
             </CardContent>
           </Card>

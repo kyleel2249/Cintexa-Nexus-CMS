@@ -99,6 +99,35 @@ export default function MarketingOverview() {
           </CardContent>
         </Card>
 
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Integration health</CardTitle>
+            <CardDescription>Share of campaigns with strategy/OKR/persona/funnel/brand links</CardDescription>
+          </CardHeader>
+          <CardContent className="text-sm space-y-2">
+            {(() => {
+              const list = data?.recentCampaigns || [];
+              if (!list.length) return <p className="text-xs text-muted-foreground">No campaigns yet.</p>;
+              const scores = list.map((c: any) => {
+                const m = c.metadata || {};
+                return [m.strategy_id, m.objective_id, m.persona_id, m.funnel_id, m.brand_id].filter((x) => x != null).length;
+              });
+              const avg = scores.reduce((a: number, b: number) => a + b, 0) / scores.length;
+              const full = scores.filter((s: number) => s >= 4).length;
+              return (
+                <>
+                  <p className="text-2xl font-semibold tabular-nums">{avg.toFixed(1)}<span className="text-sm font-normal text-muted-foreground"> / 5 avg</span></p>
+                  <p className="text-xs text-muted-foreground">{full} of {list.length} recent campaigns highly linked (4+)</p>
+                  <div className="h-1.5 rounded bg-muted overflow-hidden">
+                    <div className="h-full bg-primary" style={{ width: `${(avg / 5) * 100}%` }} />
+                  </div>
+                  <Badge variant="outline" className="text-[10px]">CALCULATED from local metadata</Badge>
+                </>
+              );
+            })()}
+          </CardContent>
+        </Card>
+
         <Card className="md:col-span-2">
           <CardHeader className="pb-2">
             <CardTitle className="text-base">Recent activity</CardTitle>
