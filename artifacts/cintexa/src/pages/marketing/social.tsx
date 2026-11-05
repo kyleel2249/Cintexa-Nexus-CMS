@@ -154,7 +154,7 @@ export default function SocialMediaManager() {
           ))}
         </CardContent>
       </Card>
-      <div className=\"space-y-3\">
+      <div className="space-y-3">
       <PersonaRecommendPanel />
       <BrandIntelligencePanel
         onInsertClaim={(text) => {

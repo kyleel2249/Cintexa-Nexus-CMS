@@ -344,7 +344,7 @@ export function ensureMarketingSeed() {
     persona_ids: [1, 3],
     owner: "Marketing",
     deadline: null,
-    created extr_at: t,
+    created_at: t,
     updated_at: t,
   } as any];
 
