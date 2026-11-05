@@ -14,7 +14,7 @@ import { SitePreview } from "@/components/site-preview";
 import { CintexaLogo } from "@/components/SplashScreen";
 import { useSalesOptional } from "@/context/SalesContext";
 import { SALES_NAV, SALES_AI_NAV, SALES_GLOSSARY_NAV, SALES_ENRICH_NAV, showAiNav } from "@/lib/sales/nav";
-import { MARKETING_NAV, activeMarketingKey } from "@/lib/marketing/nav";
+import { MARKETING_NAV, activeMarketingKey, navFor } from "@/lib/marketing/nav";
 import { MARKETING_NAV_ICONS } from "@/lib/marketing/nav-icons";
 import { lookupTerm } from "@/lib/sales/glossary";
 import { useSalesQuery } from "@/lib/sales/hooks";
@@ -100,7 +100,11 @@ function MarketingGroup({ location, onNavigate }: { location: string; onNavigate
   const onM = location === "/marketing" || location.startsWith("/marketing/");
   const [open, setOpen] = useState(onM);
   const active = activeMarketingKey(location.split("?")[0]!);
-  const sections = [...new Set(MARKETING_NAV.map((i) => i.section).filter(Boolean))];
+  const sales = useSalesOptional();
+  // Prefer existing session perms when Sales context exposes them; otherwise show full marketing nav (local-first, no new auth).
+  const perms = sales?.perms;
+  const items = perms ? navFor(perms) : MARKETING_NAV;
+  const sections = [...new Set(items.map((i) => i.section).filter(Boolean))];
   return (
     <div className="space-y-2">
       <button type="button" onClick={() => setOpen(!open)} aria-expanded={open} className="flex w-full items-center gap-2 px-2 text-xs font-semibold text-muted-foreground uppercase tracking-wider hover:text-foreground">
@@ -111,7 +115,7 @@ function MarketingGroup({ location, onNavigate }: { location: string; onNavigate
           {sections.map((sec) => (
             <div key={sec} className="space-y-1">
               <p className="px-2 pt-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{sec}</p>
-              {MARKETING_NAV.filter((i) => i.section === sec).map((i) => {
+              {items.filter((i) => i.section === sec).map((i) => {
                 const Icon = MARKETING_NAV_ICONS[i.icon] || Send;
                 return (
                   <NavLink key={i.key} href={i.href} label={i.label} Icon={Icon} active={active === i.key} onNavigate={onNavigate} />

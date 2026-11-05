@@ -667,6 +667,23 @@ export function duplicateObjective(id: number): Objective | null {
 
 
 const ACTIVITY_MAX = 200;
+const MARKETING_SCHEMA_VERSION = 2;
+
+export function ensureSchemaMigrations() {
+  ensureMarketingSeed();
+  const b = load() as any;
+  if ((b.schemaVersion || 1) >= MARKETING_SCHEMA_VERSION) return;
+  // soft-migrate: ensure bags exist without wiping data
+  save({
+    schemaVersion: MARKETING_SCHEMA_VERSION,
+    touchpoints: b.touchpoints || [],
+    variants: b.variants || [],
+    templates: b.templates || [],
+    activityLog: b.activityLog || [],
+    budgetAlertConfig: b.budgetAlertConfig || { thresholds: [50, 75, 90, 100] },
+  } as any);
+}
+
 
 export function logActivity(input: {
   action: string;
