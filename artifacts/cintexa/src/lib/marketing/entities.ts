@@ -140,12 +140,26 @@ export type Funnel = {
   updated_at: string;
 };
 
+export type KpiDefinition = {
+  id: string;
+  name: string;
+  description?: string;
+  unit: string;
+  method: "manual" | "count" | "currency" | "percent";
+  target?: number | null;
+  frequency: "weekly" | "monthly" | "quarterly" | "campaign";
+};
+
 export type MarketingSettings = {
   business_name: string;
   default_brand_id?: number | null;
   currency: string;
   reporting_period: string;
   channels: string[];
+  archived_channels?: string[];
+  attribution_model?: "first_touch" | "last_touch" | "linear" | "manual";
+  attribution_notes?: string;
+  kpis?: KpiDefinition[];
 };
 
 type Bag = {
@@ -546,6 +560,10 @@ export function getSettings(): MarketingSettings {
     business_name: "CINTEXA", default_brand_id: null, currency: "GHS",
     reporting_period: "monthly",
     channels: ["Website", "Social media", "Email", "WhatsApp", "Referral", "Other"],
+    archived_channels: [],
+    attribution_model: "last_touch",
+    attribution_notes: "Attribution requires touchpoint data. Without it, treat results as MANUAL.",
+    kpis: [],
   };
 }
 export function updateSettings(patch: Partial<MarketingSettings>): MarketingSettings {
