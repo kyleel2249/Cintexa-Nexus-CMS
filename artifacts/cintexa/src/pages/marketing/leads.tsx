@@ -9,7 +9,8 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Plus } from "lucide-react";
 import { marketingApi, marketingIntel } from "@/lib/marketing/api";
 import { probeSalesLocal } from "@/lib/marketing/sales-bridge";
-import { attributeLeadsBySource } from "@/lib/marketing/attribution";
+import { attributeLeadsBySource, attributeConversionByTouchpoints } from "@/lib/marketing/attribution";
+import { marketingExtended } from "@/lib/marketing/api";
 import { useMarketingSubscription } from "@/lib/marketing/useMarketingSubscription";
 import { Link } from "wouter";
 
@@ -22,6 +23,10 @@ export default function LeadGeneration() {
   const [email, setEmail] = useState("");
   const [source, setSource] = useState("");
   const [score, setScore] = useState("0");
+  const [tpLead, setTpLead] = useState<number | null>(null);
+  const [tpChannel, setTpChannel] = useState("");
+  const [tpAt, setTpAt] = useState(() => new Date().toISOString().slice(0, 16));
+
 
   useEffect(() => {
     marketingIntel.ensureSeed();
@@ -133,7 +138,8 @@ export default function LeadGeneration() {
         <CardContent className="space-y-2">
           {isLoading && <p className="text-sm text-muted-foreground text-center py-6">Loading…</p>}
           {items.map((lead: any) => (
-            <div key={lead.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+            <div key={lead.id} className="rounded-md border px-3 py-2 space-y-1">
+              <div className="flex items-center justify-between gap-2">
               <div className="min-w-0">
                 <p className="text-sm font-medium truncate">{lead.name}</p>
                 <p className="text-xs text-muted-foreground">
@@ -148,6 +154,8 @@ export default function LeadGeneration() {
                   </Button>
                 )}
               </div>
+              </div>
+              <LeadTouchpoints leadId={lead.id} />
             </div>
           ))}
           {!isLoading && !items.length && (
@@ -155,6 +163,49 @@ export default function LeadGeneration() {
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+
+function LeadTouchpoints({ leadId }: { leadId: number }) {
+  const qc = useQueryClient();
+  const tps = useQuery({ queryKey: ["mkt", "touchpoints", leadId], queryFn: () => marketingExtended.listTouchpoints(leadId) });
+  const settings = useQuery({ queryKey: ["mkt", "settings"], queryFn: () => marketingIntel.getSettings() });
+  const model = settings.data?.attribution_model || "last_touch";
+  const attr = attributeConversionByTouchpoints(tps.data || [], model as any);
+  const [channel, setChannel] = useState("Website");
+  const [at, setAt] = useState(() => new Date().toISOString().slice(0, 16));
+  const [conv, setConv] = useState(false);
+  return (
+    <div className="mt-2 rounded-md border border-dashed p-2 space-y-2">
+      <p className="text-xs font-medium">Touchpoint timeline (manual)</p>
+      {(tps.data || []).map((t) => (
+        <div key={t.id} className="text-[11px] flex justify-between gap-2">
+          <span>{t.at.slice(0, 16)} · {t.channel} · {t.interaction_type}{t.is_conversion ? " · conversion" : ""}</span>
+        </div>
+      ))}
+      <div className="flex flex-wrap gap-1">
+        <Input className="h-7 text-xs w-28" value={channel} onChange={(e) => setChannel(e.target.value)} placeholder="Channel" />
+        <Input className="h-7 text-xs w-40" type="datetime-local" value={at} onChange={(e) => setAt(e.target.value)} />
+        <label className="text-[10px] flex items-center gap-1"><input type="checkbox" checked={conv} onChange={(e) => setConv(e.target.checked)} /> conversion</label>
+        <Button size="sm" className="h-7 text-xs" onClick={() => {
+          marketingExtended.createTouchpoint({
+            lead_id: leadId,
+            channel,
+            interaction_type: conv ? "conversion" : "interaction",
+            at: new Date(at).toISOString(),
+            is_conversion: conv,
+            manual: true,
+          }).then(() => qc.invalidateQueries({ queryKey: ["mkt", "touchpoints", leadId] }));
+        }}>Add</Button>
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        {attr.ok ? `${attr.model}: ${attr.message}` : attr.message}
+      </p>
+      {attr.ok && attr.credits.map((c) => (
+        <p key={c.touchpoint_id} className="text-[10px]">{c.channel}: {(c.credit * 100).toFixed(1)}%</p>
+      ))}
     </div>
   );
 }

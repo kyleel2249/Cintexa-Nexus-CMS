@@ -4,7 +4,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Gauge, Send, CalendarDays, DollarSign, Users, TrendingUp, Plus } from "lucide-react";
-import { marketingApi, marketingIntel } from "@/lib/marketing/api";
+import { marketingApi, marketingIntel, marketingExtended } from "@/lib/marketing/api";
 import { useMarketingSubscription } from "@/lib/marketing/useMarketingSubscription";
 
 type OverviewData = {
@@ -39,6 +39,13 @@ export default function MarketingOverview() {
   const activity = useQuery({
     queryKey: ["mkt", "activity"],
     queryFn: () => marketingIntel.listActivity(30),
+  });
+  const budgetAlerts = useQuery({
+    queryKey: ["mkt", "budget-alerts"],
+    queryFn: async () => {
+      const c = await marketingApi.listCampaigns();
+      return marketingExtended.computeBudgetAlerts(c.items as any);
+    },
   });
 
   const k = data?.kpis;
@@ -96,6 +103,26 @@ export default function MarketingOverview() {
                 </div>
               </Link>
             ))}
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Budget alerts</CardTitle>
+            <CardDescription>Thresholds from Settings · recorded spend only</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1 text-sm">
+            {(budgetAlerts.data || []).slice(0, 5).map((a) => (
+              <Link key={a.campaign_id} href={`/marketing/campaigns/${a.campaign_id}`}>
+                <div className="flex justify-between gap-2 border-b border-border/40 py-1 hover:bg-muted/30">
+                  <span className="truncate">{a.campaign_name}</span>
+                  <span className="text-xs tabular-nums shrink-0">{a.pct}% (≥{a.threshold}%)</span>
+                </div>
+              </Link>
+            ))}
+            {!(budgetAlerts.data || []).length && (
+              <p className="text-xs text-muted-foreground">No campaigns at alert thresholds.</p>
+            )}
           </CardContent>
         </Card>
 

@@ -21,6 +21,10 @@ const Settings = lazy(() => import("./settings"));
 const Assets = lazy(() => import("./assets"));
 const OkrEditor = lazy(() => import("./okr-editor"));
 const Reports = lazy(() => import("./reports"));
+const Calendar = lazy(() => import("./calendar"));
+const Activity = lazy(() => import("./activity"));
+const ImportPage = lazy(() => import("./import"));
+const Templates = lazy(() => import("./templates"));
 
 function Spinner() {
   return (
@@ -55,6 +59,10 @@ export function MarketingRoutes() {
         <Route path="/marketing/analytics" component={Analytics} />
         <Route path="/marketing/budget" component={Budget} />
         <Route path="/marketing/reports" component={Reports} />
+        <Route path="/marketing/calendar" component={Calendar} />
+        <Route path="/marketing/activity" component={Activity} />
+        <Route path="/marketing/import" component={ImportPage} />
+        <Route path="/marketing/templates" component={Templates} />
         <Route path="/marketing/settings" component={Settings} />
       </Switch>
     </Suspense>

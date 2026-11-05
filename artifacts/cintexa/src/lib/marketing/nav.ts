@@ -5,7 +5,7 @@ export interface MarketingNavItem {
   href: string;
   perm: string;
   anyPerm?: string[];
-  icon: "Gauge" | "Target" | "Send" | "CalendarDays" | "PenTool" | "Share2" | "Mail" | "Search" | "Users" | "UserPlus" | "Zap" | "Palette" | "Image" | "Layout" | "BarChart3" | "DollarSign" | "ScrollText" | "Settings" | "Lightbulb" | "FileText" | "Bot";
+  icon: "Gauge" | "Target" | "Send" | "CalendarDays" | "PenTool" | "Share2" | "Mail" | "Search" | "Users" | "UserPlus" | "Zap" | "Palette" | "Image" | "Layout" | "BarChart3" | "DollarSign" | "ScrollText" | "Settings" | "Lightbulb" | "FileText" | "Bot" | "List" | "Upload";
   section?: string;
 }
 
@@ -27,6 +27,9 @@ export const MARKETING_NAV: MarketingNavItem[] = [
   { key: "analytics", label: "Marketing Analytics", href: "/marketing/analytics", perm: "marketing:analytics", icon: "BarChart3", section: "Intelligence" },
   { key: "budget", label: "Budget & ROI", href: "/marketing/budget", perm: "marketing:budget", icon: "DollarSign", section: "Intelligence" },
   { key: "reports", label: "Reports & Intelligence", href: "/marketing/reports", perm: "marketing:reports", icon: "ScrollText", section: "Intelligence" },
+  { key: "templates", label: "Templates", href: "/marketing/templates", perm: "marketing:content", icon: "FileText", section: "Creation" },
+  { key: "activity", label: "Activity Log", href: "/marketing/activity", perm: "marketing:read", icon: "List", section: "Intelligence" },
+  { key: "import", label: "CSV Import", href: "/marketing/import", perm: "marketing:settings", icon: "Upload", section: "System" },
   { key: "settings", label: "Marketing Settings", href: "/marketing/settings", perm: "marketing:settings", icon: "Settings", section: "System" },
 ];
 

@@ -1,8 +1,9 @@
 /**
- * Lightweight local attribution summaries.
- * Uses marketing lead `source` strings only — not multi-touch journeys.
- * Never invents touchpoints that were not recorded.
+ * Source distribution + multi-touch attribution when touchpoints exist.
+ * Never fabricates touchpoints or revenue.
  */
+import type { Touchpoint } from "./entities";
+
 export type AttributionModel = "first_touch" | "last_touch" | "linear" | "manual";
 
 export type LeadLike = {
@@ -15,14 +16,9 @@ export type LeadLike = {
 export type AttributionBucket = {
   source: string;
   count: number;
-  share: number; // 0–100
+  share: number;
 };
 
-/**
- * For first/last/linear without multi-touch data, each lead has a single source.
- * All models therefore collapse to the same distribution by source.
- * Callers must show this limitation.
- */
 export function attributeLeadsBySource(
   leads: LeadLike[],
   _model: AttributionModel = "last_touch",
@@ -45,6 +41,65 @@ export function attributeLeadsBySource(
     buckets,
     total,
     limitation:
-      "Single source field per lead only. First/last/linear multi-touch cannot differ without a touchpoint timeline. Treat as MANUAL source distribution.",
+      "Single source field per lead only. Use touchpoint timelines for multi-touch models.",
   };
+}
+
+export type TouchAttributionResult = {
+  ok: boolean;
+  model: AttributionModel;
+  credits: { channel: string; touchpoint_id: string; credit: number }[];
+  message: string;
+};
+
+/** Credit a conversion using eligible touchpoints for one lead. */
+export function attributeConversionByTouchpoints(
+  touchpoints: Touchpoint[],
+  model: AttributionModel,
+): TouchAttributionResult {
+  const sorted = [...touchpoints].sort((a, b) => a.at.localeCompare(b.at));
+  if (!sorted.length) {
+    return { ok: false, model, credits: [], message: "INSUFFICIENT ATTRIBUTION DATA — no touchpoints" };
+  }
+  const hasConversion = sorted.some((t) => t.is_conversion);
+  if (!hasConversion && model !== "manual") {
+    return {
+      ok: false,
+      model,
+      credits: [],
+      message: "INSUFFICIENT ATTRIBUTION DATA — no conversion touchpoint recorded",
+    };
+  }
+  if (model === "first_touch") {
+    const t = sorted[0];
+    return {
+      ok: true,
+      model,
+      credits: [{ channel: t.channel, touchpoint_id: t.id, credit: 1 }],
+      message: "100% credit to first eligible touchpoint",
+    };
+  }
+  if (model === "last_touch") {
+    const t = sorted[sorted.length - 1];
+    return {
+      ok: true,
+      model,
+      credits: [{ channel: t.channel, touchpoint_id: t.id, credit: 1 }],
+      message: "100% credit to last eligible touchpoint",
+    };
+  }
+  if (model === "linear") {
+    const credit = 1 / sorted.length;
+    return {
+      ok: true,
+      model,
+      credits: sorted.map((t) => ({
+        channel: t.channel,
+        touchpoint_id: t.id,
+        credit: Math.round(credit * 1000) / 1000,
+      })),
+      message: `Equal credit across ${sorted.length} touchpoints`,
+    };
+  }
+  return { ok: false, model, credits: [], message: "Manual attribution — assign credit outside this calculator" };
 }

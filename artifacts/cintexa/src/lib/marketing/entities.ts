@@ -140,6 +140,54 @@ export type Funnel = {
   updated_at: string;
 };
 
+
+export type Touchpoint = {
+  id: string;
+  lead_id: number;
+  campaign_id?: number | null;
+  channel: string;
+  source?: string | null;
+  medium?: string | null;
+  interaction_type: string;
+  at: string;
+  is_conversion?: boolean;
+  notes?: string | null;
+  manual: boolean;
+  created_at: string;
+};
+
+export type ContentVariant = {
+  id: string;
+  parent_type: "content" | "email" | "social";
+  parent_id?: number | null;
+  campaign_id?: number | null;
+  name: string;
+  hypothesis?: string;
+  body: string;
+  subject?: string | null;
+  impressions?: number | null;
+  clicks?: number | null;
+  conversions?: number | null;
+  notes?: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type MarketingTemplate = {
+  id: string;
+  name: string;
+  category: "social" | "email" | "subject" | "article" | "cta" | "promo";
+  body: string;
+  brand_id?: number | null;
+  archived?: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type BudgetAlertConfig = {
+  thresholds: number[]; // e.g. 50, 75, 90, 100
+};
+
 export type MarketingActivity = {
   id: string;
   at: string;
@@ -181,6 +229,10 @@ type Bag = {
   funnels?: Funnel[];
   settings?: MarketingSettings;
   activityLog?: MarketingActivity[];
+  touchpoints?: Touchpoint[];
+  variants?: ContentVariant[];
+  templates?: MarketingTemplate[];
+  budgetAlertConfig?: BudgetAlertConfig;
   seq?: Record<string, number>;
   [k: string]: unknown;
 };
@@ -635,6 +687,177 @@ export function logActivity(input: {
   const list = [row, ...((b.activityLog as MarketingActivity[]) || [])].slice(0, ACTIVITY_MAX);
   save({ activityLog: list });
   marketingEmit(MarketingEvents.CHANGED);
+}
+
+
+// ── Touchpoints ──
+export function listTouchpoints(leadId?: number): Touchpoint[] {
+  ensureMarketingSeed();
+  const list: Touchpoint[] = (load() as any).touchpoints || [];
+  return (leadId != null ? list.filter((t) => t.lead_id === leadId) : list).sort((a, b) => a.at.localeCompare(b.at));
+}
+
+export function createTouchpoint(input: Omit<Touchpoint, "id" | "created_at"> & { lead_id: number; channel: string; at: string; interaction_type: string }): Touchpoint {
+  ensureMarketingSeed();
+  const b = load() as any;
+  const row: Touchpoint = {
+    id: crypto.randomUUID(),
+    lead_id: input.lead_id,
+    campaign_id: input.campaign_id ?? null,
+    channel: input.channel,
+    source: input.source ?? null,
+    medium: input.medium ?? null,
+    interaction_type: input.interaction_type,
+    at: input.at,
+    is_conversion: !!input.is_conversion,
+    notes: input.notes ?? null,
+    manual: input.manual !== false,
+    created_at: now(),
+  };
+  save({ touchpoints: [...(b.touchpoints || []), row] });
+  logActivity({ action: "created", entity_type: "touchpoint", entity_id: row.id, summary: `Touchpoint: ${row.channel} for lead #${row.lead_id}` });
+  marketingEmit(MarketingEvents.CHANGED);
+  return row;
+}
+
+export function deleteTouchpoint(id: string) {
+  const b = load() as any;
+  save({ touchpoints: (b.touchpoints || []).filter((t: Touchpoint) => t.id !== id) });
+  logActivity({ action: "deleted", entity_type: "touchpoint", entity_id: id, summary: "Touchpoint removed" });
+}
+
+// ── Templates ──
+export function listTemplates(includeArchived = false): MarketingTemplate[] {
+  ensureMarketingSeed();
+  const list: MarketingTemplate[] = (load() as any).templates || [];
+  return list.filter((t) => includeArchived || !t.archived).sort((a, b) => b.updated_at.localeCompare(a.updated_at));
+}
+
+export function createTemplate(input: Partial<MarketingTemplate> & { name: string; body: string; category: MarketingTemplate["category"] }): MarketingTemplate {
+  ensureMarketingSeed();
+  const b = load() as any;
+  const t0 = now();
+  const row: MarketingTemplate = {
+    id: crypto.randomUUID(),
+    name: input.name.trim(),
+    category: input.category,
+    body: input.body,
+    brand_id: input.brand_id ?? null,
+    archived: false,
+    created_at: t0,
+    updated_at: t0,
+  };
+  save({ templates: [...(b.templates || []), row] });
+  logActivity({ action: "created", entity_type: "template", entity_id: row.id, summary: `Template: ${row.name}` });
+  return row;
+}
+
+export function updateTemplate(id: string, patch: Partial<MarketingTemplate>): MarketingTemplate | null {
+  const b = load() as any;
+  const list: MarketingTemplate[] = b.templates || [];
+  const i = list.findIndex((x) => x.id === id);
+  if (i < 0) return null;
+  list[i] = { ...list[i], ...patch, id, updated_at: now() };
+  save({ templates: list });
+  logActivity({ action: "updated", entity_type: "template", entity_id: id, summary: `Template updated: ${list[i].name}` });
+  return list[i];
+}
+
+// ── Variants ──
+export function listVariants(parentType?: string, parentId?: number): ContentVariant[] {
+  ensureMarketingSeed();
+  let list: ContentVariant[] = (load() as any).variants || [];
+  if (parentType) list = list.filter((v) => v.parent_type === parentType);
+  if (parentId != null) list = list.filter((v) => v.parent_id === parentId);
+  return list;
+}
+
+export function createVariant(input: Partial<ContentVariant> & { name: string; body: string; parent_type: ContentVariant["parent_type"] }): ContentVariant {
+  ensureMarketingSeed();
+  const b = load() as any;
+  const t0 = now();
+  const row: ContentVariant = {
+    id: crypto.randomUUID(),
+    parent_type: input.parent_type,
+    parent_id: input.parent_id ?? null,
+    campaign_id: input.campaign_id ?? null,
+    name: input.name.trim(),
+    hypothesis: input.hypothesis,
+    body: input.body,
+    subject: input.subject ?? null,
+    impressions: input.impressions ?? null,
+    clicks: input.clicks ?? null,
+    conversions: input.conversions ?? null,
+    notes: input.notes ?? null,
+    created_at: t0,
+    updated_at: t0,
+  };
+  save({ variants: [...(b.variants || []), row] });
+  logActivity({ action: "created", entity_type: "variant", entity_id: row.id, summary: `Variant: ${row.name}` });
+  return row;
+}
+
+export function updateVariant(id: string, patch: Partial<ContentVariant>): ContentVariant | null {
+  const b = load() as any;
+  const list: ContentVariant[] = b.variants || [];
+  const i = list.findIndex((x) => x.id === id);
+  if (i < 0) return null;
+  list[i] = { ...list[i], ...patch, id, updated_at: now() };
+  save({ variants: list });
+  logActivity({ action: "updated", entity_type: "variant", entity_id: id, summary: `Variant updated: ${list[i].name}` });
+  return list[i];
+}
+
+// ── Budget alerts ──
+export function getBudgetAlertConfig(): BudgetAlertConfig {
+  ensureMarketingSeed();
+  return (load() as any).budgetAlertConfig || { thresholds: [50, 75, 90, 100] };
+}
+
+export function setBudgetAlertConfig(cfg: BudgetAlertConfig) {
+  save({ budgetAlertConfig: cfg });
+  logActivity({ action: "updated", entity_type: "settings", summary: "Budget alert thresholds updated" });
+  marketingEmit(MarketingEvents.SETTINGS);
+}
+
+export type BudgetAlert = {
+  campaign_id: number;
+  campaign_name: string;
+  budget: number;
+  spent: number;
+  pct: number;
+  threshold: number;
+  level: "warning" | "critical";
+};
+
+export function computeBudgetAlerts(
+  campaigns: { id: number; name: string; budget?: number; spent?: number }[],
+): BudgetAlert[] {
+  const cfg = getBudgetAlertConfig();
+  const thresholds = (cfg.thresholds || [50, 75, 90, 100]).slice().sort((a, b) => a - b);
+  const alerts: BudgetAlert[] = [];
+  for (const c of campaigns) {
+    const budget = Number(c.budget || 0);
+    const spent = Number(c.spent || 0);
+    if (budget <= 0) continue;
+    const pct = (spent / budget) * 100;
+    let hit: number | null = null;
+    for (const th of thresholds) {
+      if (pct >= th) hit = th;
+    }
+    if (hit != null) {
+      alerts.push({
+        campaign_id: c.id,
+        campaign_name: c.name,
+        budget,
+        spent,
+        pct: Math.round(pct * 10) / 10,
+        threshold: hit,
+        level: hit >= 100 ? "critical" : "warning",
+      });
+    }
+  }
+  return alerts.sort((a, b) => b.pct - a.pct);
 }
 
 export function listActivity(limit = 50): MarketingActivity[] {

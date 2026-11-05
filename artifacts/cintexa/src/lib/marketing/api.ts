@@ -120,6 +120,8 @@ export const marketingApi = {
 import * as ent from "./entities";
 
 export const marketingIntel = {
+  ...({} as any),
+
   ensureSeed: () => { ent.ensureMarketingSeed(); },
 
   listStrategies: () => Promise.resolve({ items: ent.listStrategies() }),
@@ -216,4 +218,32 @@ export const marketingAssets = {
   listFormRefs: () => Promise.resolve({ items: ent.listFormRefs() }),
   createFormRef: (b: Parameters<typeof ent.createFormRef>[0]) => Promise.resolve(ent.createFormRef(b)),
   syncOkrs: (m: Parameters<typeof ent.syncOkrsFromLocalMetrics>[0]) => Promise.resolve(ent.syncOkrsFromLocalMetrics(m)),
+};
+
+
+export const marketingExtended = {
+  listTouchpoints: (leadId?: number) => Promise.resolve(ent.listTouchpoints(leadId)),
+  createTouchpoint: (b: Parameters<typeof ent.createTouchpoint>[0]) => Promise.resolve(ent.createTouchpoint(b)),
+  deleteTouchpoint: (id: string) => { ent.deleteTouchpoint(id); return Promise.resolve(); },
+  listTemplates: (arch?: boolean) => Promise.resolve(ent.listTemplates(arch)),
+  createTemplate: (b: Parameters<typeof ent.createTemplate>[0]) => Promise.resolve(ent.createTemplate(b)),
+  updateTemplate: (id: string, b: Parameters<typeof ent.updateTemplate>[1]) => {
+    const r = ent.updateTemplate(id, b);
+    if (!r) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(r);
+  },
+  listVariants: (t?: string, id?: number) => Promise.resolve(ent.listVariants(t, id)),
+  createVariant: (b: Parameters<typeof ent.createVariant>[0]) => Promise.resolve(ent.createVariant(b)),
+  updateVariant: (id: string, b: Parameters<typeof ent.updateVariant>[1]) => {
+    const r = ent.updateVariant(id, b);
+    if (!r) return Promise.reject(new Error("Not found"));
+    return Promise.resolve(r);
+  },
+  getBudgetAlertConfig: () => Promise.resolve(ent.getBudgetAlertConfig()),
+  setBudgetAlertConfig: (c: Parameters<typeof ent.setBudgetAlertConfig>[0]) => {
+    ent.setBudgetAlertConfig(c);
+    return Promise.resolve();
+  },
+  computeBudgetAlerts: (campaigns: Parameters<typeof ent.computeBudgetAlerts>[0]) =>
+    Promise.resolve(ent.computeBudgetAlerts(campaigns)),
 };
