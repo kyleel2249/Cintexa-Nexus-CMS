@@ -140,6 +140,15 @@ export type Funnel = {
   updated_at: string;
 };
 
+export type MarketingActivity = {
+  id: string;
+  at: string;
+  action: string;
+  entity_type: string;
+  entity_id?: number | string | null;
+  summary: string;
+};
+
 export type KpiDefinition = {
   id: string;
   name: string;
@@ -171,6 +180,7 @@ type Bag = {
   claims?: BrandClaim[];
   funnels?: Funnel[];
   settings?: MarketingSettings;
+  activityLog?: MarketingActivity[];
   seq?: Record<string, number>;
   [k: string]: unknown;
 };
@@ -355,6 +365,7 @@ export function createStrategy(input: Partial<Strategy> & { name: string }): Str
   };
   save({ strategies: [...(b.strategies || []), row] });
   marketingEmit(MarketingEvents.STRATEGY, row);
+  logActivity({ action: "created", entity_type: "strategy", entity_id: row.id, summary: `Strategy created: ${row.name}` });
   return row;
 }
 export function updateStrategy(id: number, patch: Partial<Strategy>): Strategy | null {
@@ -457,6 +468,7 @@ export function createObjective(input: Partial<Objective> & { name: string }): O
   };
   save({ objectives: [...(b.objectives || []), row] });
   marketingEmit(MarketingEvents.OKR, row);
+  logActivity({ action: "created", entity_type: "objective", entity_id: row.id, summary: `Objective created: ${row.name}` });
   return row;
 }
 export function updateObjective(id: number, patch: Partial<Objective>): Objective | null {
@@ -515,6 +527,7 @@ export function createClaim(input: Partial<BrandClaim> & { brand_id: number; tex
   };
   save({ claims: [...(b.claims || []), row] });
   marketingEmit(MarketingEvents.BRAND, row);
+  logActivity({ action: "created", entity_type: "claim", entity_id: row.id, summary: `Brand claim added` });
   return row;
 }
 
@@ -540,6 +553,7 @@ export function createFunnel(input: Partial<Funnel> & { name: string }): Funnel 
   };
   save({ funnels: [...(b.funnels || []), row] });
   marketingEmit(MarketingEvents.FUNNEL, row);
+  logActivity({ action: "created", entity_type: "funnel", entity_id: row.id, summary: `Funnel created: ${row.name}` });
   return row;
 }
 export function updateFunnel(id: number, patch: Partial<Funnel>): Funnel | null {
@@ -597,6 +611,35 @@ export function duplicateObjective(id: number): Objective | null {
     persona_ids: [...(src.persona_ids || [])],
     owner: src.owner,
   });
+}
+
+
+const ACTIVITY_MAX = 200;
+
+export function logActivity(input: {
+  action: string;
+  entity_type: string;
+  entity_id?: number | string | null;
+  summary: string;
+}): void {
+  ensureMarketingSeed();
+  const b = load() as any;
+  const row: MarketingActivity = {
+    id: crypto.randomUUID(),
+    at: now(),
+    action: input.action,
+    entity_type: input.entity_type,
+    entity_id: input.entity_id ?? null,
+    summary: input.summary,
+  };
+  const list = [row, ...((b.activityLog as MarketingActivity[]) || [])].slice(0, ACTIVITY_MAX);
+  save({ activityLog: list });
+  marketingEmit(MarketingEvents.CHANGED);
+}
+
+export function listActivity(limit = 50): MarketingActivity[] {
+  ensureMarketingSeed();
+  return ((load() as any).activityLog || []).slice(0, limit);
 }
 
 export function exportMarketingJson(): string {

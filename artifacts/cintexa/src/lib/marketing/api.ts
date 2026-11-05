@@ -12,7 +12,11 @@ export const marketingApi = {
     if (!c) return Promise.reject(new Error("Campaign not found"));
     return Promise.resolve(c);
   },
-  createCampaign: (body: Parameters<typeof store.createCampaign>[0]) => Promise.resolve(store.createCampaign(body)),
+  createCampaign: (body: Parameters<typeof store.createCampaign>[0]) => {
+    const row = store.createCampaign(body);
+    try { ent.logActivity({ action: "created", entity_type: "campaign", entity_id: row.id, summary: `Campaign created: ${row.name}` }); } catch { /* */ }
+    return Promise.resolve(row);
+  },
   updateCampaign: (id: number, body: Parameters<typeof store.updateCampaign>[1]) => {
     const c = store.updateCampaign(id, body);
     if (!c) return Promise.reject(new Error("Campaign not found"));
@@ -156,6 +160,11 @@ export const marketingIntel = {
     return Promise.resolve(o);
   },
   objectiveProgress: ent.objectiveProgress,
+  listActivity: (limit?: number) => Promise.resolve(ent.listActivity(limit)),
+  logActivity: (input: Parameters<typeof ent.logActivity>[0]) => {
+    ent.logActivity(input);
+    return Promise.resolve();
+  },
   archiveObjective: (id: number) => {
     const o = ent.archiveObjective(id);
     if (!o) return Promise.reject(new Error("Not found"));

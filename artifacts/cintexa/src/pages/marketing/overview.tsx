@@ -4,7 +4,8 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Gauge, Send, CalendarDays, DollarSign, Users, TrendingUp, Plus } from "lucide-react";
-import { marketingApi } from "@/lib/marketing/api";
+import { marketingApi, marketingIntel } from "@/lib/marketing/api";
+import { useMarketingSubscription } from "@/lib/marketing/useMarketingSubscription";
 
 type OverviewData = {
   kpis: {
@@ -28,11 +29,16 @@ function money(n: number) {
 }
 
 export default function MarketingOverview() {
+  useMarketingSubscription();
   const { data, isLoading, error, refetch } = useQuery({
     queryKey: ["marketing", "overview"],
     queryFn: async () => {
       return marketingApi.overview() as Promise<OverviewData>;
     },
+  });
+  const activity = useQuery({
+    queryKey: ["mkt", "activity"],
+    queryFn: () => marketingIntel.listActivity(30),
   });
 
   const k = data?.kpis;
@@ -90,6 +96,24 @@ export default function MarketingOverview() {
                 </div>
               </Link>
             ))}
+          </CardContent>
+        </Card>
+
+        <Card className="md:col-span-2">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-base">Recent activity</CardTitle>
+            <CardDescription>Local marketing actions on this device</CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-1 max-h-48 overflow-y-auto">
+            {(activity.data || []).map((a: any) => (
+              <div key={a.id} className="flex justify-between gap-2 text-xs border-b border-border/40 py-1">
+                <span className="min-w-0 truncate">{a.summary}</span>
+                <span className="text-muted-foreground shrink-0">{new Date(a.at).toLocaleString()}</span>
+              </div>
+            ))}
+            {!(activity.data || []).length && (
+              <p className="text-xs text-muted-foreground text-center py-4">No activity recorded yet.</p>
+            )}
           </CardContent>
         </Card>
 

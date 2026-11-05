@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search } from "lucide-react";
-import { marketingApi } from "@/lib/marketing/api";
+import { marketingApi, marketingIntel } from "@/lib/marketing/api";
 import { useMarketingSubscription } from "@/lib/marketing/useMarketingSubscription";
 
 type Campaign = {
@@ -29,6 +29,11 @@ type Campaign = {
 export default function CampaignsPage() {
   useMarketingSubscription();
   const qc = useQueryClient();
+  const strategies = useQuery({ queryKey: ["mkt", "strategies"], queryFn: () => marketingIntel.listStrategies() });
+  const objectives = useQuery({ queryKey: ["mkt", "objectives"], queryFn: () => marketingIntel.listObjectives() });
+  const strategyName = (id?: number | null) => strategies.data?.items?.find((s) => s.id === id)?.name;
+  const objectiveName = (id?: number | null) => objectives.data?.items?.find((o) => o.id === id)?.name;
+
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
@@ -140,13 +145,19 @@ export default function CampaignsPage() {
                   <tr key={c.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="px-4 py-3">
                       <Link href={`/marketing/campaigns/${c.id}`} className="font-medium hover:underline">
-                        {c.name}{(c as any).metadata?.strategy_id || (c as any).metadata?.objective_id ? " · linked" : ""}
+                        {c.name}
                       </Link>
                       <div className="text-xs text-muted-foreground">{c.number}</div>
                     </td>
                     <td className="px-4 py-3"><Badge variant="secondary">{c.status}
                     {(c.metadata?.strategy_id || c.metadata?.objective_id || c.metadata?.funnel_id) && (
                       <Badge variant="secondary" className="text-[9px] ml-1">Linked</Badge>
+                    )}
+                    {c.metadata?.strategy_id != null && strategyName(c.metadata.strategy_id) && (
+                      <span className="text-[10px] text-muted-foreground ml-1">Strategy: {strategyName(c.metadata.strategy_id)}</span>
+                    )}
+                    {c.metadata?.objective_id != null && objectiveName(c.metadata.objective_id) && (
+                      <span className="text-[10px] text-muted-foreground ml-1">OKR: {objectiveName(c.metadata.objective_id)}</span>
                     )}</Badge></td>
                     <td className="px-4 py-3">{c.priority}</td>
                     <td className="px-4 py-3 tabular-nums">{Number(c.budget || 0).toLocaleString()}</td>
