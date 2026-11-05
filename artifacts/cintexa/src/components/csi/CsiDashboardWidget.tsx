@@ -31,7 +31,7 @@ export function CsiDashboardWidget() {
             Corporate Strategy &amp; Intelligence
           </CardTitle>
           <CardDescription className="mt-1.5">
-            Objectives · budgets vs Finance actuals · risks
+            Objectives · budgets vs recorded actuals · risks
           </CardDescription>
         </div>
         <Link href="/corporate-strategy">

@@ -108,7 +108,7 @@ export interface Integrations {
 
 export const NO_INTEGRATIONS: Integrations = {};
 
-/** No-op when CINTEXA_FINANCE_API_BASE is unset. Sales never claims invoice/receipt success. */
+/** No Finance module is installed: Sales never claims invoice/receipt success. */
 export const nullFinanceProvider: FinanceProvider = {
   name: "none",
   async createInvoice() {
@@ -121,103 +121,3 @@ export const nullFinanceProvider: FinanceProvider = {
     return { ok: false, error: "CINTEXA Finance is not installed", retryable: false };
   },
 };
-
-/**
- * HTTP adapter → CINTEXA Finance `/api/finance/*`.
- * Enable with CINTEXA_FINANCE_API_BASE (e.g. https://app.example.com/api/finance).
- * Sales totals (major decimals) are converted to integer minor units (×100).
- * Journal descriptions are deterministic order narratives — no external AI.
- */
-export function createHttpFinanceProvider(baseUrl: string): FinanceProvider {
-  const root = baseUrl.replace(/\/$/, "");
-  return {
-    name: "cintexa-finance-http",
-    async createInvoice(order, idempotencyKey) {
-      try {
-        const major = Number(order.total);
-        if (!Number.isFinite(major) || major <= 0) {
-          return { ok: false, error: "Invalid order total", retryable: false };
-        }
-        const amountMinor = Math.round(major * 100);
-        const lineSummary = order.lines
-          .slice(0, 3)
-          .map((l) => l.description || l.sku || "item")
-          .join("; ");
-        const description =
-          `Sales invoice for order ${order.number} covering ${lineSummary || "goods or services"}. ` +
-          `Recognises revenue and the related receivable.`;
-        const res = await fetch(`${root}/invoices`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "idempotency-key": idempotencyKey,
-          },
-          body: JSON.stringify({
-            customerName: `Account #${order.accountId}`,
-            amountMinor,
-            currency: order.currency || "GHS",
-            sourceModule: "sales",
-            sourceId: String(order.orderId),
-            description,
-            arMemo: `AR for order ${order.number}`,
-            revenueMemo: `Revenue — order ${order.number}`,
-            dueDate: order.dueOn || undefined,
-          }),
-        });
-        const data = (await res.json().catch(() => ({}))) as any;
-        if (!res.ok) {
-          return { ok: false, error: data.error || `Finance HTTP ${res.status}`, retryable: res.status >= 500 };
-        }
-        return { ok: true, ref: data.invoice?.number || data.journal?.number || idempotencyKey };
-      } catch (e: any) {
-        return { ok: false, error: e?.message || "Finance request failed", retryable: true };
-      }
-    },
-    async voidInvoice(invoiceRef, reason) {
-      return {
-        ok: false,
-        error: `voidInvoice not implemented for HTTP adapter (${invoiceRef}): ${reason}`,
-        retryable: false,
-      };
-    },
-    async recordPayment(payment, idempotencyKey) {
-      try {
-        const major = Number(payment.amount);
-        if (!Number.isFinite(major) || major <= 0) {
-          return { ok: false, error: "Invalid payment amount", retryable: false };
-        }
-        const amountMinor = Math.round(major * 100);
-        const description =
-          `Receipt for order ${payment.orderNumber}${payment.method ? ` via ${payment.method}` : ""}. ` +
-          `Increases cash and reduces receivable. No additional revenue recognised.`;
-        const res = await fetch(`${root}/payments`, {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            "idempotency-key": idempotencyKey,
-          },
-          body: JSON.stringify({
-            amountMinor,
-            currency: payment.currency || "GHS",
-            customerName: `Account #${payment.accountId}`,
-            paymentDate: payment.receivedOn,
-            method: payment.method || undefined,
-            sourceModule: "sales",
-            sourceId: String(payment.paymentId),
-            description,
-            bankMemo: `Receipt order ${payment.orderNumber}`,
-            arMemo: `Settlement order ${payment.orderNumber}`,
-          }),
-        });
-        const data = (await res.json().catch(() => ({}))) as any;
-        if (!res.ok) {
-          return { ok: false, error: data.error || `Finance HTTP ${res.status}`, retryable: res.status >= 500 };
-        }
-        return { ok: true, ref: data.payment?.id || data.journal?.number || idempotencyKey };
-      } catch (e: any) {
-        return { ok: false, error: e?.message || "Finance payment failed", retryable: true };
-      }
-    },
-  };
-}
-

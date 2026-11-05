@@ -9,8 +9,8 @@ Commits from 2026-11-03 to 2026-11-05 had reintroduced the removed Finance / Fin
 - Sidebar "CINTEXA Finance" group (Sidebar.tsx)
 - Dashboard `FinanceDashboardWidget` and unused `FiDashboardWidget` import (dashboard.tsx)
 - `pages/finance/`, `pages/financial-intelligence/`, `components/finance/`, `lib/financial-intelligence/`
-- `lib/finance/*` except `money.ts` / `money.test.ts` (see open items)
-- `components/financial-intelligence/FiDashboardWidget.tsx`, `MiniBarChart.tsx`
+- All of `lib/finance/*`, including `money.ts`
+- All of `components/financial-intelligence/`
 - `functions/api/finance/`, `functions/api/fi/`, `tests/finance-sync.test.ts`
 - `docs/CINTEXA_FINANCE.md`, `CHANGES-FI-CLOUDFLARE-NATIVE-2026-11-02.md`
 
@@ -18,16 +18,32 @@ Commits from 2026-11-03 to 2026-11-05 had reintroduced the removed Finance / Fin
 - All D1 schemas, migrations (`migrations/finance`, `migrations/d1`), `lib/db` finance schema files and the `FIN_DB` binding in wrangler.toml. No tables dropped, no data touched.
 - Sales, CMS, auth, Business Diary, Marketing, sync engine.
 
-## Open items needing a decision (kept in place until answered)
-1. Corporate Strategy imports `lib/finance/money.ts` (formatters) and `components/financial-intelligence/AnimatedKpiCard.tsx`.
-   They are generic helpers but live inside paths the record deleted. Moving them would be relocation of deleted code.
-2. `functions/api/csi` soft-calls `/api/finance/{dashboard,accounts,journals,invoices}`; calls now 404 and degrade silently (try/catch).
-3. `functions/_lib/nexus-sync.ts` still registers `finance` and `financial-intelligence` modules/event routes.
-4. Sales `createHttpFinanceProvider` (env `CINTEXA_FINANCE_API_BASE`) and `docs/SALES_FINANCE_SYNC.md` remain.
-5. Whether to keep the migrations for finance tables, or approve a separate backed-up drop.
+## Dependency repairs (second pass)
+Corporate Strategy (CSI) depended on deleted Finance code. Repaired without restoring or moving any deleted code:
+- New generic `lib/format/currency.ts` (+ test) and `components/ui/kpi-card.tsx`, written fresh; CSI now imports these.
+- CSI server: removed all calls to `/api/finance/*`. Dashboard no longer returns `financeLive` or the cash-vs-receivables insight.
+  `budget-vs-actual` now uses only the actuals stored on CSI budget lines. `product-performance` and `budget-mappings`
+  endpoints removed (the `csi_budget_mappings` table and its data are untouched).
+- CSI UI: removed the "Live Finance snapshot" card, the dead "Open Finance" link and the product-performance PDF section.
+- Sales: removed the HTTP Finance adapter and the `CINTEXA_FINANCE_API_BASE` switch; Sales uses the existing no-op provider.
+- Sync engine: removed the `finance` and `financial-intelligence` modules, their routing targets and the FI link branch.
+  Each event now fans out to diary + dashboard; tests updated (3 links -> 2).
+- Removed Financial Intelligence docs found in `docs/`.
+
+## Left untouched by design
+D1 schemas/migrations/data, `FIN_DB` binding, `csi_budget_mappings` table, Diary "Finance" category, CSI role names (cfo, finance_manager),
+CSI nav section label "Finance planning" (CSI's own budgets/forecasts).
+
+## Open items
+1. **External API conflict (needs your decision):** Sales contains an optional OpenRouter AI adapter (`services/sales`, `lib/openrouter`).
+   It is off by default and needs an admin to enable it plus an API key, but it conflicts with "zero external APIs".
+   Preserving it vs. removing it are both defensible; I have not changed it.
+2. Type-check, production build, end-to-end tests and live/deployed checks have NOT been run (no `node_modules`; installs are blocked here).
+3. Authentication, security and database-communication audits across all modules were not performed beyond the Finance/CSI/sync scope.
 
 ## Verification actually run
-- node --test tests/{diary-sync,nexus-schema,nexus-sync}: 17/17 pass
-- tsx unit tests in artifacts/cintexa: 26/27 pass; 1 fails on missing dependency (@tanstack/react-query not installed), unrelated file
-- Grep: no remaining imports of deleted modules
-- NOT run: typecheck, production build, deployment, live-site checks (no node_modules, package installs blocked here)
+- `bun test tests/`: 54 pass, 1 fail (missing `@electric-sql/pglite` package, not installed)
+- `node --test` Diary/sync/schema: 17/17 pass
+- `tsx --test` currency test: 4/4 pass; other frontend unit tests 17/18 (1 fails on missing `@tanstack/react-query`)
+- Static import-resolution scan over frontend, functions, api-server, tests: 0 unresolved
+- Grep: no remaining references to deleted Finance/FI modules, `/api/finance`, `/api/fi`, or `CINTEXA_FINANCE_API_BASE`
