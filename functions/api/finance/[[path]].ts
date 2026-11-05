@@ -5,6 +5,10 @@
  * Isolate memory is only used when FIN_ALLOW_MEMORY=1 for local/dev — never production.
  */
 
+import { ensureNexusSchema, resolveDb, type D1Like } from "../../_lib/nexus-db.ts";
+import { enqueue, processEvent } from "../../_lib/nexus-sync.ts";
+
+
 type AccountType = "asset" | "liability" | "equity" | "revenue" | "expense";
 
 interface Account {
@@ -418,6 +422,7 @@ function postJournal(j: Journal) {
 
 type Env = {
   FIN_DB?: D1Database;
+  NEXUS_DB?: D1Database;
   FIN_ALLOW_MEMORY?: string;
 };
 
@@ -613,7 +618,8 @@ async function d1ListJournals(db: D1Database): Promise<Journal[]> {
 async function d1InsertInvoice(db: D1Database, inv: Invoice) {
   await db.prepare(
     `INSERT INTO fin_invoices (id, number, customer_id, customer_name, issue_date, due_date, currency, amount_minor, amount_paid_minor, status, source_module, source_id, journal_id, created_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+     ON CONFLICT(id) DO UPDATE SET amount_paid_minor = excluded.amount_paid_minor, status = excluded.status, journal_id = excluded.journal_id`,
   ).bind(
     inv.id, inv.number, null, inv.customerName, inv.issueDate, inv.dueDate || null, inv.currency,
     inv.amountMinor, inv.amountPaidMinor, inv.status, inv.sourceModule || null, inv.sourceId || null, inv.journalId || null, inv.createdAt,
@@ -696,6 +702,22 @@ async function hydrateFromD1(db: D1Database) {
 }
 
 
+/**
+ * Publishes a business event to the Nexus sync outbox in the same D1 database. The event row is written directly (no network
+ * hop that can be dropped), then processed. A failure is logged and never fails the finance transaction that already committed.
+ */
+async function publishSync(env: Env, event: Record<string, unknown>): Promise<void> {
+  try {
+    const db = resolveDb(env as unknown as { NEXUS_DB?: D1Like; FIN_DB?: D1Like });
+    if (!db) return;
+    await ensureNexusSchema(db);
+    const r = await enqueue(db, event);
+    if (r.ok && !r.duplicate) await processEvent(db, r.event.id);
+  } catch (e) {
+    console.error("nexus sync publish failed", e);
+  }
+}
+
 export const onRequest: PagesFunction<Env> = async (context) => {
   const { request, params, env } = context;
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
@@ -732,10 +754,10 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       await d1Audit(access.db, "journal", j.id, j.status, j.number);
     }
   }
-  async function persistInvoice(inv: Invoice) {
+  async function persistInvoice(inv: Invoice, action = "created") {
     if (access.db) {
       await d1InsertInvoice(access.db, inv);
-      await d1Audit(access.db, "invoice", inv.id, "created", inv.number);
+      await d1Audit(access.db, "invoice", inv.id, action, inv.number);
     }
   }
   async function persistPayment(pay: Payment) {
@@ -993,44 +1015,32 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     store.invoices.push(inv);
     audit("invoice", inv.id, "created_posted", inv.number);
     await persistInvoice(inv);
-    if (inv.journalId) { const jj = store.journals.find((x) => x.id === inv.journalId); if (jj) await persistJournal(jj); }
-    await persistInvoice(inv);
     if (inv.journalId) {
       const jj = store.journals.find((x) => x.id === inv.journalId);
       if (jj) await persistJournal(jj);
     }
 
-    // Best-effort diary + sync
-    const origin = url.origin;
-    try {
-      await fetch(`${origin}/api/diary/entries`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          title: `Invoice issued ${inv.number}`,
-          category: "Finance",
-          activityDate: issueDate,
-          description: `Invoice ${inv.number} to ${customerName} for ${amount} minor units ${inv.currency}. Source: ${inv.sourceModule}`,
-          clientName: customerName,
-          tags: ["auto-sync", "invoice", "finance"],
-          successStatus: "pending",
-        }),
-      });
-    } catch { /* optional */ }
-    try {
-      await fetch(`${origin}/api/sync/events`, {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({
-          eventType: "INVOICE_CREATED",
-          sourceModule: "finance",
-          entityType: "invoice",
-          entityId: inv.id,
-          idempotencyKey: `invoice:${inv.id}`,
-          payload: { number: inv.number, customerName, amountMinor: amount },
-        }),
-      });
-    } catch { /* optional */ }
+    await publishSync(env, {
+      eventType: "INVOICE_CREATED",
+      sourceModule: "finance",
+      entityType: "invoice",
+      entityId: inv.id,
+      idempotencyKey: `invoice:${inv.id}`,
+      effectiveDate: issueDate,
+      related: inv.sourceId ? [{ module: inv.sourceModule, entityType: "source", entityId: inv.sourceId }] : [],
+      payload: {
+        title: `Invoice issued ${inv.number}`,
+        category: "Finance",
+        activityDate: issueDate,
+        description: `Invoice ${inv.number} to ${customerName} for ${amount} minor units ${inv.currency}. Source: ${inv.sourceModule}`,
+        clientName: customerName,
+        successStatus: "pending",
+        number: inv.number,
+        customerName,
+        amountMinor: amount,
+        currency: inv.currency,
+      },
+    });
 
     return json({ invoice: inv, journal: j }, 201);
   }
@@ -1095,8 +1105,30 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     if (inv) {
       inv.amountPaidMinor += amount;
       inv.status = inv.amountPaidMinor >= inv.amountMinor ? "paid" : "partial";
+      await persistInvoice(inv, "payment_applied"); // previously only in memory: lost on the next request's D1 re-hydrate
     }
     audit("payment", pay.id, "created_posted", String(amount));
+    await publishSync(env, {
+      eventType: "PAYMENT_RECEIVED",
+      sourceModule: "finance",
+      entityType: "payment",
+      entityId: pay.id,
+      idempotencyKey: `payment:${pay.id}`,
+      effectiveDate: paymentDate,
+      related: inv ? [{ module: "finance", entityType: "invoice", entityId: inv.id }] : [],
+      payload: {
+        title: `Payment received from ${customerName}`,
+        category: "Finance",
+        activityDate: paymentDate,
+        description: `Payment of ${amount} minor units ${pay.currency} from ${customerName}${inv ? ` against invoice ${inv.number}` : ""}.`,
+        clientName: customerName,
+        successStatus: inv && inv.status === "paid" ? "success" : "partial",
+        amountMinor: amount,
+        currency: pay.currency,
+        invoiceId: inv?.id ?? null,
+        invoiceStatus: inv?.status ?? null,
+      },
+    });
     return json({ payment: pay, journal: j, invoice: inv }, 201);
   }
 
@@ -1410,7 +1442,24 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     };
     postJournal(j);
     store.journals.push(j);
+    await persistJournal(j); // previously missing: the journal was lost on the next request's D1 re-hydrate
     audit("expense", j.id, "purchase_with_discount", `gross=${gross} disc=${discount} net=${net}`);
+    await publishSync(env, {
+      eventType: "EXPENSE_RECORDED",
+      sourceModule: "finance",
+      entityType: "expense",
+      entityId: j.id,
+      idempotencyKey: `expense:${j.id}`,
+      effectiveDate: entryDate,
+      payload: {
+        title: `Expense recorded: ${j.description}`.slice(0, 300),
+        category: "Finance",
+        activityDate: entryDate,
+        description: `${j.description} (net ${net}, discount ${discount}, ${j.currency} minor units).`,
+        amountMinor: net,
+        currency: j.currency,
+      },
+    });
     return json({ journal: j, gross, discount, net, method: "net" }, 201);
   }
 
