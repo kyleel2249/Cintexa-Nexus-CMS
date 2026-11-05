@@ -1,3 +1,4 @@
+import { marketingEmit, MarketingEvents } from "./memory";
 /**
  * On-device Marketing Management store.
  * No API server, no authentication — data lives in this browser (localStorage).
@@ -174,6 +175,12 @@ function save(s: Store) {
     localStorage.setItem(KEY, JSON.stringify(s));
   } catch {
     /* quota / private mode */
+  }
+  try {
+    marketingEmit(MarketingEvents.CHANGED);
+    marketingEmit(MarketingEvents.CAMPAIGN);
+  } catch {
+    /* isolate */
   }
 }
 

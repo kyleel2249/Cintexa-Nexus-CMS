@@ -17,7 +17,8 @@ type Overview = {
   recentCampaigns: { id: number; name: string; status: string; number?: string }[];
 };
 
-export function MarketingOverviewWidget({ compact }: { compact?: boolean }) {
+export function MarketingOverviewWidget({
+  useMarketingSubscription(); compact }: { compact?: boolean }) {
   const { data, isLoading, error } = useQuery({
     queryKey: ["marketing", "overview", "widget"],
     queryFn: () => marketingApi.overview() as Promise<Overview>,

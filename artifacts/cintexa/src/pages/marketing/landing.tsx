@@ -11,9 +11,11 @@ import { marketingIntel, marketingAssets } from "@/lib/marketing/api";
 import { Link } from "wouter";
 import { CmsPagesPicker } from "@/components/marketing/CmsPagesPicker";
 import { CmsFormsPicker } from "@/components/marketing/CmsFormsPicker";
+import { readCachedFormSubmissionCount } from "@/lib/marketing/cms-cache/cmsCacheReader";
 
 export default function LandingFunnelsPage() {
   const qc = useQueryClient();
+  // qc used for funnel updates + CMS submission cache reads
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [pagePath, setPagePath] = useState("/");
@@ -238,9 +240,16 @@ export default function LandingFunnelsPage() {
                   variant="outline"
                   onClick={() => {
                     const fr = forms.find((x) => x.name === f.form_ref);
-                    const m = fr?.notes?.match(/submissions=(\d+)/);
-                    const count = m ? Number(m[1]) : null;
-                    if (count == null || !confirm(`Apply CMS CACHE submission count (${count}) to the "Form submission" or last conversion-like stage? This is an explicit override.`)) return;
+                    let count: number | null = null;
+                    if (fr?.form_id != null) {
+                      const live = readCachedFormSubmissionCount(qc, fr.form_id);
+                      if (live.available && live.count != null) count = live.count;
+                    }
+                    if (count == null) {
+                      const m = fr?.notes?.match(/submissions=(\d+)/);
+                      count = m ? Number(m[1]) : null;
+                    }
+                    if (count == null || !confirm(`Apply CMS CACHE submission count (${count}) to the form/conversion stage? Explicit override — provenance becomes MANUAL OVERRIDE.`)) return;
                     const stages = f.stages.map((s) => ({ ...s }));
                     let idx = stages.findIndex((s) => /form|submission|convert/i.test(s.name));
                     if (idx < 0) idx = Math.min(3, stages.length - 1);

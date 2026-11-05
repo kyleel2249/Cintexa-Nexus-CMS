@@ -5,7 +5,7 @@
 import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import { QueryClient } from "@tanstack/react-query";
-import { readCachedMedia, readCachedPages, readCachedForms } from "./cmsCacheReader";
+import { readCachedMedia, readCachedPages, readCachedForms, readCachedFormSubmissionCount } from "./cmsCacheReader";
 import {
   markMediaSessionAvailable,
   markPagesSessionAvailable,
@@ -69,6 +69,15 @@ describe("cmsCacheReader", () => {
     const qc = new QueryClient();
     seedQuery(qc, ["/api/other"], [{ id: 1 }]);
     assert.equal(readCachedMedia(qc).available, false);
+  });
+
+  it("reads form submission array length from cache", () => {
+    const qc = new QueryClient();
+    seedQuery(qc, ["/api/forms/3/submissions"], [{ id: 1 }, { id: 2 }, { id: 3 }]);
+    const r = readCachedFormSubmissionCount(qc, 3);
+    assert.equal(r.available, true);
+    assert.equal(r.count, 3);
+    assert.equal(r.source, "CMS CACHE");
   });
 });
 

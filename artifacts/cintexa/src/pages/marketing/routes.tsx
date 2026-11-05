@@ -1,5 +1,6 @@
 import { lazy, Suspense } from "react";
 import { Route, Switch } from "wouter";
+import { MarketingMemoryBridge } from "@/lib/marketing/useMarketingSubscription";
 
 const Overview = lazy(() => import("./overview"));
 const Campaigns = lazy(() => import("./campaigns"));
@@ -32,6 +33,7 @@ function Spinner() {
 export function MarketingRoutes() {
   return (
     <Suspense fallback={<Spinner />}>
+      <MarketingMemoryBridge />
       <Switch>
         <Route path="/marketing" component={Overview} />
         <Route path="/marketing/strategy" component={Strategy} />

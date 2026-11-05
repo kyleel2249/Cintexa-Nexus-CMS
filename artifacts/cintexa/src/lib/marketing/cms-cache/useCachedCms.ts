@@ -138,3 +138,34 @@ export function useCachedCmsForms(): {
     refreshFromCache,
   };
 }
+
+import { readCachedFormSubmissionCount } from "./cmsCacheReader";
+
+export function useCachedFormSubmissionCount(formId: number | null | undefined): {
+  available: boolean;
+  count: number | null;
+  source: "CMS CACHE" | null;
+} {
+  const qc = useQueryClient();
+  const [state, setState] = useState<{ available: boolean; count: number | null; source: "CMS CACHE" | null }>({
+    available: false,
+    count: null,
+    source: null,
+  });
+
+  const refresh = useCallback(() => {
+    if (formId == null) {
+      setState({ available: false, count: null, source: null });
+      return;
+    }
+    setState(readCachedFormSubmissionCount(qc, formId));
+  }, [qc, formId]);
+
+  useEffect(() => {
+    refresh();
+    const unsub = qc.getQueryCache().subscribe(() => refresh());
+    return () => unsub();
+  }, [qc, refresh]);
+
+  return state;
+}

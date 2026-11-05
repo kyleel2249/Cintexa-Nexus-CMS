@@ -6,8 +6,10 @@ import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { Target, Palette, ArrowRight } from "lucide-react";
 import { marketingIntel } from "@/lib/marketing/api";
+import { useMarketingSubscription } from "@/lib/marketing/useMarketingSubscription";
 
 export function StrategyOkrWidget() {
+  useMarketingSubscription();
   useEffect(() => { marketingIntel.ensureSeed(); }, []);
   const strategies = useQuery({ queryKey: ["mkt", "strategies", "widget"], queryFn: () => marketingIntel.listStrategies() });
   const objectives = useQuery({ queryKey: ["mkt", "objectives", "widget"], queryFn: () => marketingIntel.listObjectives() });
@@ -55,6 +57,7 @@ export function StrategyOkrWidget() {
 }
 
 export function BrandStatusWidget() {
+  useMarketingSubscription();
   useEffect(() => { marketingIntel.ensureSeed(); }, []);
   const brands = useQuery({ queryKey: ["mkt", "brands", "widget"], queryFn: () => marketingIntel.listBrands() });
   const claims = useQuery({

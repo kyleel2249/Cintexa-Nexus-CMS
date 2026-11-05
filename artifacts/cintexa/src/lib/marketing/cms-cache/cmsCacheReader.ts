@@ -209,3 +209,26 @@ export function readCachedForms(queryClient: QueryClient): {
   const items = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
   return { available: items.length > 0, items, sourceQueryCount: queryCount };
 }
+
+/** Read cached form submission arrays: key ['/api/forms/{id}/submissions'] */
+export function readCachedFormSubmissionCount(
+  queryClient: QueryClient,
+  formId: number,
+): { available: boolean; count: number | null; source: "CMS CACHE" | null } {
+  const all = queryClient.getQueryCache().getAll();
+  const prefix = `/api/forms/${formId}/submissions`;
+  for (const q of all) {
+    const root = keyRoot(q.queryKey);
+    if (root !== prefix && !(Array.isArray(q.queryKey) && q.queryKey[0] === prefix)) continue;
+    if (q.state.status !== "success" || q.state.data == null) continue;
+    const rows = asArray(q.state.data);
+    return { available: true, count: rows.length, source: "CMS CACHE" };
+  }
+  // Fall back to form list submissionCount field
+  const forms = readCachedForms(queryClient);
+  const f = forms.items.find((x) => x.cmsFormId === formId);
+  if (f && typeof f.submissionCount === "number") {
+    return { available: true, count: f.submissionCount, source: "CMS CACHE" };
+  }
+  return { available: false, count: null, source: null };
+}
