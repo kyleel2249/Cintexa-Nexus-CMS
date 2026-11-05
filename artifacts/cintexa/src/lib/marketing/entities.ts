@@ -689,6 +689,8 @@ export function createAsset(input: Partial<AssetRef> & { name: string }): AssetR
     updated_at: t,
   };
   save({ assets: [...(b.assets || []), row] });
+  marketingEmit(MarketingEvents.ASSET, row);
+  marketingEmit(MarketingEvents.CHANGED);
   return row;
 }
 
@@ -699,6 +701,8 @@ export function updateAsset(id: number, patch: Partial<AssetRef>): AssetRef | nu
   if (i < 0) return null;
   list[i] = { ...list[i], ...patch, id, updated_at: now() };
   save({ assets: list });
+  marketingEmit(MarketingEvents.ASSET, list[i]);
+  marketingEmit(MarketingEvents.CHANGED);
   return list[i];
 }
 

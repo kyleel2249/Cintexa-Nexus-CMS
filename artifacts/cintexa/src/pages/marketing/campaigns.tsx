@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Search } from "lucide-react";
 import { marketingApi } from "@/lib/marketing/api";
+import { useMarketingSubscription } from "@/lib/marketing/useMarketingSubscription";
 
 type Campaign = {
   id: number;
@@ -26,6 +27,7 @@ type Campaign = {
 };
 
 export default function CampaignsPage() {
+  useMarketingSubscription();
   const qc = useQueryClient();
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
@@ -138,11 +140,14 @@ export default function CampaignsPage() {
                   <tr key={c.id} className="border-b last:border-0 hover:bg-muted/40">
                     <td className="px-4 py-3">
                       <Link href={`/marketing/campaigns/${c.id}`} className="font-medium hover:underline">
-                        {c.name}
+                        {c.name}{(c as any).metadata?.strategy_id || (c as any).metadata?.objective_id ? " · linked" : ""}
                       </Link>
                       <div className="text-xs text-muted-foreground">{c.number}</div>
                     </td>
-                    <td className="px-4 py-3"><Badge variant="secondary">{c.status}</Badge></td>
+                    <td className="px-4 py-3"><Badge variant="secondary">{c.status}
+                    {(c.metadata?.strategy_id || c.metadata?.objective_id || c.metadata?.funnel_id) && (
+                      <Badge variant="secondary" className="text-[9px] ml-1">Linked</Badge>
+                    )}</Badge></td>
                     <td className="px-4 py-3">{c.priority}</td>
                     <td className="px-4 py-3 tabular-nums">{Number(c.budget || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-muted-foreground text-xs">

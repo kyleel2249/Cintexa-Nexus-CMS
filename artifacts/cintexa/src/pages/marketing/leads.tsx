@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,32 +7,30 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Plus } from "lucide-react";
-import { marketingApi } from "@/lib/marketing/api";
+import { marketingApi, marketingIntel } from "@/lib/marketing/api";
 import { probeSalesLocal } from "@/lib/marketing/sales-bridge";
+import { attributeLeadsBySource } from "@/lib/marketing/attribution";
+import { useMarketingSubscription } from "@/lib/marketing/useMarketingSubscription";
 import { Link } from "wouter";
 
 export default function LeadGeneration() {
   const qc = useQueryClient();
-  const [salesBridge, setSalesBridge] = useState<string>("");
-  useEffect(() => {
-    probeSalesLocal().then((s) => {
-      if (s.available) {
-        setSalesBridge(
-          s.totalLeads != null
-            ? `${s.note}`
-            : s.note,
-        );
-      } else {
-        setSalesBridge(s.reason);
-      }
-    });
-  }, []);
+  useMarketingSubscription();
+  const [salesBridge, setSalesBridge] = useState("");
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [source, setSource] = useState("");
   const [score, setScore] = useState("0");
 
+  useEffect(() => {
+    marketingIntel.ensureSeed();
+    probeSalesLocal().then((s) => {
+      setSalesBridge(s.available ? s.note : s.reason);
+    });
+  }, []);
+
+  const settings = useQuery({ queryKey: ["mkt", "settings"], queryFn: () => marketingIntel.getSettings() });
   const { data, isLoading } = useQuery({
     queryKey: ["marketing", "leads"],
     queryFn: () => marketingApi.listLeads(),
@@ -63,6 +61,9 @@ export default function LeadGeneration() {
   });
 
   const items = data?.items || [];
+  const channels = settings.data?.channels || [];
+  const model = settings.data?.attribution_model || "last_touch";
+  const attr = useMemo(() => attributeLeadsBySource(items as any, model), [items, model]);
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -70,8 +71,9 @@ export default function LeadGeneration() {
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Lead Generation</h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Marketing-sourced leads stored on this device. For full CRM pipeline use{" "}
-            <Link href="/sales/leads" className="underline">Sales → Leads</Link> (shared business records when Sales is in use).
+            Marketing-sourced leads on this device. CRM pipeline:{" "}
+            <Link href="/sales/leads" className="underline">Sales → Leads</Link>.
+            {salesBridge && <span className="block text-xs mt-1">{salesBridge}</span>}
           </p>
         </div>
         <Dialog open={open} onOpenChange={setOpen}>
@@ -80,65 +82,77 @@ export default function LeadGeneration() {
           </DialogTrigger>
           <DialogContent>
             <DialogHeader><DialogTitle>New marketing lead</DialogTitle></DialogHeader>
-            <div className="space-y-3 py-2">
+            <div className="space-y-3">
               <div><Label>Name</Label><Input value={name} onChange={(e) => setName(e.target.value)} /></div>
-              <div><Label>Email</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} type="email" /></div>
-              <div><Label>Source</Label><Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Landing page / webinar / form" /></div>
-              <div><Label>Score</Label><Input value={score} onChange={(e) => setScore(e.target.value)} type="number" /></div>
+              <div><Label>Email</Label><Input value={email} onChange={(e) => setEmail(e.target.value)} /></div>
+              <div>
+                <Label>Source channel</Label>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm mb-1" value={source} onChange={(e) => setSource(e.target.value)}>
+                  <option value="">— Select or type —</option>
+                  {channels.map((c) => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <Input value={source} onChange={(e) => setSource(e.target.value)} placeholder="Or free-text source" className="mt-1" />
+              </div>
+              <div><Label>Score</Label><Input type="number" value={score} onChange={(e) => setScore(e.target.value)} /></div>
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setOpen(false)}>Cancel</Button>
               <Button disabled={!name.trim() || create.isPending} onClick={() => create.mutate()}>Save</Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-3">
-        <Card><CardContent className="pt-4"><p className="text-2xl font-semibold tabular-nums">{items.length}</p><p className="text-xs text-muted-foreground">Total leads</p></CardContent></Card>
-        <Card><CardContent className="pt-4"><p className="text-2xl font-semibold tabular-nums">{items.filter((l) => l.status === "qualified").length}</p><p className="text-xs text-muted-foreground">Qualified</p></CardContent></Card>
-        <Card><CardContent className="pt-4"><p className="text-2xl font-semibold tabular-nums">{items.filter((l) => l.status === "new").length}</p><p className="text-xs text-muted-foreground">New</p></CardContent></Card>
-      </div>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Source distribution</CardTitle>
+          <CardDescription>
+            Model preference: <Badge variant="outline" className="text-[10px]">{model}</Badge>{" "}
+            — {attr.limitation}
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-1">
+          {attr.buckets.map((b) => (
+            <div key={b.source} className="flex items-center gap-2 text-sm">
+              <span className="w-28 truncate font-medium">{b.source}</span>
+              <div className="flex-1 h-2 rounded bg-muted overflow-hidden">
+                <div className="h-full bg-primary/70" style={{ width: `${Math.min(100, b.share)}%` }} />
+              </div>
+              <span className="text-xs tabular-nums w-16 text-right">{b.count} · {b.share}%</span>
+            </div>
+          ))}
+          {!attr.total && <p className="text-xs text-muted-foreground">No leads yet — distribution empty.</p>}
+          <Badge variant="secondary" className="text-[10px] mt-1">MANUAL / SINGLE-SOURCE</Badge>
+        </CardContent>
+      </Card>
 
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Leads</CardTitle>
-          <CardDescription>Audience insights from marketing capture. No external CRM required.</CardDescription>
+          <CardDescription>{items.length} marketing leads (not Sales CRM copies)</CardDescription>
         </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b text-left text-muted-foreground">
-                  <th className="px-4 py-3 font-medium">Name</th>
-                  <th className="px-4 py-3 font-medium">Source</th>
-                  <th className="px-4 py-3 font-medium">Status</th>
-                  <th className="px-4 py-3 font-medium">Score</th>
-                  <th className="px-4 py-3 font-medium"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {isLoading && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">Loading…</td></tr>}
-                {!isLoading && items.length === 0 && <tr><td colSpan={5} className="px-4 py-8 text-center text-muted-foreground">No leads yet.</td></tr>}
-                {items.map((l) => (
-                  <tr key={l.id} className="border-b last:border-0">
-                    <td className="px-4 py-3">
-                      <p className="font-medium">{l.name}</p>
-                      <p className="text-xs text-muted-foreground">{l.email || "—"}</p>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{l.source || "—"}</td>
-                    <td className="px-4 py-3"><Badge variant="secondary">{l.status}</Badge></td>
-                    <td className="px-4 py-3 tabular-nums">{l.score}</td>
-                    <td className="px-4 py-3">
-                      {l.status === "new" && (
-                        <Button size="sm" variant="outline" onClick={() => qualify.mutate(l.id)}>Qualify</Button>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+        <CardContent className="space-y-2">
+          {isLoading && <p className="text-sm text-muted-foreground text-center py-6">Loading…</p>}
+          {items.map((lead: any) => (
+            <div key={lead.id} className="flex items-center justify-between gap-2 rounded-md border px-3 py-2">
+              <div className="min-w-0">
+                <p className="text-sm font-medium truncate">{lead.name}</p>
+                <p className="text-xs text-muted-foreground">
+                  {lead.email || "No email"} · {lead.source || "No source"} · score {lead.score ?? 0}
+                </p>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <Badge variant="outline">{lead.status}</Badge>
+                {lead.status !== "qualified" && (
+                  <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => qualify.mutate(lead.id)}>
+                    Qualify
+                  </Button>
+                )}
+              </div>
+            </div>
+          ))}
+          {!isLoading && !items.length && (
+            <p className="text-sm text-muted-foreground text-center py-6">No marketing leads yet.</p>
+          )}
         </CardContent>
       </Card>
     </div>

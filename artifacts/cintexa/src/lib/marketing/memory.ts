@@ -32,4 +32,6 @@ export const MarketingEvents = {
   CAMPAIGN: "marketing.campaign",
   FUNNEL: "marketing.funnel",
   SETTINGS: "marketing.settings",
+  ASSET: "marketing.asset",
+  LEAD: "marketing.lead",
 } as const;

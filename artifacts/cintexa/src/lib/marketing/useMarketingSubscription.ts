@@ -16,6 +16,8 @@ const EVENT_TO_KEYS: Record<string, string[][]> = {
   [MarketingEvents.CAMPAIGN]: [["marketing", "campaigns"], ["marketing", "overview"], ["marketing"]],
   [MarketingEvents.FUNNEL]: [["mkt", "funnels"], ["mkt"]],
   [MarketingEvents.SETTINGS]: [["mkt", "settings"], ["mkt"]],
+  [MarketingEvents.ASSET]: [["mkt", "assets"], ["mkt"]],
+  [MarketingEvents.LEAD]: [["marketing", "leads"], ["marketing", "overview"], ["marketing"]],
 };
 
 export function useMarketingSubscription(events?: string[]) {
