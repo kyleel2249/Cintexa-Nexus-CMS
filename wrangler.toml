@@ -7,5 +7,7 @@ pages_build_output_dir = "artifacts/cintexa/dist/public"
 binding = "FIN_DB"
 database_name = "cintexa-finance-db"
 database_id = "ed7ed00b-05e7-4c28-96fc-536ccad3e89e"
-# Finance-only migrations (do not apply diary/sync schemas to this database)
+# `wrangler d1 migrations` applies only the Finance migrations below. The Nexus sync + Diary tables (nx_sync_*, bd_entries)
+# are created in this same database automatically on first use; migrations/d1/0006_nexus_sync_v2.sql is the same schema if
+# you prefer to apply it by hand. Bind a separate database as NEXUS_DB only if you want sync/diary data kept apart.
 migrations_dir = "migrations/finance"

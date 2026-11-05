@@ -1,32 +1,13 @@
 import { Link } from "wouter";
-import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { bdGet, bdPost } from "@/lib/business-diary/api";
-import { publishNexusEvent } from "@/lib/nexus-sync/api";
+import { useQuery } from "@tanstack/react-query";
+import { bdGet } from "@/lib/business-diary/api";
 import { BD_NAV } from "@/lib/business-diary/nav";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 
 export default function BdOverview() {
-  const qc = useQueryClient();
   const q = useQuery({ queryKey: ["bd", "dashboard"], queryFn: () => bdGet<any>("/dashboard") });
-  const seed = useMutation({
-    mutationFn: async () => {
-      const r = await bdPost("/seed-demo", {});
-      try {
-        await publishNexusEvent({
-          eventType: "DIARY_ENTRY_CREATED",
-          sourceModule: "business-diary",
-          entityType: "diary_seed",
-          entityId: "demo",
-          idempotencyKey: "diary-demo-seed",
-          payload: { title: "Demo diary data loaded" },
-        });
-      } catch { /* sync optional */ }
-      return r;
-    },
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["bd"] }),
-  });
 
   if (q.isLoading) {
     return <div className="p-6 grid gap-3 sm:grid-cols-4">{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="h-20" />)}</div>;
@@ -53,9 +34,6 @@ export default function BdOverview() {
           <p className="text-sm text-muted-foreground">Institutional memory · native intelligence · zero API keys ({q.data.engine})</p>
         </div>
         <div className="flex gap-2">
-          <Button size="sm" variant="outline" onClick={() => seed.mutate()} disabled={seed.isPending}>
-            {seed.isPending ? "Loading…" : "Load demo data"}
-          </Button>
           <Link href="/business-diary/entries"><Button size="sm">New entry</Button></Link>
         </div>
       </div>

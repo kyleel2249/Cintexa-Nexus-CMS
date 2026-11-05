@@ -1,7 +1,14 @@
 /**
  * CINTEXA Business Diary — Cloudflare Pages Function (/api/diary/*)
- * Zero third-party API keys. Isolate memory store; optional D1 via DIARY_DB later.
+ * Zero third-party API keys.
+ *
+ * Diary ENTRIES are persisted in Cloudflare D1 (NEXUS_DB, else FIN_DB) - the same database the sync engine writes to, so
+ * entries recorded automatically from other modules appear here. Follow-ups, pitches, feedback, decisions, case studies,
+ * opportunities, commitments, organisations and correspondence are still held in isolate memory (lost on restart) until
+ * they are moved to D1 as well; /meta reports this honestly. Without a D1 binding everything is isolate memory.
  */
+
+import { ensureNexusSchema, resolveDb, type D1Like } from "../../_lib/nexus-db.ts";
 
 type Entry = {
   id: string;
@@ -446,16 +453,75 @@ Date: 2026-11-03
 `;
 
 
-type Env = { DIARY_DB?: D1Database };
+type Env = { NEXUS_DB?: D1Database; FIN_DB?: D1Database };
+
+const ENTRY_LIMIT = 5000;
+
+function rowToEntry(r: any): Entry {
+  let tags: string[] = [];
+  try { const t = JSON.parse(r.tags || "[]"); if (Array.isArray(t)) tags = t.map(String); } catch { /* keep [] */ }
+  return {
+    id: r.id,
+    title: r.title,
+    description: r.description || "",
+    category: r.category,
+    subcategory: r.subcategory || undefined,
+    activityDate: r.activity_date,
+    recordedAt: r.recorded_at,
+    location: r.location || undefined,
+    department: r.department || undefined,
+    clientName: r.client_name || undefined,
+    outcome: r.outcome || undefined,
+    successStatus: r.success_status || undefined,
+    priority: r.priority || "medium",
+    tags,
+    lessons: r.lessons || undefined,
+    followUpRequired: Number(r.follow_up_required) === 1,
+    followUpDeadline: r.follow_up_deadline || undefined,
+    status: r.status === "archived" ? "archived" : "active",
+    createdBy: r.created_by || undefined,
+    updatedAt: r.updated_at,
+  };
+}
+
+/** Insert, or update the editable fields when the id already exists (used for create and for PATCH). */
+async function saveEntry(db: D1Like, e: Entry): Promise<void> {
+  await db
+    .prepare(
+      `INSERT INTO bd_entries (id, org_id, title, description, category, subcategory, activity_date, recorded_at, location, department, client_name,
+         outcome, success_status, priority, tags, lessons, follow_up_required, follow_up_deadline, status, created_by, updated_at)
+       VALUES (?, 'default', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(id) DO UPDATE SET title = excluded.title, description = excluded.description, outcome = excluded.outcome,
+         success_status = excluded.success_status, lessons = excluded.lessons, status = excluded.status, updated_at = excluded.updated_at`,
+    )
+    .bind(
+      e.id, e.title, e.description, e.category, e.subcategory ?? null, e.activityDate, e.recordedAt, e.location ?? null, e.department ?? null,
+      e.clientName ?? null, e.outcome ?? null, e.successStatus ?? null, e.priority, JSON.stringify(e.tags), e.lessons ?? null,
+      e.followUpRequired ? 1 : 0, e.followUpDeadline ?? null, e.status, e.createdBy ?? null, e.updatedAt,
+    )
+    .run();
+}
 
 export const onRequest: PagesFunction<Env> = async (context) => {
-  const { request, params } = context;
+  const { request, params, env } = context;
   if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: CORS });
 
   const raw = params.path;
   const parts = Array.isArray(raw) ? raw : raw ? [raw] : [];
   const path = parts.join("/");
   const url = new URL(request.url);
+
+  // Entries live in D1 when a database is bound; load them so dashboard/insights/search see every module's records.
+  const db = resolveDb(env as unknown as { NEXUS_DB?: D1Like; FIN_DB?: D1Like });
+  if (db) {
+    try {
+      await ensureNexusSchema(db);
+      const { results } = await db.prepare("SELECT * FROM bd_entries ORDER BY activity_date DESC, recorded_at DESC LIMIT ?").bind(ENTRY_LIMIT).all();
+      memory.entries = results.map(rowToEntry);
+    } catch (e: any) {
+      return json({ error: "Diary storage is unavailable", detail: String(e?.message || e).slice(0, 300) }, 503);
+    }
+  }
   const from = url.searchParams.get("from") || undefined;
   const to = url.searchParams.get("to") || undefined;
 
@@ -466,7 +532,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return json({
       name: "CINTEXA Business Diary",
       version: "1.0.0",
-      storage: "isolate-memory",
+      storage: db ? "d1" : "isolate-memory",
+      persistence: { entries: db ? "d1" : "isolate-memory", other: "isolate-memory" },
       engine: "native-diary-v1",
     });
   }
@@ -516,6 +583,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       createdBy: body.createdBy ? String(body.createdBy).slice(0, 120) : undefined,
       updatedAt: now,
     };
+    if (db) await saveEntry(db, entry);
     memory.entries.push(entry);
     return json({ entry }, 201);
   }
@@ -536,6 +604,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       status: body.status === "archived" ? "archived" as const : body.status === "active" ? "active" as const : cur.status,
       updatedAt: new Date().toISOString(),
     };
+    if (db) await saveEntry(db, next);
     memory.entries[idx] = next;
     return json({ entry: next });
   }
@@ -664,6 +733,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   if (path === "seed-demo" && request.method === "POST") {
+    if (db) return json({ ok: false, message: "Demo data is disabled when D1 storage is bound: the Diary shows real records only." }, 409);
     if (memory.entries.some((e) => e.tags.includes("DEMO"))) return json({ ok: true, message: "Demo already present" });
     const today = new Date().toISOString().slice(0, 10);
     memory.entries.push({
@@ -789,6 +859,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       status: "active",
       updatedAt: now,
     };
+    if (db) await saveEntry(db, entry);
     memory.entries.push(entry);
 
     const opps = Array.isArray(body.opportunities) ? body.opportunities : extraction.opportunities || [];
