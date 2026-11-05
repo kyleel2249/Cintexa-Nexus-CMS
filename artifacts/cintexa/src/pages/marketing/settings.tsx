@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { marketingIntel } from "@/lib/marketing/api";
+import { marketingIntel, marketingExtended } from "@/lib/marketing/api";
 import type { KpiDefinition } from "@/lib/marketing/entities";
 
 export default function MarketingSettingsPage() {
@@ -24,6 +24,7 @@ export default function MarketingSettingsPage() {
   const [kpiTarget, setKpiTarget] = useState("");
   const [importText, setImportText] = useState("");
   const [msg, setMsg] = useState("");
+  const [thresholds, setThresholds] = useState("50,75,90,100");
 
   useEffect(() => {
     marketingIntel.ensureSeed();
@@ -50,6 +51,11 @@ export default function MarketingSettingsPage() {
       setKpis(settings.data.kpis || []);
     }
   }, [settings.data]);
+  useEffect(() => {
+    marketingExtended.getBudgetAlertConfig().then((c) => {
+      setThresholds((c.thresholds || [50, 75, 90, 100]).join(","));
+    });
+  }, []);
 
   const persist = (patch: Parameters<typeof marketingIntel.updateSettings>[0]) =>
     marketingIntel.updateSettings(patch).then(() => {
@@ -275,6 +281,31 @@ export default function MarketingSettingsPage() {
             </div>
           ))}
           {!kpis.length && <p className="text-xs text-muted-foreground">No KPI definitions yet.</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Budget alert thresholds</CardTitle>
+          <CardDescription>Percent of budget used. Comma-separated, e.g. 50,75,90,100.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          <Input value={thresholds} onChange={(e) => setThresholds(e.target.value)} />
+          <Button
+            size="sm"
+            onClick={() => {
+              const nums = thresholds
+                .split(",")
+                .map((x) => Number(x.trim()))
+                .filter((n) => Number.isFinite(n) && n > 0);
+              marketingExtended.setBudgetAlertConfig({ thresholds: nums.length ? nums : [50, 75, 90, 100] }).then(() => {
+                setMsg("Budget thresholds saved.");
+                qc.invalidateQueries({ queryKey: ["mkt"] });
+              });
+            }}
+          >
+            Save thresholds
+          </Button>
         </CardContent>
       </Card>
 

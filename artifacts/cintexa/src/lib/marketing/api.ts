@@ -2,6 +2,7 @@
  * Marketing client — 100% on-device. No network, no authentication.
  */
 import * as store from "./local-store";
+import * as ent from "./entities";
 
 export const marketingApi = {
   overview: () => Promise.resolve(store.overview()),
@@ -20,11 +21,13 @@ export const marketingApi = {
   updateCampaign: (id: number, body: Parameters<typeof store.updateCampaign>[1]) => {
     const c = store.updateCampaign(id, body);
     if (!c) return Promise.reject(new Error("Campaign not found"));
+    try { ent.logActivity({ action: "updated", entity_type: "campaign", entity_id: id, summary: `Campaign updated: ${c.name}` }); } catch {}
     return Promise.resolve(c);
   },
   transitionCampaign: (id: number, status: string) => {
     const c = store.transitionCampaign(id, status);
     if (!c) return Promise.reject(new Error("Invalid transition or not found"));
+    try { ent.logActivity({ action: "status_change", entity_type: "campaign", entity_id: id, summary: `Campaign status → ${status}` }); } catch {}
     return Promise.resolve(c);
   },
 
@@ -45,6 +48,7 @@ export const marketingApi = {
   updateContent: (id: number, body: Parameters<typeof store.updateContent>[1]) => {
     const c = store.updateContent(id, body);
     if (!c) return Promise.reject(new Error("Content not found"));
+    try { ent.logActivity({ action: "updated", entity_type: "content", entity_id: id, summary: `Content updated: ${(c as any).title || id}` }); } catch {}
     return Promise.resolve(c);
   },
 
@@ -91,6 +95,7 @@ export const marketingApi = {
   updateLead: (id: number, body: Parameters<typeof store.updateLead>[1]) => {
     const l = store.updateLead(id, body);
     if (!l) return Promise.reject(new Error("Lead not found"));
+    try { ent.logActivity({ action: "updated", entity_type: "lead", entity_id: id, summary: `Lead updated: ${l.name}` }); } catch {}
     return Promise.resolve(l);
   },
 
@@ -129,7 +134,6 @@ export const marketingApi = {
 };
 
 // Extended entities (strategy, brand, personas, SWOT, OKRs, funnels, settings)
-import * as ent from "./entities";
 
 export const marketingIntel = {
   ...({} as any),

@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Plus } from "lucide-react";
 import { marketingApi } from "@/lib/marketing/api";
 import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
+import { PersonaRecommendPanel } from "@/components/marketing/PersonaRecommendPanel";
 import { scanBrandCompliance } from "@/lib/marketing/brand-compliance";
 import { marketingIntel } from "@/lib/marketing/api";
 import { useQuery } from "@tanstack/react-query";
@@ -130,12 +131,15 @@ export default function EmailMarketing() {
           ))}
         </CardContent>
       </Card>
+      <div className="space-y-3">
+      <PersonaRecommendPanel />
       <BrandIntelligencePanel
         onInsertClaim={(text) => {
           setBody((b) => (b ? b + "\n\n" + text : text));
           setOpen(true);
         }}
       />
+      </div>
       </div>
     </div>
   );

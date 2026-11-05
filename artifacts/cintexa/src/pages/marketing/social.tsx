@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Plus, Check } from "lucide-react";
 import { marketingApi } from "@/lib/marketing/api";
 import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
+import { PersonaRecommendPanel } from "@/components/marketing/PersonaRecommendPanel";
 import { scanBrandCompliance } from "@/lib/marketing/brand-compliance";
 import { marketingIntel } from "@/lib/marketing/api";
 
@@ -153,12 +154,15 @@ export default function SocialMediaManager() {
           ))}
         </CardContent>
       </Card>
+      <div className=\"space-y-3\">
+      <PersonaRecommendPanel />
       <BrandIntelligencePanel
         onInsertClaim={(text) => {
           setCaption((c) => (c ? c + "\n" + text : text));
           setOpen(true);
         }}
       />
+      </div>
       </div>
     </div>
   );
