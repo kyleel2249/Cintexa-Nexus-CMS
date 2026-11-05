@@ -51,6 +51,7 @@ export default function CampaignsPage() {
   }
 
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [linkFilter, setLinkFilter] = useState<string>("all");
   const [open, setOpen] = useState(false);
   const [name, setName] = useState("");
   const [objective, setObjective] = useState("");
@@ -81,7 +82,14 @@ export default function CampaignsPage() {
     },
   });
 
-  const items = data?.items || [];
+  const items = (data?.items || []).filter((c: Campaign) => {
+    if (linkFilter === "all") return true;
+    const n = integrationScore(c.metadata);
+    if (linkFilter === "unlinked") return n === 0;
+    if (linkFilter === "partial") return n >= 1 && n <= 3;
+    if (linkFilter === "strong") return n >= 4;
+    return true;
+  });
 
   return (
     <div className="p-4 md:p-6 space-y-4">
@@ -132,7 +140,16 @@ export default function CampaignsPage() {
             ))}
           </SelectContent>
         </Select>
-        <span className="text-xs text-muted-foreground ml-auto">{data?.total ?? 0} campaigns</span>
+        <Select value={linkFilter} onValueChange={setLinkFilter}>
+          <SelectTrigger className="w-[180px]"><SelectValue placeholder="Links" /></SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All link levels</SelectItem>
+            <SelectItem value="unlinked">Unlinked (0/5)</SelectItem>
+            <SelectItem value="partial">Partial (1–3/5)</SelectItem>
+            <SelectItem value="strong">Strong (4–5/5)</SelectItem>
+          </SelectContent>
+        </Select>
+        <span className="text-xs text-muted-foreground ml-auto">{items.length} shown · {data?.total ?? 0} total</span>
       </div>
 
       {error && <p className="text-sm text-destructive">Failed to load campaigns.</p>}
