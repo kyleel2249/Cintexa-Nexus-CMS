@@ -22,6 +22,7 @@ export default function ContentDetail() {
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [status, setStatus] = useState("DRAFT");
+  const [personaId, setPersonaId] = useState("");
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["marketing", "content", id],
@@ -34,11 +35,18 @@ export default function ContentDetail() {
       setTitle(data.title || "");
       setBody(data.body || "");
       setStatus(data.status || "DRAFT");
+      setPersonaId((data as any).persona_id != null ? String((data as any).persona_id) : "");
     }
   }, [data]);
 
   const save = useMutation({
-    mutationFn: () => marketingApi.updateContent(Number(id), { title, body, status }),
+    mutationFn: () =>
+      marketingApi.updateContent(Number(id), {
+        title,
+        body,
+        status,
+        persona_id: personaId ? Number(personaId) : null,
+      } as any),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["marketing", "content"] }),
   });
 
@@ -90,7 +98,10 @@ export default function ContentDetail() {
       <div className="space-y-3">
       <BrandComplianceInline text={body} />
       <div className="space-y-3">
-      <PersonaRecommendPanel />
+      <PersonaRecommendPanel
+          personaId={personaId ? Number(personaId) : null}
+          onSelectPersona={(pid) => setPersonaId(String(pid))}
+        />
       <BrandIntelligencePanel
         onInsertClaim={(text) => setBody((b) => (b ? b + "\n\n" + text : text))}
       />

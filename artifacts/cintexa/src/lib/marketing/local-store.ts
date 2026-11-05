@@ -36,6 +36,8 @@ export type ContentItem = {
   body?: string | null;
   excerpt?: string | null;
   campaign_id?: number | null;
+  persona_id?: number | null;
+  brand_id?: number | null;
   category?: string | null;
   tags: string[];
   channel?: string | null;
@@ -289,6 +291,8 @@ export function createContent(input: Partial<ContentItem> & { title: string }): 
     body: input.body ?? null,
     excerpt: input.excerpt ?? null,
     campaign_id: input.campaign_id ?? null,
+    persona_id: input.persona_id ?? null,
+    brand_id: input.brand_id ?? null,
     category: input.category ?? null,
     tags: input.tags || [],
     channel: input.channel ?? null,
