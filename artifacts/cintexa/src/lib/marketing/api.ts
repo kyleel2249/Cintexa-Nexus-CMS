@@ -37,7 +37,11 @@ export const marketingApi = {
     if (!c) return Promise.reject(new Error("Content not found"));
     return Promise.resolve(c);
   },
-  createContent: (body: Parameters<typeof store.createContent>[0]) => Promise.resolve(store.createContent(body)),
+  createContent: (body: Parameters<typeof store.createContent>[0]) => {
+    const row = store.createContent(body);
+    try { ent.logActivity({ action: "created", entity_type: "content", entity_id: row.id, summary: `Content created: ${(row as any).title || (row as any).name || row.id}` }); } catch {}
+    return Promise.resolve(row);
+  },
   updateContent: (id: number, body: Parameters<typeof store.updateContent>[1]) => {
     const c = store.updateContent(id, body);
     if (!c) return Promise.reject(new Error("Content not found"));
@@ -64,7 +68,11 @@ export const marketingApi = {
     const items = store.listEmails();
     return Promise.resolve({ items, total: items.length });
   },
-  createEmail: (body: Parameters<typeof store.createEmail>[0]) => Promise.resolve(store.createEmail(body)),
+  createEmail: (body: Parameters<typeof store.createEmail>[0]) => {
+    const row = store.createEmail(body);
+    try { ent.logActivity({ action: "created", entity_type: "email", entity_id: row.id, summary: `Email created: ${(row as any).subject || row.id}` }); } catch {}
+    return Promise.resolve(row);
+  },
   updateEmail: (id: number, body: Parameters<typeof store.updateEmail>[1]) => {
     const e = store.updateEmail(id, body);
     if (!e) return Promise.reject(new Error("Email not found"));
@@ -75,7 +83,11 @@ export const marketingApi = {
     const items = store.listLeads();
     return Promise.resolve({ items, total: items.length });
   },
-  createLead: (body: Parameters<typeof store.createLead>[0]) => Promise.resolve(store.createLead(body)),
+  createLead: (body: Parameters<typeof store.createLead>[0]) => {
+    const row = store.createLead(body);
+    try { ent.logActivity({ action: "created", entity_type: "lead", entity_id: row.id, summary: `Lead created: ${row.name}` }); } catch {}
+    return Promise.resolve(row);
+  },
   updateLead: (id: number, body: Parameters<typeof store.updateLead>[1]) => {
     const l = store.updateLead(id, body);
     if (!l) return Promise.reject(new Error("Lead not found"));

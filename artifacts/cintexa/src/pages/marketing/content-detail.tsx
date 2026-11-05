@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { marketingApi } from "@/lib/marketing/api";
 import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
+import { PersonaRecommendPanel } from "@/components/marketing/PersonaRecommendPanel";
 import { scanBrandCompliance } from "@/lib/marketing/brand-compliance";
 import { marketingIntel } from "@/lib/marketing/api";
 
@@ -88,9 +89,12 @@ export default function ContentDetail() {
       </Card>
       <div className="space-y-3">
       <BrandComplianceInline text={body} />
+      <div className="space-y-3">
+      <PersonaRecommendPanel />
       <BrandIntelligencePanel
         onInsertClaim={(text) => setBody((b) => (b ? b + "\n\n" + text : text))}
       />
+      </div>
       </div>
       </div>
     </div>

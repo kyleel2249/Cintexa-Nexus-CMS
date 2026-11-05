@@ -119,6 +119,32 @@ export default function MarketingAnalyticsPage() {
 
       <Card>
         <CardHeader className="pb-2">
+          <CardTitle className="text-base">Spend by campaign</CardTitle>
+          <CardDescription>Recorded spend only · CALCULATED bar widths</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-2">
+          {(() => {
+            const list = filteredCampaigns;
+            const max = Math.max(1, ...list.map((c) => Number(c.spent || 0)));
+            return list.map((c) => {
+              const s = Number(c.spent || 0);
+              return (
+                <div key={c.id} className="flex items-center gap-2 text-xs">
+                  <span className="w-28 truncate">{c.name}</span>
+                  <div className="flex-1 h-2 rounded bg-muted overflow-hidden">
+                    <div className="h-full bg-primary/70" style={{ width: `${(s / max) * 100}%` }} />
+                  </div>
+                  <span className="tabular-nums w-14 text-right">{s}</span>
+                </div>
+              );
+            });
+          })()}
+          {!filteredCampaigns.length && <p className="text-xs text-muted-foreground">No campaigns in filter.</p>}
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader className="pb-2">
           <CardTitle className="text-base">Campaign drill-down</CardTitle>
           <CardDescription>Spend and status from stored campaign records. ROI requires revenue — not invented.</CardDescription>
         </CardHeader>

@@ -25,6 +25,7 @@ const Calendar = lazy(() => import("./calendar"));
 const Activity = lazy(() => import("./activity"));
 const ImportPage = lazy(() => import("./import"));
 const Templates = lazy(() => import("./templates"));
+const Variants = lazy(() => import("./variants"));
 
 function Spinner() {
   return (
@@ -63,6 +64,7 @@ export function MarketingRoutes() {
         <Route path="/marketing/activity" component={Activity} />
         <Route path="/marketing/import" component={ImportPage} />
         <Route path="/marketing/templates" component={Templates} />
+        <Route path="/marketing/variants" component={Variants} />
         <Route path="/marketing/settings" component={Settings} />
       </Switch>
     </Suspense>

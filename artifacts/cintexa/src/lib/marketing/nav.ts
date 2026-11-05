@@ -28,6 +28,7 @@ export const MARKETING_NAV: MarketingNavItem[] = [
   { key: "budget", label: "Budget & ROI", href: "/marketing/budget", perm: "marketing:budget", icon: "DollarSign", section: "Intelligence" },
   { key: "reports", label: "Reports & Intelligence", href: "/marketing/reports", perm: "marketing:reports", icon: "ScrollText", section: "Intelligence" },
   { key: "templates", label: "Templates", href: "/marketing/templates", perm: "marketing:content", icon: "FileText", section: "Creation" },
+  { key: "variants", label: "A/B Variants", href: "/marketing/variants", perm: "marketing:content", icon: "Lightbulb", section: "Creation" },
   { key: "activity", label: "Activity Log", href: "/marketing/activity", perm: "marketing:read", icon: "List", section: "Intelligence" },
   { key: "import", label: "CSV Import", href: "/marketing/import", perm: "marketing:settings", icon: "Upload", section: "System" },
   { key: "settings", label: "Marketing Settings", href: "/marketing/settings", perm: "marketing:settings", icon: "Settings", section: "System" },
