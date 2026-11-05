@@ -159,3 +159,53 @@ export function readCachedPages(queryClient: QueryClient): {
     sourceQueryCount: queryCount,
   };
 }
+
+export type CachedFormOption = {
+  cmsFormId: number;
+  name: string;
+  submissionCount?: number;
+  createdAt?: string;
+};
+
+function isFormsKey(key: unknown): boolean {
+  const root = keyRoot(key);
+  return root === "/api/forms";
+}
+
+function normalizeForm(row: unknown): CachedFormOption | null {
+  if (!row || typeof row !== "object") return null;
+  const r = row as Record<string, unknown>;
+  const id = Number(r.id);
+  if (!Number.isFinite(id)) return null;
+  const name = typeof r.name === "string" ? r.name : `Form #${id}`;
+  return {
+    cmsFormId: id,
+    name,
+    submissionCount: typeof r.submissionCount === "number" ? r.submissionCount : undefined,
+    createdAt: typeof r.createdAt === "string" ? r.createdAt : undefined,
+  };
+}
+
+export function readCachedForms(queryClient: QueryClient): {
+  available: boolean;
+  items: CachedFormOption[];
+  sourceQueryCount: number;
+} {
+  const all = queryClient.getQueryCache().getAll();
+  const map = new Map<number, CachedFormOption>();
+  let queryCount = 0;
+  for (const q of all) {
+    if (!isFormsKey(q.queryKey)) continue;
+    if (q.state.status !== "success") continue;
+    const data = q.state.data;
+    if (data == null) continue;
+    const rows = asArray(data);
+    queryCount += 1;
+    for (const row of rows) {
+      const n = normalizeForm(row);
+      if (n) map.set(n.cmsFormId, n);
+    }
+  }
+  const items = Array.from(map.values()).sort((a, b) => a.name.localeCompare(b.name));
+  return { available: items.length > 0, items, sourceQueryCount: queryCount };
+}

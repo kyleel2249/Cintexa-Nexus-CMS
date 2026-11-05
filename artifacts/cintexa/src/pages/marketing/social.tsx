@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -10,6 +10,9 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle, DialogT
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Check } from "lucide-react";
 import { marketingApi } from "@/lib/marketing/api";
+import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
+import { scanBrandCompliance } from "@/lib/marketing/brand-compliance";
+import { marketingIntel } from "@/lib/marketing/api";
 
 const CHANNELS = ["facebook", "instagram", "linkedin", "tiktok", "x", "youtube", "other"];
 const STATUSES = ["DRAFT", "IN_REVIEW", "APPROVED", "SCHEDULED", "READY_TO_PUBLISH", "PUBLISHED_MANUALLY", "FAILED", "CANCELLED"];
@@ -112,6 +115,7 @@ export default function SocialMediaManager() {
         </Dialog>
       </div>
 
+      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-base">Publishing queue</CardTitle>
@@ -149,6 +153,13 @@ export default function SocialMediaManager() {
           ))}
         </CardContent>
       </Card>
+      <BrandIntelligencePanel
+        onInsertClaim={(text) => {
+          setCaption((c) => (c ? c + "\n" + text : text));
+          setOpen(true);
+        }}
+      />
+      </div>
     </div>
   );
 }

@@ -5,6 +5,7 @@
  */
 let mediaSessionAvailable = false;
 let pagesSessionAvailable = false;
+let formsSessionAvailable = false;
 
 const listeners = new Set<() => void>();
 
@@ -40,6 +41,17 @@ export function isPagesSessionAvailable() {
   return pagesSessionAvailable;
 }
 
+export function markFormsSessionAvailable() {
+  if (!formsSessionAvailable) {
+    formsSessionAvailable = true;
+    notify();
+  }
+}
+
+export function isFormsSessionAvailable() {
+  return formsSessionAvailable;
+}
+
 /** Subscribe to marker changes (picker availability). No network. */
 export function subscribeSessionMarkers(cb: () => void): () => void {
   listeners.add(cb);
@@ -50,5 +62,6 @@ export function subscribeSessionMarkers(cb: () => void): () => void {
 export function __resetSessionMarkersForTests() {
   mediaSessionAvailable = false;
   pagesSessionAvailable = false;
+  formsSessionAvailable = false;
   notify();
 }

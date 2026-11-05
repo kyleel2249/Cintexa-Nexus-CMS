@@ -8,6 +8,9 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { marketingApi } from "@/lib/marketing/api";
 import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
+import { scanBrandCompliance } from "@/lib/marketing/brand-compliance";
+import { marketingIntel } from "@/lib/marketing/api";
+
 import { ArrowLeft } from "lucide-react";
 import { useState, useEffect } from "react";
 
@@ -83,10 +86,38 @@ export default function ContentDetail() {
           </p>
         </CardContent>
       </Card>
+      <div className="space-y-3">
+      <BrandComplianceInline text={body} />
       <BrandIntelligencePanel
         onInsertClaim={(text) => setBody((b) => (b ? b + "\n\n" + text : text))}
       />
       </div>
+      </div>
     </div>
   );
 }
+
+function BrandComplianceInline({ text }: { text: string }) {
+  const brandQ = useQuery({ queryKey: ["mkt", "brands"], queryFn: () => marketingIntel.listBrands() });
+  const brand = brandQ.data?.items?.find((b) => b.is_default) || brandQ.data?.items?.[0];
+  const claimsQ = useQuery({
+    queryKey: ["mkt", "claims", brand?.id],
+    enabled: !!brand?.id,
+    queryFn: () => marketingIntel.listClaims(brand!.id),
+  });
+  const issues = scanBrandCompliance(text, brand, claimsQ.data?.items || []);
+  if (!text.trim()) return null;
+  return (
+    <div className="rounded-md border px-3 py-2 space-y-1">
+      <p className="text-xs font-medium">Brand consistency check</p>
+      <p className="text-[10px] text-muted-foreground">Assistant only — not legal certification.</p>
+      {issues.map((i) => (
+        <div key={i.id} className="text-[11px] border-t border-border/40 pt-1">
+          <span className="uppercase text-[9px] text-muted-foreground">{i.severity}</span> {i.message}
+          {i.suggestion && <p className="text-muted-foreground">{i.suggestion}</p>}
+        </div>
+      ))}
+    </div>
+  );
+}
+

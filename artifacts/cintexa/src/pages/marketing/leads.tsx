@@ -16,7 +16,15 @@ export default function LeadGeneration() {
   const [salesBridge, setSalesBridge] = useState<string>("");
   useEffect(() => {
     probeSalesLocal().then((s) => {
-      setSalesBridge(s.available ? s.note : s.reason);
+      if (s.available) {
+        setSalesBridge(
+          s.totalLeads != null
+            ? `${s.note}`
+            : s.note,
+        );
+      } else {
+        setSalesBridge(s.reason);
+      }
     });
   }, []);
   const [open, setOpen] = useState(false);

@@ -1,12 +1,15 @@
 import { useRoute, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { useEffect, useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { marketingApi } from "@/lib/marketing/api";
+import { Label } from "@/components/ui/label";
+import { marketingApi, marketingIntel, marketingAssets } from "@/lib/marketing/api";
 import { ArrowLeft } from "lucide-react";
+import { BrandIntelligencePanel } from "@/components/marketing/BrandIntelligencePanel";
 
-const TRANSITIONS: Record<string, string[]> = {
+const NEXT: Record<string, string[]> = {
   DRAFT: ["PLANNED", "ARCHIVED"],
   PLANNED: ["APPROVED", "DRAFT", "ARCHIVED"],
   APPROVED: ["ACTIVE", "PLANNED", "ARCHIVED"],
@@ -18,85 +21,228 @@ const TRANSITIONS: Record<string, string[]> = {
 
 export default function CampaignDetail() {
   const [, params] = useRoute("/marketing/campaigns/:id");
-  const id = params?.id;
+  const id = Number(params?.id);
   const qc = useQueryClient();
 
-  const { data, isLoading, error } = useQuery({
+  useEffect(() => {
+    marketingIntel.ensureSeed();
+  }, []);
+
+  const campaign = useQuery({
     queryKey: ["marketing", "campaign", id],
-    enabled: !!id,
-    queryFn: () => marketingApi.getCampaign(Number(id)),
+    enabled: Number.isFinite(id),
+    queryFn: () => marketingApi.getCampaign(id),
   });
+  const strategies = useQuery({ queryKey: ["mkt", "strategies"], queryFn: () => marketingIntel.listStrategies() });
+  const objectives = useQuery({ queryKey: ["mkt", "objectives"], queryFn: () => marketingIntel.listObjectives() });
+  const personas = useQuery({ queryKey: ["mkt", "personas"], queryFn: () => marketingIntel.listPersonas() });
+  const funnels = useQuery({ queryKey: ["mkt", "funnels"], queryFn: () => marketingIntel.listFunnels() });
+  const brands = useQuery({ queryKey: ["mkt", "brands"], queryFn: () => marketingIntel.listBrands() });
+  const assets = useQuery({ queryKey: ["mkt", "assets"], queryFn: () => marketingAssets.list() });
+
+  const [strategyId, setStrategyId] = useState<string>("");
+  const [objectiveId, setObjectiveId] = useState<string>("");
+  const [personaId, setPersonaId] = useState<string>("");
+  const [funnelId, setFunnelId] = useState<string>("");
+  const [brandId, setBrandId] = useState<string>("");
+
+  useEffect(() => {
+    const meta = (campaign.data as any)?.metadata || {};
+    setStrategyId(meta.strategy_id != null ? String(meta.strategy_id) : "");
+    setObjectiveId(meta.objective_id != null ? String(meta.objective_id) : "");
+    setPersonaId(meta.persona_id != null ? String(meta.persona_id) : "");
+    setFunnelId(meta.funnel_id != null ? String(meta.funnel_id) : "");
+    setBrandId(meta.brand_id != null ? String(meta.brand_id) : "");
+  }, [campaign.data?.id]);
 
   const transition = useMutation({
-    mutationFn: (status: string) => marketingApi.transitionCampaign(Number(id), status),
+    mutationFn: (status: string) => marketingApi.transitionCampaign(id, status),
     onSuccess: () => qc.invalidateQueries({ queryKey: ["marketing"] }),
   });
 
-  if (isLoading) return <div className="p-6 text-sm text-muted-foreground">Loading campaign…</div>;
-  if (error || !data) return <div className="p-6 text-sm text-destructive">Campaign not found.</div>;
+  const saveLinks = useMutation({
+    mutationFn: () =>
+      marketingApi.updateCampaign(id, {
+        metadata: {
+          ...((campaign.data as any)?.metadata || {}),
+          strategy_id: strategyId ? Number(strategyId) : null,
+          objective_id: objectiveId ? Number(objectiveId) : null,
+          persona_id: personaId ? Number(personaId) : null,
+          funnel_id: funnelId ? Number(funnelId) : null,
+          brand_id: brandId ? Number(brandId) : null,
+        },
+      } as any),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["marketing", "campaign", id] }),
+  });
 
-  const next = TRANSITIONS[data.status] || [];
+  const linkAsset = useMutation({
+    mutationFn: (assetId: number) => {
+      const a = (assets.data?.items || []).find((x) => x.id === assetId);
+      if (!a) return Promise.reject(new Error("Asset not found"));
+      const ids = Array.from(new Set([...(a.campaign_ids || []), id]));
+      return marketingAssets.update(assetId, { campaign_ids: ids });
+    },
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["mkt", "assets"] }),
+  });
+
+  if (campaign.isLoading) return <div className="p-6 text-sm text-muted-foreground">Loading…</div>;
+  if (campaign.error || !campaign.data) return <div className="p-6 text-sm text-destructive">Campaign not found.</div>;
+
+  const c = campaign.data as any;
+  const next = NEXT[c.status] || [];
+  const linkedAssets = (assets.data?.items || []).filter((a) => (a.campaign_ids || []).includes(id));
+  const obj = (objectives.data?.items || []).find((o) => String(o.id) === objectiveId);
+  const funnel = (funnels.data?.items || []).find((f) => String(f.id) === funnelId);
 
   return (
-    <div className="p-4 md:p-6 space-y-4 max-w-4xl">
+    <div className="p-4 md:p-6 space-y-4 max-w-5xl">
       <div className="flex items-center gap-3">
-        <Link href="/marketing/campaigns">
-          <Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button>
-        </Link>
+        <Link href="/marketing/campaigns"><Button variant="ghost" size="icon"><ArrowLeft className="h-4 w-4" /></Button></Link>
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 flex-wrap">
-            <h1 className="text-xl font-semibold truncate">{data.name}</h1>
-            <Badge>{data.status}</Badge>
-            <Badge variant="outline">{data.priority}</Badge>
+          <h1 className="text-xl font-semibold truncate">{c.name}</h1>
+          <div className="flex flex-wrap gap-2 mt-1">
+            <Badge>{c.status}</Badge>
+            <Badge variant="outline">{c.number}</Badge>
+            <span className="text-xs text-muted-foreground">Budget {c.budget} · Spent {c.spent}</span>
           </div>
-          <p className="text-xs text-muted-foreground">{data.number}</p>
         </div>
       </div>
 
       <div className="flex flex-wrap gap-2">
         {next.map((s) => (
-          <Button key={s} size="sm" variant={s === "ARCHIVED" ? "destructive" : "secondary"}
-            disabled={transition.isPending}
-            onClick={() => transition.mutate(s)}>
-            Move to {s}
+          <Button key={s} size="sm" variant="outline" disabled={transition.isPending} onClick={() => transition.mutate(s)}>
+            → {s}
           </Button>
         ))}
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Details</CardTitle></CardHeader>
-          <CardContent className="text-sm space-y-2">
-            <Row label="Objective" value={data.objective || "—"} />
-            <Row label="Budget" value={String(data.budget ?? 0)} />
-            <Row label="Spent" value={String(data.spent ?? 0)} />
-            <Row label="Start" value={data.start_date || "—"} />
-            <Row label="End" value={data.end_date || "—"} />
-            <Row label="Channels" value={(data.channels || []).join(", ") || "—"} />
-          </CardContent>
-        </Card>
-        <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm">Activity</CardTitle></CardHeader>
-          <CardContent className="space-y-2 max-h-64 overflow-auto">
-            {(data.activities || []).slice().reverse().map((a: any, i: number) => (
-              <div key={i} className="text-xs border-b last:border-0 pb-2">
-                <p className="font-medium">{a.summary || a.action}</p>
-                <p className="text-muted-foreground">{a.at}</p>
+      <div className="grid gap-4 lg:grid-cols-[1fr_280px]">
+        <div className="space-y-4">
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">Integration hub</CardTitle>
+              <CardDescription>Link strategy, OKRs, personas, brand, and funnels. One campaign, shared records.</CardDescription>
+            </CardHeader>
+            <CardContent className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <Label className="text-xs">Strategy</Label>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={strategyId} onChange={(e) => setStrategyId(e.target.value)}>
+                  <option value="">— None —</option>
+                  {(strategies.data?.items || []).map((s) => <option key={s.id} value={s.id}>{s.name}</option>)}
+                </select>
               </div>
-            ))}
-            {!(data.activities || []).length && <p className="text-xs text-muted-foreground">No activity yet.</p>}
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-}
+              <div>
+                <Label className="text-xs">Objective / OKR</Label>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={objectiveId} onChange={(e) => setObjectiveId(e.target.value)}>
+                  <option value="">— None —</option>
+                  {(objectives.data?.items || []).map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Persona</Label>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={personaId} onChange={(e) => setPersonaId(e.target.value)}>
+                  <option value="">— None —</option>
+                  {(personas.data?.items || []).map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+                </select>
+              </div>
+              <div>
+                <Label className="text-xs">Brand</Label>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={brandId} onChange={(e) => setBrandId(e.target.value)}>
+                  <option value="">— Default —</option>
+                  {(brands.data?.items || []).map((b) => <option key={b.id} value={b.id}>{b.name}</option>)}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <Label className="text-xs">Funnel</Label>
+                <select className="w-full h-9 rounded-md border bg-background px-2 text-sm" value={funnelId} onChange={(e) => setFunnelId(e.target.value)}>
+                  <option value="">— None —</option>
+                  {(funnels.data?.items || []).map((f) => <option key={f.id} value={f.id}>{f.name}</option>)}
+                </select>
+              </div>
+              <div className="sm:col-span-2">
+                <Button size="sm" disabled={saveLinks.isPending} onClick={() => saveLinks.mutate()}>
+                  {saveLinks.isPending ? "Saving…" : "Save links"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
 
-function Row({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex justify-between gap-4">
-      <span className="text-muted-foreground">{label}</span>
-      <span className="text-right">{value}</span>
+          {obj && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Linked OKR progress</CardTitle></CardHeader>
+              <CardContent className="text-sm">
+                <p className="font-medium">{obj.name}</p>
+                <p className="text-xs text-muted-foreground">{marketingIntel.objectiveProgress(obj)}% · shared objective record</p>
+              </CardContent>
+            </Card>
+          )}
+
+          {funnel && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Linked funnel</CardTitle></CardHeader>
+              <CardContent className="text-xs space-y-1">
+                <p className="font-medium text-sm">{funnel.name}</p>
+                {funnel.stages.map((st) => (
+                  <div key={st.id} className="flex justify-between border rounded px-2 py-1">
+                    <span>{st.name}</span>
+                    <span className="tabular-nums">{st.actual_count ?? 0} <Badge variant="outline" className="text-[9px] ml-1">MANUAL</Badge></span>
+                  </div>
+                ))}
+                <Link href="/marketing/landing" className="underline text-muted-foreground">Edit funnel counts</Link>
+              </CardContent>
+            </Card>
+          )}
+
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-sm">Assets</CardTitle>
+              <CardDescription>Associate registered marketing asset refs (not file copies).</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              {linkedAssets.map((a) => (
+                <div key={a.id} className="text-sm border rounded px-2 py-1 flex justify-between">
+                  <span>{a.name}</span>
+                  <span className="text-xs text-muted-foreground">{a.media_id != null ? `Media #${a.media_id}` : "manual"}</span>
+                </div>
+              ))}
+              <div className="flex flex-wrap gap-1">
+                {(assets.data?.items || [])
+                  .filter((a) => !(a.campaign_ids || []).includes(id))
+                  .slice(0, 8)
+                  .map((a) => (
+                    <Button key={a.id} size="sm" variant="outline" className="h-7 text-xs" onClick={() => linkAsset.mutate(a.id)}>
+                      + {a.name}
+                    </Button>
+                  ))}
+              </div>
+              {!linkedAssets.length && <p className="text-xs text-muted-foreground">No assets linked yet.</p>}
+            </CardContent>
+          </Card>
+
+          {c.description && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Description</CardTitle></CardHeader>
+              <CardContent className="text-sm text-muted-foreground">{c.description}</CardContent>
+            </Card>
+          )}
+
+          {(c.activities || []).length > 0 && (
+            <Card>
+              <CardHeader className="pb-2"><CardTitle className="text-sm">Activity</CardTitle></CardHeader>
+              <CardContent className="space-y-1 text-xs">
+                {(c.activities || []).slice().reverse().map((a: any, i: number) => (
+                  <div key={i} className="flex justify-between gap-2 border-b border-border/40 py-1">
+                    <span>{a.summary || a.action}</span>
+                    <span className="text-muted-foreground shrink-0">{a.at ? new Date(a.at).toLocaleString() : ""}</span>
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <BrandIntelligencePanel compact />
+      </div>
     </div>
   );
 }

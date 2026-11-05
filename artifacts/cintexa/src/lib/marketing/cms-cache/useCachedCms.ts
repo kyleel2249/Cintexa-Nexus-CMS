@@ -94,3 +94,47 @@ export function useCachedCmsPages(): {
     refreshFromCache,
   };
 }
+
+import { readCachedForms, type CachedFormOption } from "./cmsCacheReader";
+import { isFormsSessionAvailable } from "./sessionMarkers";
+
+export function useCachedCmsForms(): {
+  sessionAvailable: boolean;
+  cacheHasData: boolean;
+  items: CachedFormOption[];
+  refreshFromCache: () => void;
+} {
+  const qc = useQueryClient();
+  const [sessionAvailable, setSessionAvailable] = useState(isFormsSessionAvailable);
+  const [items, setItems] = useState<CachedFormOption[]>([]);
+  const [cacheHasData, setCacheHasData] = useState(false);
+
+  const refreshFromCache = useCallback(() => {
+    const result = readCachedForms(qc);
+    setItems(result.items);
+    setCacheHasData(result.available);
+  }, [qc]);
+
+  useEffect(() => {
+    setSessionAvailable(isFormsSessionAvailable());
+    refreshFromCache();
+    const unsubMarker = subscribeSessionMarkers(() => {
+      setSessionAvailable(isFormsSessionAvailable());
+      refreshFromCache();
+    });
+    const unsubCache = qc.getQueryCache().subscribe(() => {
+      if (isFormsSessionAvailable()) refreshFromCache();
+    });
+    return () => {
+      unsubMarker();
+      unsubCache();
+    };
+  }, [qc, refreshFromCache]);
+
+  return {
+    sessionAvailable,
+    cacheHasData: sessionAvailable && cacheHasData,
+    items: sessionAvailable ? items : [],
+    refreshFromCache,
+  };
+}

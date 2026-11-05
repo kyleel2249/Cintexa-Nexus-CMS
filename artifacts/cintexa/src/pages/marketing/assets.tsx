@@ -71,6 +71,7 @@ export default function AssetLibraryPage() {
         </div>
         <div className="flex flex-wrap gap-2">
         <CmsMediaPicker
+          multiSelect
           onSelect={(m) => {
             marketingAssets.create({
               name: m.name,
@@ -80,6 +81,20 @@ export default function AssetLibraryPage() {
               tags: [],
               category: m.mimeType?.startsWith("image/") ? "Image" : m.mimeType?.startsWith("video/") ? "Video" : "File",
             }).then(() => qc.invalidateQueries({ queryKey: ["mkt", "assets"] }));
+          }}
+          onSelectMany={(list) => {
+            Promise.all(
+              list.map((m) =>
+                marketingAssets.create({
+                  name: m.name,
+                  media_id: m.cmsMediaId,
+                  url: m.thumbnailUrl || null,
+                  mime_type: m.mimeType || null,
+                  tags: [],
+                  category: m.mimeType?.startsWith("image/") ? "Image" : "File",
+                }),
+              ),
+            ).then(() => qc.invalidateQueries({ queryKey: ["mkt", "assets"] }));
           }}
         />
         <Dialog open={open} onOpenChange={setOpen}>

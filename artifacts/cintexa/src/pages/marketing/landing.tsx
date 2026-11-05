@@ -10,6 +10,7 @@ import { Plus } from "lucide-react";
 import { marketingIntel, marketingAssets } from "@/lib/marketing/api";
 import { Link } from "wouter";
 import { CmsPagesPicker } from "@/components/marketing/CmsPagesPicker";
+import { CmsFormsPicker } from "@/components/marketing/CmsFormsPicker";
 
 export default function LandingFunnelsPage() {
   const qc = useQueryClient();
@@ -158,6 +159,13 @@ export default function LandingFunnelsPage() {
               <CardTitle className="text-sm">Form registry</CardTitle>
               <CardDescription>Forms linked to conversion steps</CardDescription>
             </div>
+            <div className="flex gap-1 flex-wrap">
+            <CmsFormsPicker
+              triggerLabel="Browse cached forms"
+              onSelect={(f) => {
+                marketingAssets.createFormRef({ name: f.name, form_id: f.cmsFormId, notes: f.submissionCount != null ? `submissions=${f.submissionCount}` : undefined }).then(() => qc.invalidateQueries({ queryKey: ["mkt", "formRefs"] }));
+              }}
+            />
             <Dialog open={formRefOpen} onOpenChange={setFormRefOpen}>
               <DialogTrigger asChild><Button size="sm" variant="outline">Add form</Button></DialogTrigger>
               <DialogContent>
@@ -168,6 +176,7 @@ export default function LandingFunnelsPage() {
                 </DialogFooter>
               </DialogContent>
             </Dialog>
+            </div>
           </CardHeader>
           <CardContent className="space-y-1">
             {forms.map((f) => (

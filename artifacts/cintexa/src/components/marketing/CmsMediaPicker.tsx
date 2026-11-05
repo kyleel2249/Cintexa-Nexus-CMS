@@ -10,6 +10,8 @@ import { Image as ImageIcon, File as FileIcon, Film } from "lucide-react";
 
 type Props = {
   onSelect: (asset: CachedMediaOption) => void;
+  onSelectMany?: (assets: CachedMediaOption[]) => void;
+  multiSelect?: boolean;
   triggerLabel?: string;
 };
 
@@ -26,10 +28,11 @@ function TypeIcon({ mime }: { mime?: string }) {
   return <FileIcon className="h-6 w-6 text-muted-foreground" />;
 }
 
-export function CmsMediaPicker({ onSelect, triggerLabel = "Choose from Media Library" }: Props) {
+export function CmsMediaPicker({ onSelect, onSelectMany, multiSelect, triggerLabel = "Choose from Media Library" }: Props) {
   const [open, setOpen] = useState(false);
   const [q, setQ] = useState("");
   const [type, setType] = useState("all");
+  const [selected, setSelected] = useState<number[]>([]);
   const { sessionAvailable, cacheHasData, items } = useCachedCmsMedia();
 
   const filtered = useMemo(() => {
@@ -72,10 +75,16 @@ export function CmsMediaPicker({ onSelect, triggerLabel = "Choose from Media Lib
                 <button
                   key={m.cmsMediaId}
                   type="button"
-                  className="rounded-md border p-2 text-left hover:border-primary hover:bg-muted/40 transition-colors"
+                  className={`rounded-md border p-2 text-left hover:border-primary hover:bg-muted/40 transition-colors ${selected.includes(m.cmsMediaId) ? "border-primary ring-1 ring-primary" : ""}`}
                   onClick={() => {
-                    onSelect(m);
-                    setOpen(false);
+                    if (multiSelect) {
+                      setSelected((prev) =>
+                        prev.includes(m.cmsMediaId) ? prev.filter((id) => id !== m.cmsMediaId) : [...prev, m.cmsMediaId],
+                      );
+                    } else {
+                      onSelect(m);
+                      setOpen(false);
+                    }
                   }}
                 >
                   <div className="aspect-video rounded bg-muted/50 flex items-center justify-center overflow-hidden mb-1">
@@ -102,7 +111,23 @@ export function CmsMediaPicker({ onSelect, triggerLabel = "Choose from Media Lib
           </>
         )}
 
-        <DialogFooter>
+        <DialogFooter className="gap-2">
+          {multiSelect && (
+            <Button
+              type="button"
+              size="sm"
+              disabled={!selected.length}
+              onClick={() => {
+                const picked = items.filter((m) => selected.includes(m.cmsMediaId));
+                onSelectMany?.(picked);
+                picked.forEach((m) => onSelect(m));
+                setSelected([]);
+                setOpen(false);
+              }}
+            >
+              Add {selected.length || ""} selected
+            </Button>
+          )}
           <Button type="button" variant="ghost" onClick={() => setOpen(false)}>Close</Button>
         </DialogFooter>
       </DialogContent>
