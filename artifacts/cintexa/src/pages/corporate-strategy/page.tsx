@@ -29,7 +29,12 @@ function Shell({ title, desc, children }: { title: string; desc: string; childre
   );
 }
 
+/** Each mode renders different hooks; keying by mode remounts cleanly on navigation instead of crashing the page. */
 export default function CsiPage({ mode }: { mode: Mode }) {
+  return <CsiPageInner key={mode} mode={mode} />;
+}
+
+function CsiPageInner({ mode }: { mode: Mode }) {
   const qc = useQueryClient();
   const inv = () => qc.invalidateQueries({ queryKey: ["csi"] });
 

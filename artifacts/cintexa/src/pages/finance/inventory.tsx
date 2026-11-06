@@ -1,3 +1,4 @@
+import { parseNumberInput } from "@/lib/finance/money";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { finGet, finPost } from "@/lib/finance/api";
@@ -78,7 +79,7 @@ function Receive({ items, refresh }: { items: any[]; refresh: () => void }) {
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
   const idem = useIdempotencyKey();
   const m = useMutation({
-    mutationFn: () => finPost<any>("/inventory/receive", { itemId: f.itemId, qty: Number(f.qty), totalCostMinor: toMinor(f.cost, "GHS", "Total cost"), date: f.date, creditAccountCode: f.credit, reference: f.ref || undefined, idempotencyKey: idem.key }),
+    mutationFn: () => finPost<any>("/inventory/receive", { itemId: f.itemId, qty: parseNumberInput(f.qty), totalCostMinor: toMinor(f.cost, "GHS", "Total cost"), date: f.date, creditAccountCode: f.credit, reference: f.ref || undefined, idempotencyKey: idem.key }),
     onSuccess: () => { refresh(); idem.reset(); setF((s) => ({ ...s, qty: "", cost: "", ref: "" })); },
   });
   return (
@@ -102,7 +103,7 @@ function Issue({ items, refresh }: { items: any[]; refresh: () => void }) {
   const set = (k: string, v: any) => setF((s) => ({ ...s, [k]: v }));
   const idem = useIdempotencyKey();
   const m = useMutation({
-    mutationFn: () => finPost<any>("/inventory/issue", { itemId: f.itemId, qty: Number(f.qty), date: f.date, reason: f.reason, saleRef: f.saleRef || undefined, fulfilled: f.reason === "sale" ? f.fulfilled : undefined, idempotencyKey: idem.key }),
+    mutationFn: () => finPost<any>("/inventory/issue", { itemId: f.itemId, qty: parseNumberInput(f.qty), date: f.date, reason: f.reason, saleRef: f.saleRef || undefined, fulfilled: f.reason === "sale" ? f.fulfilled : undefined, idempotencyKey: idem.key }),
     onSuccess: () => { refresh(); idem.reset(); setF((s) => ({ ...s, qty: "", saleRef: "", fulfilled: false })); },
   });
   const sale = f.reason === "sale";
@@ -137,7 +138,7 @@ function Returns({ refresh }: { refresh: () => void }) {
   const [id, setId] = useState(""); const [qty, setQty] = useState(""); const [date, setDate] = useState(today());
   const sku = (itemId: string) => items.data?.items.find((i) => i.id === itemId)?.sku || "?";
   const sales = (mv.data?.items || []).filter((m) => m.type === "issue" && m.reason === "sale" && m.returnedQty < m.qty);
-  const m = useMutation({ mutationFn: () => finPost<any>("/inventory/return", { movementId: id, qty: Number(qty), date }), onSuccess: () => { refresh(); setQty(""); } });
+  const m = useMutation({ mutationFn: () => finPost<any>("/inventory/return", { movementId: id, qty: parseNumberInput(qty), date }), onSuccess: () => { refresh(); setQty(""); } });
   return (
     <Section title="Sales return" hint="Restocks at the ORIGINAL cost of the sale and reverses the matching COGS (Dr Inventory / Cr COGS).">
       <div className="flex flex-wrap gap-2">
@@ -161,9 +162,9 @@ function Adjust({ items, refresh }: { items: any[]; refresh: () => void }) {
   const [g, setG] = useState({ itemId: "", qty: "", unit: "", date: today() });
   const [w, setW] = useState({ itemId: "", nrv: "", date: today() });
   const [p, setP] = useState({ itemId: "", qty: "", date: today() });
-  const gain = useMutation({ mutationFn: () => finPost<any>("/inventory/adjust", { itemId: g.itemId, qty: Number(g.qty), unitCostMinor: toMinor(g.unit, "GHS", "Unit cost"), date: g.date }), onSuccess: refresh });
+  const gain = useMutation({ mutationFn: () => finPost<any>("/inventory/adjust", { itemId: g.itemId, qty: parseNumberInput(g.qty), unitCostMinor: toMinor(g.unit, "GHS", "Unit cost"), date: g.date }), onSuccess: refresh });
   const wd = useMutation({ mutationFn: () => finPost<any>("/inventory/writedown", { itemId: w.itemId, nrvUnitMinor: toMinor(w.nrv, "GHS", "NRV per unit"), date: w.date }), onSuccess: refresh });
-  const pr = useMutation({ mutationFn: () => finPost<any>("/inventory/purchase-return", { itemId: p.itemId, qty: Number(p.qty), date: p.date }), onSuccess: refresh });
+  const pr = useMutation({ mutationFn: () => finPost<any>("/inventory/purchase-return", { itemId: p.itemId, qty: parseNumberInput(p.qty), date: p.date }), onSuccess: refresh });
   return (
     <div className="space-y-4">
       <Section title="Stock-count gain" hint="Adds a cost layer at the unit cost you enter and credits Inventory Losses and Write-downs. Use Sell / issue → Loss for shortages.">

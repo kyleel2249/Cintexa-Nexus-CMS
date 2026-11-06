@@ -189,3 +189,10 @@ export function amountInputToMinor(input: string | number | null | undefined, cu
 export function amountInputToMajor(input: string | number | null | undefined, currency = "GHS"): number {
   return minorToMajor(amountInputToMinor(input, currency), currency);
 }
+
+/** Plain number from a form field that may contain thousands separators ("1,000" -> 1000). NaN becomes 0. */
+export function parseNumberInput(input: string | number | null | undefined): number {
+  if (typeof input === "number") return Number.isFinite(input) ? input : 0;
+  const n = Number(String(input ?? "").replace(/[,\s]/g, ""));
+  return Number.isFinite(n) ? n : 0;
+}

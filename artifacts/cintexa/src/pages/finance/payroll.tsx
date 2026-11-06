@@ -1,3 +1,4 @@
+import { parseNumberInput } from "@/lib/finance/money";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { finGet, finPost } from "@/lib/finance/api";
@@ -61,7 +62,7 @@ function Rules({ refresh }: { refresh: () => void }) {
     mutationFn: () => {
       const payeBands = bands.map((b, i) => ({
         upToMinor: i === bands.length - 1 ? null : toMinor(b.upTo, "GHS", `Band ${i + 1} upper limit`),
-        rateBps: Math.round(Number(b.rate) * 100),
+        rateBps: Math.round(parseNumberInput(b.rate) * 100),
       }));
       if (payeBands.some((b) => !Number.isFinite(b.rateBps))) throw new Error("Enter a rate for every band.");
       const pct = (v: string) => (v === "" ? undefined : Math.round(Number(v) * 100));

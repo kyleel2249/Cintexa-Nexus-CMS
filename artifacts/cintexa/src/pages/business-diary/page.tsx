@@ -7,7 +7,12 @@ import { Input } from "@/components/ui/input";
 
 type Mode = "entries" | "pitches" | "feedback" | "followups" | "decisions" | "cases" | "insights";
 
+/** Each mode renders different hooks; keying by mode remounts cleanly on navigation instead of crashing the page. */
 export default function BdPage({ mode }: { mode: Mode }) {
+  return <BdPageInner key={mode} mode={mode} />;
+}
+
+function BdPageInner({ mode }: { mode: Mode }) {
   const qc = useQueryClient();
   const inv = () => qc.invalidateQueries({ queryKey: ["bd"] });
 

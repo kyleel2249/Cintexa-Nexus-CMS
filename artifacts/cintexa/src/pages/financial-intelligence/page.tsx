@@ -1,3 +1,4 @@
+import { parseNumberInput } from "@/lib/finance/money";
 import { RatioPanel } from "@/components/finance/RatioPanel";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fiGet, fiPost, fiPut, formatCurrency, formatMinor } from "@/lib/financial-intelligence/api";
@@ -295,7 +296,7 @@ function FiPageInner({ mode }: { mode: Mode }) {
     const [quote, setQuote] = useState("GHS");
     const [rate, setRate] = useState("15.5");
     const add = useMutation({
-      mutationFn: () => fiPost("/fx", { base, quote, rate: Number(rate), source: "manual" }),
+      mutationFn: () => fiPost("/fx", { base, quote, rate: parseNumberInput(rate), source: "manual" }),
       onSuccess: () => qc.invalidateQueries({ queryKey: ["fi", "fx"] }),
     });
     return (

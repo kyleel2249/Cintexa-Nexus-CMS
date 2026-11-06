@@ -1,3 +1,4 @@
+import { parseNumberInput } from "@/lib/finance/money";
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { finGet, finPost } from "@/lib/finance/api";
@@ -54,7 +55,7 @@ function Rates({ approver, setApprover, refresh }: { approver: string; setApprov
   const q = useQuery({ queryKey: ["fin", "fx", "rates"], queryFn: () => finGet<{ items: any[]; functionalCurrency: string }>("/fx/rates") });
   const [f, setF] = useState({ currency: "USD", rate: "", rateDate: today(), type: "closing", source: "", approvedBy: "" });
   const set = (k: string, v: string) => setF((s) => ({ ...s, [k]: v }));
-  const add = useMutation({ mutationFn: () => finPost("/fx/rates", { ...f, rate: Number(f.rate), approvedBy: f.approvedBy || undefined }), onSuccess: () => { refresh(); set("rate", ""); } });
+  const add = useMutation({ mutationFn: () => finPost("/fx/rates", { ...f, rate: parseNumberInput(f.rate), approvedBy: f.approvedBy || undefined }), onSuccess: () => { refresh(); set("rate", ""); } });
   const approve = useMutation({ mutationFn: (id: string) => finPost(`/fx/rates/${id}/approve`, { approvedBy: approver }), onSuccess: refresh });
   return (
     <div className="space-y-4">
@@ -134,7 +135,7 @@ function Settle({ refresh }: { refresh: () => void }) {
   const run = useMutation({
     mutationFn: () => {
       if (!chosen) throw new Error("Choose an open position.");
-      return finPost<any>("/fx/settle", { accountCode: chosen.code, currency: chosen.currency, fcAmount: toMinor(fc, chosen.currency, "Foreign amount"), rate: Number(rate), date, counterAccountCode: counter, idempotencyKey: idem.key });
+      return finPost<any>("/fx/settle", { accountCode: chosen.code, currency: chosen.currency, fcAmount: toMinor(fc, chosen.currency, "Foreign amount"), rate: parseNumberInput(rate), date, counterAccountCode: counter, idempotencyKey: idem.key });
     },
     onSuccess: () => { refresh(); idem.reset(); setFc(""); },
   });

@@ -33,6 +33,7 @@ export {
   minorToMajor,
   amountInputToMinor,
   amountInputToMajor,
+  parseNumberInput,
   currencyMeta,
 } from "./money";
 

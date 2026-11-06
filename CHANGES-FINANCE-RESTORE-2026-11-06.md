@@ -52,3 +52,9 @@ PR #16 (external-API removal) edits some of the same files (CSI, sync registry, 
 
 ### Update: delivery also returns to the source
 Every event now reaches all seven tools (Sales, Marketing, Corporate Strategy, Business Diary, Financial Intelligence, Finance, Dashboard) including the tool it came from, and the dashboard can be a source. A diary-originated record is acknowledged back to the diary (`source_ack` link) without writing a duplicate entry. Tests: tests/ 68 pass (reciprocal test now covers all seven sources).
+
+## Gap-closing pass (2026-11-06)
+- The same hook-order crash pattern existed in the Business Diary and Corporate Strategy pages (different hooks per mode in one component). Both now remount per mode.
+- Quantity and rate fields in Inventory, Payroll, FX and Financial Intelligence FX used `Number("1,000")` (NaN). They now use `parseNumberInput`.
+- Scan results: no unresolved imports in the frontend; no other page with the mode-hook pattern that is part of the dashboard/sidebar tools (remaining hits are unrelated editors and a vault form).
+- Tests: tests/ 68 pass; frontend 60 pass; api-server 118 pass; wi-engine 41 pass. The failures are suites that need `@electric-sql/pglite`/`pino`, which cannot be installed here.
