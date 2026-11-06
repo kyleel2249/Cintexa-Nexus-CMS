@@ -4,7 +4,7 @@ import { csiGet, formatCurrency } from "@/lib/csi/api";
 import { CSI_NAV } from "@/lib/csi/nav";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { KpiCard } from "@/components/ui/kpi-card";
+import { AnimatedKpiCard } from "@/components/financial-intelligence/AnimatedKpiCard";
 import { exportCsiOverviewPdf } from "@/lib/csi/pdf";
 import { Button } from "@/components/ui/button";
 
@@ -17,6 +17,12 @@ export default function CsiOverview() {
   const bva = useQuery({
     queryKey: ["csi", "bva"],
     queryFn: () => csiGet<any>("/budget-vs-actual"),
+    staleTime: 30_000,
+    retry: false,
+  });
+  const perf = useQuery({
+    queryKey: ["csi", "prod-perf"],
+    queryFn: () => csiGet<any>("/product-performance"),
     staleTime: 30_000,
     retry: false,
   });
@@ -47,13 +53,15 @@ export default function CsiOverview() {
   }
 
   const d = q.data;
+  const fin = d.financeLive;
+
   return (
     <div className="space-y-6 p-4 md:p-6">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-semibold tracking-tight">Corporate Strategy &amp; Intelligence</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            {d.profile?.legalName || "CINTEXA"} · management planning, products, budgets and risks
+            {d.profile?.legalName || "CINTEXA"} · management planning, products, budgets and risks · connected to live Finance when available
           </p>
         </div>
         <div className="flex flex-wrap gap-2">
@@ -66,24 +74,30 @@ export default function CsiOverview() {
                 profile: q.data?.profile,
                 dashboard: q.data,
                 budgetVsActual: bva.data,
+                productPerformance: perf.data,
               })
             }
           >
             Export PDF
           </Button>
+          <Link href="/finance">
+            <span className="inline-flex rounded-md border border-primary/40 bg-primary/10 px-3 py-1.5 text-sm font-medium text-primary cursor-pointer">
+              Open Finance →
+            </span>
+          </Link>
         </div>
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <KpiCard label="Active objectives" value={String(d.objectivesActive ?? 0)} tone="gold" href="/corporate-strategy/objectives" />
-        <KpiCard
+        <AnimatedKpiCard label="Active objectives" value={String(d.objectivesActive ?? 0)} tone="gold" href="/corporate-strategy/objectives" />
+        <AnimatedKpiCard
           label="Avg objective progress"
           value={d.objectivesAvgProgress != null ? `${d.objectivesAvgProgress}%` : "—"}
           tone={d.objectivesAvgProgress != null && d.objectivesAvgProgress >= 60 ? "positive" : "caution"}
           href="/corporate-strategy/objectives"
         />
-        <KpiCard label="Active products" value={`${d.productsActive ?? 0}/${d.productsTotal ?? 0}`} href="/corporate-strategy/products" />
-        <KpiCard
+        <AnimatedKpiCard label="Active products" value={`${d.productsActive ?? 0}/${d.productsTotal ?? 0}`} href="/corporate-strategy/products" />
+        <AnimatedKpiCard
           label="Open risks"
           value={String(d.openRisks ?? 0)}
           tone={(d.openRisks ?? 0) > 0 ? "caution" : "positive"}
@@ -91,11 +105,32 @@ export default function CsiOverview() {
         />
       </div>
 
+      <Card className="border-primary/20">
+        <CardHeader className="py-3">
+          <CardTitle className="text-base">Live Finance snapshot</CardTitle>
+          <CardDescription>
+            Authoritative balances from CINTEXA Finance — not CSI-calculated. Empty if Finance API is offline.
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {fin ? (
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <AnimatedKpiCard label="Revenue" value={formatCurrency(fin.revenue ?? 0, fin.currency || "GHS")} tone="positive" href="/finance" />
+              <AnimatedKpiCard label="Net profit" value={formatCurrency(fin.netProfit ?? 0, fin.currency || "GHS")} href="/finance" />
+              <AnimatedKpiCard label="Cash" value={formatCurrency(fin.cash ?? 0, fin.currency || "GHS")} tone="gold" href="/finance" />
+              <AnimatedKpiCard label="Receivables" value={formatCurrency(fin.accountsReceivable ?? 0, fin.currency || "GHS")} href="/finance/invoices" />
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground">Finance dashboard not reachable from this origin. CSI still operates for strategy records.</p>
+          )}
+        </CardContent>
+      </Card>
+
       {(d.insights || []).length > 0 && (
         <Card>
           <CardHeader className="py-3">
             <CardTitle className="text-base">Decision intelligence</CardTitle>
-            <CardDescription>Deterministic insights from CSI records</CardDescription>
+            <CardDescription>Deterministic insights from CSI records and optional Finance data</CardDescription>
           </CardHeader>
           <CardContent className="space-y-2">
             {d.insights.map((i: any) => (

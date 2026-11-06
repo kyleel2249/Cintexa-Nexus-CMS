@@ -272,7 +272,7 @@ export default function CsiPage({ mode }: { mode: Mode }) {
       },
     });
     return (
-      <Shell title="Budgets" desc="Planning amounts in major units; actuals are the amounts recorded on each budget line">
+      <Shell title="Budgets" desc="Planning amounts in major units; actuals should be reconciled to Finance expenditure">
         <div className="flex flex-wrap gap-2 mb-4">
           <Input placeholder="Category" value={category} onChange={(e) => setCategory(e.target.value)} />
           <Input placeholder="Planned GHS" value={planned} onChange={(e) => setPlanned(e.target.value)} className="w-32" />
@@ -370,7 +370,7 @@ export default function CsiPage({ mode }: { mode: Mode }) {
       onSuccess: setResult,
     });
     return (
-      <Shell title="Financial forecasts" desc="Projections only — clearly labelled; stored in CSI only">
+      <Shell title="Financial forecasts" desc="Projections only — clearly labelled; does not write to the Finance ledger">
         <div className="flex flex-wrap gap-2 items-end mb-4">
           <label className="text-sm">
             Start revenue GHS
