@@ -1,7 +1,7 @@
 /**
  * CINTEXA Corporate Strategy & Intelligence API (/api/csi/*)
  * Zero third-party API keys. Authoritative store: CSI_DB (D1). Falls back to isolate memory only when CSI_ALLOW_MEMORY=1.
- * Does not invent finance balances — dashboard pulls optional live Finance snapshot.
+ * Self-contained: no dependency on any Finance module. Budget actuals are the figures stored in CSI.
  */
 
 type Id = string;
@@ -609,16 +609,6 @@ export const onRequest = async (context: { request: Request; env: any; params: {
         ? null
         : Math.round(activeObj.reduce((s, o) => s + objectiveProgress(o), 0) / activeObj.length);
 
-    // Optional live Finance snapshot (never invent balances)
-    let finance: any = null;
-    try {
-      const origin = new URL(request.url).origin;
-      const fr = await fetch(`${origin}/api/finance/dashboard`, { headers: { accept: "application/json" } });
-      if (fr.ok) finance = await fr.json();
-    } catch {
-      finance = null;
-    }
-
     const insights: { id: string; severity: string; title: string; detail: string; source: string }[] = [];
     for (const o of activeObj) {
       const p = objectiveProgress(o);
@@ -655,16 +645,6 @@ export const onRequest = async (context: { request: Request; env: any; params: {
         });
       }
     }
-    if (finance && typeof finance.cash === "number" && finance.cash <= 0 && (finance.accountsReceivable || 0) > 0) {
-      insights.push({
-        id: "fin-cash-ar",
-        severity: "elevated",
-        title: "Finance: low cash relative to receivables",
-        detail: "Live Finance dashboard shows limited cash while AR is positive — prioritise collections.",
-        source: "finance:/dashboard",
-      });
-    }
-
     return json({
       departments: store.departments.filter((d) => d.active).length,
       objectivesActive: activeObj.length,
@@ -676,16 +656,6 @@ export const onRequest = async (context: { request: Request; env: any; params: {
       budgetActualMinor: budgetActual,
       budgetUtilisationPct: budgetPlanned > 0 ? Math.round((budgetActual / budgetPlanned) * 100) : null,
       allocation: store.allocation,
-      financeLive: finance
-        ? {
-            currency: finance.currency || "GHS",
-            revenue: finance.grossRevenue ?? finance.revenue ?? null,
-            netProfit: finance.netProfit ?? null,
-            cash: finance.cash ?? null,
-            accountsReceivable: finance.accountsReceivable ?? null,
-            storage: finance.storage,
-          }
-        : null,
       insights,
       profile: store.profile
         ? { legalName: store.profile.legalName, vision: store.profile.vision, version: store.profile.version }
@@ -1056,80 +1026,12 @@ export const onRequest = async (context: { request: Request; env: any; params: {
     });
   }
 
-  // Budget ↔ Finance expense account mappings
-  if (path === "budget-mappings" && request.method === "GET") {
-    return json({ items: budgetMappings });
-  }
-  if (path === "budget-mappings" && request.method === "POST") {
-    if (!canWrite(role) || !canViewSensitive(role)) return deny("Finance mapping requires CFO/finance_manager/super_admin");
-    const body = await readJson(request);
-    const cat = String(body.budgetCategory || "").trim();
-    if (!cat) return json({ error: "budgetCategory required" }, 400);
-    const codes = Array.isArray(body.financeAccountCodes)
-      ? body.financeAccountCodes.map(String)
-      : String(body.financeAccountCodes || "").split(",").map((s: string) => s.trim()).filter(Boolean);
-    let m = budgetMappings.find((x) => x.budgetCategory === cat);
-    if (m) {
-      m.financeAccountCodes = codes;
-      m.notes = String(body.notes || m.notes || "");
-    } else {
-      m = { id: uid(), budgetCategory: cat, financeAccountCodes: codes, notes: String(body.notes || ""), createdAt: now() };
-      budgetMappings.push(m);
-    }
-    await persist();
-    return json({ mapping: m }, 201);
-  }
-
-  // Budget vs actual using Finance posted expense journals
+  // Budget vs actual from the actual_minor figures stored in CSI (editable under Budgets)
   if (path === "budget-vs-actual" && request.method === "GET") {
-    const origin = new URL(request.url).origin;
-    let accounts: any[] = [];
-    let journals: any[] = [];
-    try {
-      const [aRes, jRes] = await Promise.all([
-        fetch(`${origin}/api/finance/accounts`),
-        fetch(`${origin}/api/finance/journals`),
-      ]);
-      if (aRes.ok) {
-        const a = await aRes.json();
-        accounts = a.items || a.accounts || [];
-      }
-      if (jRes.ok) {
-        const j = await jRes.json();
-        journals = j.items || j.journals || [];
-      }
-    } catch { /* finance offline */ }
-
-    const expenseByCode: Record<string, number> = {};
-    for (const j of journals) {
-      if (j.status && j.status !== "posted") continue;
-      for (const l of j.lines || []) {
-        const code = l.accountCode;
-        const acc = accounts.find((x: any) => x.code === code);
-        if (acc && acc.type === "expense") {
-          expenseByCode[code] = (expenseByCode[code] || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0);
-        } else if (!accounts.length) {
-          // fallback: treat known expense range 5xxx-6xxx
-          if (/^[56]/.test(String(code))) {
-            expenseByCode[code] = (expenseByCode[code] || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0);
-          }
-        }
-      }
-    }
-
     const rows = store.budgets.map((b) => {
-      const map = budgetMappings.find((m) => m.budgetCategory.toLowerCase() === b.category.toLowerCase());
-      let financeActual = 0;
-      if (map) {
-        for (const code of map.financeAccountCodes) financeActual += expenseByCode[code] || 0;
-      } else {
-        // unmapped: do not invent — actual stays CSI-stored actual_minor
-        financeActual = b.actualMinor;
-      }
       const planned = b.plannedMinor;
-      const actual = map ? financeActual : b.actualMinor;
+      const actual = b.actualMinor;
       const variance = planned - actual;
-      const utilisationPct = planned > 0 ? Math.round((actual / planned) * 100) : null;
       return {
         budgetId: b.id,
         year: b.year,
@@ -1137,22 +1039,11 @@ export const onRequest = async (context: { request: Request; env: any; params: {
         plannedMinor: planned,
         actualMinor: actual,
         varianceMinor: variance,
-        utilisationPct,
+        utilisationPct: planned > 0 ? Math.round((actual / planned) * 100) : null,
         remainingMinor: variance,
-        source: map ? "finance_posted_expenses" : "csi_budget_actual_field",
-        mappedAccounts: map?.financeAccountCodes || [],
+        source: "csi_budget_actual_field",
       };
     });
-
-    // Refresh CSI actuals when mapped
-    for (const r of rows) {
-      if (r.source === "finance_posted_expenses") {
-        const b = store.budgets.find((x) => x.id === r.budgetId);
-        if (b) b.actualMinor = r.actualMinor;
-      }
-    }
-    await persist();
-
     const totalPlanned = rows.reduce((s, r) => s + r.plannedMinor, 0);
     const totalActual = rows.reduce((s, r) => s + r.actualMinor, 0);
     return json({
@@ -1163,64 +1054,7 @@ export const onRequest = async (context: { request: Request; env: any; params: {
         varianceMinor: totalPlanned - totalActual,
         utilisationPct: totalPlanned > 0 ? Math.round((totalActual / totalPlanned) * 100) : null,
       },
-      note: "Actuals from posted Finance expense journals when budget category is mapped; otherwise CSI actual_minor only.",
-    });
-  }
-
-  // Product performance from Finance invoices (sales order bridge when invoices exist)
-  if (path === "product-performance" && request.method === "GET") {
-    const origin = new URL(request.url).origin;
-    let invoices: any[] = [];
-    try {
-      const ir = await fetch(`${origin}/api/finance/invoices`);
-      if (ir.ok) {
-        const data = await ir.json();
-        invoices = data.items || [];
-      }
-    } catch { /* offline */ }
-
-    const openInvoices = invoices.filter((i) => i.status !== "void" && i.status !== "cancelled");
-    const byProduct = store.products.map((p) => {
-      const matched = openInvoices.filter((inv) => {
-        const blob = `${inv.customerName || ""} ${inv.number || ""}`.toLowerCase();
-        return blob.includes(p.code.toLowerCase()) || blob.includes(p.name.toLowerCase().slice(0, 12));
-      });
-      // Prefer explicit sourceId product linkage if present
-      const linked = openInvoices.filter((inv) => inv.sourceModule === "sales" && String(inv.sourceId || "").includes(p.id));
-      const set = linked.length ? linked : matched;
-      const gross = set.reduce((s: number, inv: any) => s + (Number(inv.amountMinor) || 0), 0);
-      const paid = set.reduce((s: number, inv: any) => s + (Number(inv.amountPaidMinor) || 0), 0);
-      const cost = p.costMinor > 0 ? Math.round((p.costMinor / Math.max(p.pricingMinor, 1)) * gross) : null;
-      const profit = cost != null ? gross - cost : null;
-      return {
-        productId: p.id,
-        code: p.code,
-        name: p.name,
-        category: p.category,
-        status: p.status,
-        orderCount: set.length,
-        grossSalesMinor: gross,
-        collectedMinor: paid,
-        outstandingMinor: gross - paid,
-        costMinor: cost,
-        grossProfitMinor: profit,
-        grossMarginPct: profit != null && gross > 0 ? Math.round((profit / gross) * 1000) / 10 : null,
-        costDataAvailable: cost != null,
-        matchMode: linked.length ? "source_link" : matched.length ? "name_heuristic" : "none",
-      };
-    });
-
-    const ranked = [...byProduct].sort((a, b) => b.grossSalesMinor - a.grossSalesMinor);
-    return json({
-      items: byProduct,
-      top: ranked.slice(0, 5),
-      underperforming: ranked.filter((x) => x.orderCount === 0 && (x.status === "active" || x.status === "released")),
-      totals: {
-        grossSalesMinor: byProduct.reduce((s, x) => s + x.grossSalesMinor, 0),
-        collectedMinor: byProduct.reduce((s, x) => s + x.collectedMinor, 0),
-        outstandingMinor: byProduct.reduce((s, x) => s + x.outstandingMinor, 0),
-      },
-      note: "Rollups from Finance invoices (posted AR). Name match is heuristic when sales sourceId is absent. Cost/profit only when product cost_minor is set.",
+      note: "Actuals are the values recorded on each CSI budget line.",
     });
   }
 

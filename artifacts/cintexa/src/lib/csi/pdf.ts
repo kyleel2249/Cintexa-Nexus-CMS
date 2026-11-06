@@ -3,7 +3,7 @@
  */
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import { formatCurrency } from "@/lib/finance/money";
+import { formatCurrency } from "@/lib/format/currency";
 
 function footer(doc: jsPDF) {
   const n = doc.getNumberOfPages();
@@ -19,7 +19,6 @@ export function exportCsiOverviewPdf(input: {
   profile?: { legalName?: string; vision?: string };
   dashboard: any;
   budgetVsActual?: any;
-  productPerformance?: any;
 }) {
   const doc = new jsPDF({ unit: "mm", format: "a4" });
   const gen = new Date().toISOString().slice(0, 16).replace("T", " ");
@@ -52,7 +51,7 @@ export function exportCsiOverviewPdf(input: {
   let y = (doc as any).lastAutoTable.finalY + 8;
   if (input.budgetVsActual?.rows?.length) {
     doc.setFontSize(12);
-    doc.text("Budget vs actual (Finance-linked)", 14, y);
+    doc.text("Budget vs actual", 14, y);
     autoTable(doc, {
       startY: y + 4,
       head: [["Category", "Planned", "Actual", "Variance", "Util %", "Source"]],
@@ -67,26 +66,6 @@ export function exportCsiOverviewPdf(input: {
       styles: { fontSize: 8 },
     });
     y = (doc as any).lastAutoTable.finalY + 8;
-  }
-
-  if (input.productPerformance?.items?.length) {
-    doc.setFontSize(12);
-    doc.text("Product performance (from Finance invoices)", 14, y);
-    autoTable(doc, {
-      startY: y + 4,
-      head: [["Product", "Orders", "Gross", "Collected", "Outstanding"]],
-      body: input.productPerformance.items
-        .filter((p: any) => p.orderCount > 0 || p.status === "active")
-        .slice(0, 20)
-        .map((p: any) => [
-          p.name,
-          String(p.orderCount),
-          formatCurrency(p.grossSalesMinor),
-          formatCurrency(p.collectedMinor),
-          formatCurrency(p.outstandingMinor),
-        ]),
-      styles: { fontSize: 8 },
-    });
   }
 
   if ((d.insights || []).length) {

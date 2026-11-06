@@ -23,4 +23,4 @@ export function csiPut<T>(path: string, body?: unknown): Promise<T> {
   });
 }
 
-export { formatCurrency, formatMinor, majorToMinor } from "@/lib/finance/money";
+export { formatCurrency, formatMinor, majorToMinor } from "@/lib/format/currency";

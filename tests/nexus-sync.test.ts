@@ -28,14 +28,14 @@ const sale = (over: Record<string, unknown> = {}) => ({
   effectiveDate: "2026-11-03", payload: { title: "Order SO-1 confirmed", amountMinor: 120000, currency: "GHS" }, ...over,
 });
 
-test("an event is persisted, processed once, and fans out to diary, FI and dashboard", async () => {
+test("an event is persisted, processed once, and fans out to diary and dashboard", async () => {
   const t = await setup();
   const r = await t.call("POST", "events", sale());
   assert.equal(r.status, 201);
   assert.equal(r.json.duplicate, false);
   assert.equal(r.json.event.status, "processed");
   assert.equal(r.json.event.attempts, 1);
-  assert.deepEqual(r.json.event.links.map((l: any) => l.targetModule).sort(), ["business-diary", "dashboard", "financial-intelligence"]);
+  assert.deepEqual(r.json.event.links.map((l: any) => l.targetModule).sort(), ["business-diary", "dashboard"]);
   assert.equal(t.count("SELECT COUNT(*) n FROM bd_entries"), 1);
   const diary = t.sqlite.prepare("SELECT * FROM bd_entries").get() as any;
   assert.equal(diary.title, "Order SO-1 confirmed");
@@ -52,7 +52,7 @@ test("duplicate idempotency key returns the original event and applies nothing t
   assert.equal(b.json.event.id, a.json.event.id);
   assert.equal(t.count("SELECT COUNT(*) n FROM nx_sync_events"), 1);
   assert.equal(t.count("SELECT COUNT(*) n FROM bd_entries"), 1);
-  assert.equal(t.count("SELECT COUNT(*) n FROM nx_sync_links"), 3);
+  assert.equal(t.count("SELECT COUNT(*) n FROM nx_sync_links"), 2);
 });
 
 test("a different event key for the same business fact still yields one diary entry", async () => {
@@ -102,7 +102,7 @@ test("a failure rolls back every effect, is logged, then recovers via retry with
   const retried = await t.call("POST", "retry", { id: r.json.event.id });
   assert.equal(retried.json.event.status, "processed");
   assert.equal(t.count("SELECT COUNT(*) n FROM bd_entries"), 1);
-  assert.equal(t.count("SELECT COUNT(*) n FROM nx_sync_links"), 3);
+  assert.equal(t.count("SELECT COUNT(*) n FROM nx_sync_links"), 2);
 });
 
 test("repeated failure dead-letters the event; manual retry recovers it", async () => {
