@@ -4,6 +4,7 @@
  */
 
 import { stableId, type D1Like, type D1Stmt } from "./nexus-db.ts";
+import { targetsFor, recommend } from "./nexus-recommend.ts";
 
 export type EventRow = {
   id: string;
@@ -54,15 +55,15 @@ export const ROUTING: Record<string, string[]> = {
   ASSET_DEPRECIATED: ["business-diary", "financial-intelligence", "corporate-strategy", "dashboard"],
 };
 /** Modules that receive a data-refresh link (the UI reads live data; the link records that the change was delivered). */
-const REFRESH_TARGETS = new Set(["sales", "marketing", "corporate-strategy"]);
+const REFRESH_TARGETS = new Set(["sales", "marketing", "corporate-strategy", "finance"]);
 
 export const MODULES = [
-  { id: "finance", name: "CINTEXA Finance", publishes: ["INVOICE_CREATED", "PAYMENT_RECEIVED", "EXPENSE_RECORDED"], consumes: [] },
-  { id: "financial-intelligence", name: "Financial Intelligence", publishes: ["FI_ENTRY_POSTED"], consumes: ["SALES_ORDER_CONFIRMED", "PAYMENT_RECEIVED", "EXPENSE_RECORDED", "INVOICE_CREATED"] },
-  { id: "business-diary", name: "Business Diary", publishes: ["DIARY_ENTRY_CREATED"], consumes: ["CUSTOMER_CREATED", "LEAD_CREATED", "SALES_ORDER_CREATED", "PAYMENT_RECEIVED", "EXPENSE_RECORDED", "INVOICE_CREATED"] },
-  { id: "sales", name: "Sales Management", publishes: ["LEAD_CREATED", "SALES_ORDER_CREATED", "SALES_ORDER_CONFIRMED", "PAYMENT_RECEIVED"], consumes: ["JOURNAL_POSTED", "JOURNAL_DELETED", "INVOICE_DELETED", "PAYMENT_DELETED"] },
-  { id: "marketing", name: "Marketing Management", publishes: [], consumes: ["JOURNAL_POSTED", "JOURNAL_DELETED", "INVOICE_DELETED", "PAYMENT_DELETED"] },
-  { id: "corporate-strategy", name: "Corporate Strategy", publishes: [], consumes: ["JOURNAL_POSTED", "JOURNAL_DELETED", "INVOICE_DELETED", "PAYMENT_DELETED", "ASSET_DEPRECIATED"] },
+  { id: "finance", name: "CINTEXA Finance", publishes: ["INVOICE_CREATED", "PAYMENT_RECEIVED", "EXPENSE_RECORDED", "JOURNAL_POSTED", "JOURNAL_DELETED", "INVOICE_DELETED", "PAYMENT_DELETED", "ASSET_DEPRECIATED"], consumes: ["*"] },
+  { id: "financial-intelligence", name: "Financial Intelligence", publishes: ["FI_ENTRY_POSTED", "RECORD_CREATED", "RECORD_UPDATED", "RECORD_DELETED"], consumes: ["*"] },
+  { id: "business-diary", name: "Business Diary", publishes: ["DIARY_ENTRY_CREATED", "RECORD_CREATED", "RECORD_UPDATED", "RECORD_DELETED"], consumes: ["*"] },
+  { id: "sales", name: "Sales Management", publishes: ["LEAD_CREATED", "SALES_ORDER_CREATED", "SALES_ORDER_CONFIRMED", "PAYMENT_RECEIVED", "RECORD_CREATED", "RECORD_UPDATED", "RECORD_DELETED"], consumes: ["*"] },
+  { id: "marketing", name: "Marketing Management", publishes: ["RECORD_CREATED", "RECORD_UPDATED", "RECORD_DELETED"], consumes: ["*"] },
+  { id: "corporate-strategy", name: "Corporate Strategy", publishes: ["RECORD_CREATED", "RECORD_UPDATED", "RECORD_DELETED"], consumes: ["*"] },
   { id: "dashboard", name: "Main Dashboard", publishes: [], consumes: ["*"] },
   { id: "cms", name: "Content / Sites", publishes: [], consumes: [] },
 ];
@@ -131,13 +132,16 @@ async function linkStmt(db: D1Like, ev: EventRow, module: string, type: string, 
 async function buildEffects(db: D1Like, ev: EventRow, at: string): Promise<D1Stmt[]> {
   const payload = parseJson<Record<string, any>>(ev.payload, {});
   const stmts: D1Stmt[] = [];
-  for (const target of ROUTING[ev.event_type] ?? ["dashboard"]) {
+  for (const target of targetsFor(ev)) {
     if (target === "business-diary") {
       const diaryId = await stableId("sync", ev.org_id, ev.entity_type, ev.entity_id, ev.event_type);
       const title = str(payload.title || `${ev.event_type} - ${ev.entity_type} ${ev.entity_id}`, 300);
-      const description =
-        str(payload.description, 4500) ||
-        `Auto-recorded from ${ev.source_module}: ${ev.event_type}. Source record ${ev.entity_type}/${ev.entity_id}.`;
+      const recs = recommend(ev, payload, "business-diary");
+      const description = (
+        (str(payload.description, 4000) ||
+          `Auto-recorded from ${ev.source_module}: ${ev.event_type}. Source record ${ev.entity_type}/${ev.entity_id}.`) +
+        (recs.length ? `\nSuggestion: ${recs.join(" ")}` : "")
+      ).slice(0, 4500);
       const activityDate = str(payload.activityDate || ev.effective_date || at, 10);
       stmts.push(
         db

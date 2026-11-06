@@ -1,3 +1,4 @@
+import { RatioPanel } from "@/components/finance/RatioPanel";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { fiGet, fiPost, fiPut, formatCurrency, formatMinor } from "@/lib/financial-intelligence/api";
 import { Button } from "@/components/ui/button";
@@ -152,6 +153,7 @@ function FiPageInner({ mode }: { mode: Mode }) {
             <pre className="text-xs text-muted-foreground whitespace-pre-wrap">{JSON.stringify(d.formulas, null, 2)}</pre>
           </div>
         )}
+        <div className="mt-6"><RatioPanel /></div>
       </Shell>
     );
   }

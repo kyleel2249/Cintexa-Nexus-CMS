@@ -15,6 +15,7 @@ export function FinanceRoutes() {
     <Suspense fallback={spin}>
       <Switch>
         <Route path="/finance" component={Overview} />
+        <Route path="/finance/ratios">{() => <FinancePage mode="ratios" />}</Route>
         <Route path="/finance/accounts">{() => <FinancePage mode="accounts" />}</Route>
         <Route path="/finance/journals">{() => <FinancePage mode="journals" />}</Route>
         <Route path="/finance/assets">{() => <FinancePage mode="assets" />}</Route>

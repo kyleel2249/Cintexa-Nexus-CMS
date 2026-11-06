@@ -5,6 +5,7 @@
  * Isolate memory is only used when FIN_ALLOW_MEMORY=1 for local/dev — never production.
  */
 
+import { computeRatios, ratioImpact, ratiosForAccount, ratioFindings, type RSnapshot } from "../../_lib/finance-ratios.ts";
 import { ensureNexusSchema, resolveDb, type D1Like } from "../../_lib/nexus-db.ts";
 import { enqueue, processEvent } from "../../_lib/nexus-sync.ts";
 
@@ -227,6 +228,7 @@ function ensureCoa() {
     ["1050", "Accounts Receivable", "asset", "ar"],
     ["1070", "Employee Advances", "asset"],
     ["1080", "Prepaid Expenses", "asset"],
+    ["1085", "Data Bandwidth", "asset", "prepaid"],
     ["1090", "Inventory", "asset"],
     ["1120", "Work in Progress", "asset"],
     ["1130", "Unbilled Contract Assets", "asset"],
@@ -286,6 +288,7 @@ function ensureCoa() {
     ["6010", "Employee Salaries", "expense"],
     ["6060", "Office Rent", "expense"],
     ["6080", "Internet and Telecommunications", "expense"],
+    ["6085", "Data Bandwidth Consumed", "expense"],
     ["6090", "Cloud Hosting", "expense"],
     ["6130", "Domain Registration", "expense"],
     ["6140", "SSL Certificates", "expense"],
@@ -2360,6 +2363,69 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   if (path === "audit" && request.method === "GET") {
     return json({ items: store.audit.slice().reverse().slice(0, 100) });
+  }
+
+  /** Balance-sheet accounts: cumulative to `to`. Income-statement accounts: only `from`..`to`. Closing entries are ignored. */
+  function ratioSnapshot(from: string, to: string): RSnapshot {
+    ensureCoa();
+    const bal = new Map<string, number>();
+    for (const j of store.journals) {
+      if (j.status !== "posted" || isClosingJournal(j) || j.entryDate > to) continue;
+      for (const l of j.lines) {
+        const acc = byCode(l.accountCode);
+        if (!acc) continue;
+        const pl = acc.type === "revenue" || acc.type === "expense";
+        if (pl && j.entryDate < from) continue;
+        const natural = acc.type === "asset" || acc.type === "expense" ? l.debit - l.credit : l.credit - l.debit;
+        bal.set(acc.code, (bal.get(acc.code) || 0) + natural);
+      }
+    }
+    const first = new Map<string, string>();
+    for (const i of store.invoices) {
+      const key = i.customerName.trim().toLowerCase();
+      if (!key) continue;
+      const prev = first.get(key);
+      if (!prev || i.issueDate < prev) first.set(key, i.issueDate);
+    }
+    const customers = [...first.values()].filter((d) => d <= to).length;
+    const newCustomers = [...first.values()].filter((d) => d >= from && d <= to).length;
+    const days = Math.max(1, Math.round((Date.parse(to) - Date.parse(from)) / 86_400_000) + 1);
+    return {
+      accounts: store.accounts.filter((x) => x.active).map((x) => ({ code: x.code, name: x.name, type: x.type, subtype: x.subtype, balance: bal.get(x.code) || 0 })),
+      periodDays: days, customers, newCustomers,
+    };
+  }
+  function ratioPeriod(url: URL) {
+    const today = new Date().toISOString().slice(0, 10);
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("to") || "") ? url.searchParams.get("to")! : today;
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(url.searchParams.get("from") || "") ? url.searchParams.get("from")! : `${to.slice(0, 4)}-01-01`;
+    return { from, to };
+  }
+
+  // All financial ratios for a period, computed from posted journals (closing entries excluded).
+  if (path === "analytics/ratios" && request.method === "GET") {
+    const { from, to } = ratioPeriod(new URL(request.url));
+    const snap = ratioSnapshot(from, to);
+    const r = computeRatios(snap);
+    return json({ period: { from, to, days: snap.periodDays }, totals: r.totals, ratios: r.ratios, findings: ratioFindings(r.ratios), customers: { total: snap.customers, new: snap.newCustomers } });
+  }
+
+  // What a transaction would do to every ratio (before/after, explanation, impact). Body: { entryDate?, lines: [{accountCode, debit, credit}] }
+  if (path === "analytics/ratio-impact" && request.method === "POST") {
+    const body = await readJson(request);
+    const lines = (Array.isArray(body.lines) ? body.lines : []).map((l: any) => ({ accountCode: String(l.accountCode || ""), debit: Math.max(0, Math.round(Number(l.debit) || 0)), credit: Math.max(0, Math.round(Number(l.credit) || 0)) })).filter((l: any) => l.accountCode && (l.debit || l.credit));
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(String(body.entryDate || "")) ? String(body.entryDate) : new Date().toISOString().slice(0, 10);
+    const snap = ratioSnapshot(`${to.slice(0, 4)}-01-01`, to);
+    const impact = ratioImpact(snap, lines);
+    return json({ asOf: to, changes: impact.changes, unknownAccounts: impact.unknownAccounts });
+  }
+
+  // Which ratios an account feeds, why, and the account's current effect. ?code=1085
+  if (path === "analytics/account-ratios" && request.method === "GET") {
+    const code = new URL(request.url).searchParams.get("code") || "";
+    const acc = byCode(code);
+    if (!acc) return json({ error: "Unknown account" }, 404);
+    return json({ account: { code: acc.code, name: acc.name, type: acc.type }, ratios: ratiosForAccount(acc) });
   }
 
   // Monthly series from posted journals (real ledger data) for forecasting and the Nexus Synchrony view.

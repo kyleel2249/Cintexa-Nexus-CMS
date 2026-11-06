@@ -13,6 +13,7 @@ import {
 
 
 
+import { RatioPanel, RatioImpactCard, AccountRatiosToggle } from "@/components/finance/RatioPanel";
 import { checkAmount, forecastSeries } from "@/lib/nexus/forecast";
 import { buildEntryGuide, DOUBLE_ENTRY_CHEATSHEET, type GuideAccountType } from "@/lib/finance/double-entry-guide";
 import { AccountSelect, type AccountOption } from "@/components/finance/AccountSelect";
@@ -21,7 +22,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input";
 
 
-type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "cf" | "ar-aging" | "dep-sched" | "equity" | "adjustments" | "invoices" | "payments" | "discounts" | "audit" | "assets" | "integrity" | "periods";
+type Mode = "accounts" | "journals" | "ledger" | "tb" | "pnl" | "bs" | "cf" | "ar-aging" | "dep-sched" | "equity" | "adjustments" | "invoices" | "payments" | "discounts" | "audit" | "assets" | "integrity" | "periods" | "ratios";
 
 interface DraftLine {
   key: string;
@@ -43,6 +44,14 @@ function FinancePageInner({ mode }: { mode: Mode }) {
   const qc = useQueryClient();
   const inv = () => qc.invalidateQueries({ queryKey: ["fin"] });
   const cur = "GHS";
+
+  if (mode === "ratios") {
+    return (
+      <Shell title="Financial Ratios & Analysis" desc="Liquidity, profitability, leverage, efficiency and Customer Acquisition Cost, calculated from your posted journals">
+        <RatioPanel />
+      </Shell>
+    );
+  }
 
   if (mode === "accounts") {
     const q = useQuery({ queryKey: ["fin", "acc"], queryFn: () => finGet<{ items: any[] }>("/accounts") });
@@ -73,7 +82,8 @@ function FinancePageInner({ mode }: { mode: Mode }) {
         {create.isError && <p className="text-sm text-rose-600 mb-2">Could not create (duplicate code?).</p>}
         <div className="space-y-1 text-sm max-h-[60vh] overflow-auto">
           {(q.data?.items || []).map((a) => (
-            <div key={a.id} className="flex justify-between gap-2 border-b py-2">
+            <div key={a.id} className="border-b py-2">
+            <div className="flex justify-between gap-2">
               <span><code className="text-xs">{a.code}</code> {a.name}</span>
               <span className="flex items-center gap-2 text-xs text-muted-foreground capitalize">
                 {a.type}
@@ -84,6 +94,8 @@ function FinancePageInner({ mode }: { mode: Mode }) {
                   </Button>
                 )}
               </span>
+            </div>
+            <AccountRatiosToggle code={a.code} />
             </div>
           ))}
         </div>
@@ -901,6 +913,13 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
           </details>
         </CardContent>
       </Card>
+
+      <RatioImpactCard
+        entryDate={entryDate}
+        lines={lines
+          .filter((l) => l.account && (amountInputToMinor(l.debit) || amountInputToMinor(l.credit)))
+          .map((l) => ({ accountCode: l.account!.code, debit: amountInputToMinor(l.debit), credit: amountInputToMinor(l.credit) }))}
+      />
 
       {guide.effects.length > 0 && (
         <Card className="mb-6 border-violet-500/30 bg-violet-500/5">

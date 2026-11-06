@@ -172,7 +172,40 @@ function load(): Store {
   }
 }
 
+const COLLECTIONS: Array<[keyof Store, string]> = [["campaigns", "campaign"], ["content", "content_item"], ["events", "calendar_event"], ["emails", "email_campaign"], ["leads", "lead"], ["automations", "automation"], ["budgets", "budget_line"], ["seo", "seo_record"]];
+
+/** Compare with what is stored and announce new or changed records to every other tool (reciprocal sync). */
+function announceChanges(next: Store) {
+  try {
+    const raw = localStorage.getItem(KEY);
+    const prev = raw ? (JSON.parse(raw) as Partial<Store>) : {};
+    void import("@/lib/nexus-sync/announce").then(({ announceRecord }) => {
+      let sent = 0;
+      for (const [key, entity] of COLLECTIONS) {
+        const before = new Map(((prev[key] as any[]) || []).map((r) => [r.id, JSON.stringify(r)]));
+        for (const r of (next[key] as any[]) || []) {
+          const was = before.get(r.id);
+          const now = JSON.stringify(r);
+          if (was === now || sent >= 10) continue;
+          sent++;
+          const money = Number(r.spent ?? r.amount ?? r.budget ?? r.planned);
+          announceRecord({
+            module: "marketing", entityType: entity, entityId: r.id,
+            title: String(r.name ?? r.title ?? r.subject ?? r.email ?? r.number ?? `${entity} ${r.id}`).slice(0, 160),
+            action: was === undefined ? "created" : "updated",
+            amountMinor: Number.isFinite(money) && money > 0 ? Math.round(money * 100) : undefined,
+            stamp: String(r.updated_at ?? r.created_at ?? ""),
+          });
+        }
+      }
+    }).catch(() => undefined);
+  } catch {
+    /* ignore */
+  }
+}
+
 function save(s: Store) {
+  announceChanges(s);
   try {
     localStorage.setItem(KEY, JSON.stringify(s));
   } catch {

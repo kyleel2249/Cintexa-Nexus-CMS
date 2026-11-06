@@ -16,9 +16,10 @@
 
 import { ensureNexusSchema, resolveDb, type NexusEnv } from "../../_lib/nexus-db.ts";
 import {
-  ROUTING, MODULES, enqueue, processEvent, drain, toEvent, loadEvent, loadLinks, str,
+  ROUTING, MODULES, enqueue, processEvent, drain, toEvent, loadEvent, loadLinks, str, parseJson,
   type EventRow,
 } from "../../_lib/nexus-sync.ts";
+import { recommendAll } from "../../_lib/nexus-recommend.ts";
 
 // Re-exported so tests and other Functions can use the engine directly.
 export { ROUTING, MODULES, enqueue, processEvent, drain };
@@ -99,6 +100,19 @@ export const onRequest: PagesFunction<NexusEnv> = async (context) => {
       return json({ since, published: pub, received: rec, flows });
     }
 
+    // Recommendations for recent records: one suggestion set per receiving tool (computed, never stored).
+    if (path === "recommendations" && request.method === "GET") {
+      const limit = Math.min(50, Math.max(1, Number(url.searchParams.get("limit") || 15)));
+      const target = url.searchParams.get("module");
+      const { results } = await db.prepare("SELECT * FROM nx_sync_events ORDER BY created_at DESC LIMIT ?").bind(limit).all<EventRow>();
+      const items = results.map((r) => {
+        const payload = parseJson<Record<string, any>>(r.payload, {});
+        const recs = recommendAll(r, payload).filter((x) => !target || x.target === target);
+        return { eventId: r.id, eventType: r.event_type, sourceModule: r.source_module, entityType: r.entity_type, entityId: r.entity_id, title: payload.title || `${r.event_type}`, createdAt: r.created_at, recommendations: recs };
+      });
+      return json({ items });
+    }
+
     if (path === "events" && request.method === "GET") {
       const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 50)));
       const where: string[] = [];
@@ -129,7 +143,7 @@ export const onRequest: PagesFunction<NexusEnv> = async (context) => {
       if (!res.ok) return json({ error: res.error }, res.status);
       const processed = res.duplicate ? res.event : (await processEvent(db, res.event.id)) ?? res.event;
       const links = await loadLinks(db, [processed.id]);
-      return json({ event: toEvent(processed, links.get(processed.id) ?? []), duplicate: res.duplicate }, res.duplicate ? 200 : 201);
+      return json({ event: toEvent(processed, links.get(processed.id) ?? []), duplicate: res.duplicate, recommendations: res.duplicate ? [] : recommendAll(processed, parseJson<Record<string, any>>(processed.payload, {})) }, res.duplicate ? 200 : 201);
     }
 
     if (path === "process" && request.method === "POST") {

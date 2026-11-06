@@ -1,3 +1,4 @@
+import { AnnouncementToast } from "@/components/nexus/NexusAdvisor";
 import { ReactNode, useCallback, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { Topbar } from "./Topbar";
@@ -30,6 +31,7 @@ export function AppLayout({ children }: AppLayoutProps) {
             {children}
           </motion.div>
         </main>
+        <AnnouncementToast />
       </div>
     </div>
   );

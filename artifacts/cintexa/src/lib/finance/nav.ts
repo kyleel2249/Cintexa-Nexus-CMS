@@ -9,6 +9,7 @@ export const FINANCE_NAV = [
   { key: "tb", label: "Trial Balance", href: "/finance/trial-balance", section: "Reports" },
   { key: "pnl", label: "Profit & Loss", href: "/finance/profit-loss", section: "Reports" },
   { key: "bs", label: "Balance Sheet", href: "/finance/balance-sheet", section: "Reports" },
+  { key: "ratios", label: "Financial Ratios", href: "/finance/ratios", section: "Reports" },
   { key: "cf", label: "Cash Flow", href: "/finance/cash-flow", section: "Reports" },
   { key: "ar-aging", label: "AR Aging", href: "/finance/ar-aging", section: "Reports" },
   { key: "dep-sched", label: "Depreciation Schedule", href: "/finance/depreciation-schedule", section: "Reports" },

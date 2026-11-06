@@ -131,3 +131,21 @@ test("mobile phones are in the chart of accounts and depreciate at 25% to their 
   const j = (await t.fin("GET", "journals")).json.items.find((x: any) => x.journalType === "depreciation");
   assert.deepEqual(j.lines.map((l: any) => l.accountCode).sort(), ["1283", "6312"]);
 });
+
+test("links are reciprocal: a record from any tool reaches every other tool with its own suggestion, never back to itself", async () => {
+  const t = boot();
+  for (const source of ["sales", "marketing", "corporate-strategy", "business-diary", "financial-intelligence"]) {
+    const r = await t.syn("POST", "events", { eventType: "RECORD_CREATED", sourceModule: source, entityType: "lead", entityId: `x-${source}`, payload: { title: `From ${source}`, amountMinor: 250000 } });
+    assert.equal(r.status, 201, JSON.stringify(r.json));
+    const targets = r.json.event.links.map((l: any) => l.targetModule).sort();
+    const expected = ["business-diary", "corporate-strategy", "dashboard", "finance", "financial-intelligence", "marketing", "sales"].filter((m) => m !== source).sort();
+    assert.deepEqual(targets, expected, source);
+    assert.ok(!targets.includes(source));
+    assert.ok(r.json.recommendations.length >= expected.length, "every receiving tool gets at least one suggestion");
+    assert.ok(r.json.recommendations.some((x: any) => x.target === "marketing" || source === "marketing"));
+  }
+  const recs = (await t.syn("GET", "recommendations?limit=5")).json.items;
+  assert.ok(recs.length === 5 && recs[0].recommendations.length > 0);
+  const diary = t.sqlite.prepare("SELECT description FROM bd_entries WHERE title LIKE 'From sales%'").get() as any;
+  assert.match(diary.description, /Suggestion:/);
+});

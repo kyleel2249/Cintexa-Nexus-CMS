@@ -88,6 +88,13 @@ export async function salesCall<T = any>(method: string, path: string, opts: Cal
   }
   const body = await readJson<any>(res);
   if (!res.ok) throw toError(res, body);
+  if (SALES_LOCAL_MODE && method !== "GET") {
+    // Local mode does not go through apiFetch, so announce here (remote mode is announced by apiFetch).
+    void import("@/lib/nexus-sync/announce").then(({ describeResponse, announceRecord }) => {
+      const d = describeResponse(`/sales${path}`, method, body);
+      announceRecord({ module: "sales", action: method === "DELETE" ? "deleted" : method === "POST" ? "created" : "updated", ...d });
+    }).catch(() => undefined);
+  }
   return body as T;
 }
 

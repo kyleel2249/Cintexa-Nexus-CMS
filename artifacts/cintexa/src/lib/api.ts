@@ -38,7 +38,29 @@ export async function apiFetch(path: string, init: RequestInit = {}): Promise<Re
   const headers = new Headers(init.headers);
   if (init.body && !headers.has("content-type") && typeof init.body === "string") headers.set("content-type", "application/json");
   headers.set("accept", "application/json");
-  return fetch(url, { ...init, headers });
+  const res = await fetch(url, { ...init, headers });
+  announceMutation(path, init, res);
+  return res;
+}
+
+/** Reciprocal sync: a successful write in Corporate Strategy, the Diary, Financial Intelligence or Sales is announced to every other tool. */
+function announceMutation(path: string, init: RequestInit, res: Response): void {
+  try {
+    const method = (init.method || "GET").toUpperCase();
+    if (method === "GET" || method === "HEAD" || !res.ok) return;
+    void import("@/lib/nexus-sync/announce").then(({ moduleForPath, describeResponse, announceRecord }) => {
+      const mod = moduleForPath(path);
+      if (!mod) return;
+      res.clone().text().then((t) => {
+        let body: any = null;
+        try { body = t.trim() ? JSON.parse(t) : null; } catch { /* non-JSON response */ }
+        const d = describeResponse(path, method, body);
+        announceRecord({ module: mod, action: method === "DELETE" ? "deleted" : method === "POST" ? "created" : "updated", ...d });
+      }).catch(() => undefined);
+    }).catch(() => undefined);
+  } catch {
+    /* announcing must never break a request */
+  }
 }
 
 export async function readJson<T = any>(res: Response): Promise<T | null> {
