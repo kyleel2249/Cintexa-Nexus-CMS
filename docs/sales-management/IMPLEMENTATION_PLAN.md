@@ -14,13 +14,13 @@ verified status (see `ACCEPTANCE_REPORT.md`).
 | Auth roles | Server derives only `admin` / `editor` / `api` (`ADMIN_EMAILS`; empty = bootstrap mode, everyone admin). Client role comes from Firestore (not trustworthy) | Sales adds its own role layer (`sales_members`) enforced **server-side**; platform `admin` => `sales_admin`; unmapped non-admins are denied |
 | Tenancy | Single tenant, no organization id anywhere | No fake multi-tenancy. Isolation is by role + record ownership/team scope. Documented limitation |
 | DB | PostgreSQL via `pg` Pool (`@workspace/db`), Drizzle schemas for CMS tables, **idempotent raw-SQL `ensureSchema()` at boot** (`bootstrap.ts`, `wi-schema.ts` pattern), `supabase/migrations/*.sql` | Sales DDL is an idempotent statement list (`sales-schema.ts`) appended to `ensureSchema` + mirrored as a migration file. Sales data access is parameterised SQL through the same pool |
-| Existing modules | CMS (sites/pages/posts/media/forms/SEO), diagnostics, website intelligence, webhooks, subscribers, OpenRouter AI helper, scheduler | **No** customers, products, inventory, finance, invoicing or document-management module exists |
+| Existing modules | CMS (sites/pages/posts/media/forms/SEO), diagnostics, website intelligence, webhooks, subscribers, built-in AI Studio helpers, scheduler | **No** customers, products, inventory, finance, invoicing or document-management module exists |
 | Tests | `tsx --test "src/**/__tests__/*.test.ts"` (node:test) in api-server only | Sales tests use `node:test`; same command picks them up |
 | Deploy | Static app on Cloudflare Pages + separately hosted Express API (`API_ORIGIN`), `render.yaml`, Dockerfile | No new infra; one new set of optional env vars |
 
 ## 2. Reuse / extend / build
 
-* **Reuse:** auth + `apiGuard`, `pool`, `ensureSchema`, logger, `components/ui/*`, `apiJson`, Recharts, jsPDF, nodemailer (email provider seam), OpenRouter helper (AI assist), webhooks (`dispatchWebhook`), scheduler pattern.
+* **Reuse:** auth + `apiGuard`, `pool`, `ensureSchema`, logger, `components/ui/*`, `apiJson`, Recharts, jsPDF, nodemailer (email provider seam), Openbuilt-in AI helpers, webhooks (`dispatchWebhook`), scheduler pattern.
 * **Extend:** `routes/index.ts` (mount), `auth-middleware.ts` (public allow-list: customer quote link, lead-capture form), `bootstrap.ts` (schema), `index.ts` (start sales jobs), `webhooks.ts` (sales events), `Sidebar.tsx`, `App.tsx`, `Topbar.tsx` (bell), `dashboard.tsx` (Sales Overview section).
 * **Build:** everything else. CRM entities, pipeline, quotes, orders, targets, commissions, forecasting, retention, campaigns, competitors, reports, automation, playbook, documents, settings, audit.
 * **Not duplicated:** media storage (documents link to `media` rows), webhooks, AI client, auth.

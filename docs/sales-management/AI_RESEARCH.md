@@ -20,7 +20,7 @@ Added on top of the existing 24-agent network. Nothing was replaced.
 | Research engine (deterministic extraction + evidence) | `research/engine.ts` |
 | Confidence method (documented) | `research/confidence.ts` |
 | SEO / AEO analysis | `research/seo.ts` |
-| Search provider layer (Brave, Serper, Tavily, ordered fallback) | `research/search.ts` |
+| Built-in website matching for name-only research (derives likely domains, accepts one only if the page names the company) | `research/search.ts` |
 | Durable jobs, idempotency, cache, recovery | `research/jobs.ts` |
 | REST routes (`/api/sales/research/*`, all need `ai:use`) | `research/routes.ts`, registered in `services/sales/index.ts` (server only) |
 | UI | `components/sales/AiAutofillPanel.tsx`, `lib/sales/research-api.ts`, `Hint.tsx`, `pages/sales/glossary.tsx` |
@@ -33,7 +33,7 @@ Job states: queued -> researching -> extracting -> validating -> awaiting_review
 * Every request passes the SSRF guard (`lib/intelligence/src/ssrf.ts`): http(s) only, ports 80/443, no credentials in URLs, blocked hostnames, every resolved IP and **every redirect hop** checked against private/loopback/link-local/metadata ranges; size, time and content-type limits; max 6 pages (configurable, hard cap 12).
 * `robots.txt` is honoured (our user-agent `CintexaResearchBot`). No logins, CAPTCHAs or paywalls are bypassed.
 * **No model reads page text**; extraction is deterministic code, so page text cannot instruct anything. Instruction-like text is detected, flagged to the user and ignored.
-* Search keys live in server environment variables only; `/research/status` reports provider *names*, never keys (tested).
+* `/research/status` reports the built-in matcher and the active limits. No search service or key is used.
 * Per-member hourly limit, concurrent cap, 24 h cache, idempotent enqueue (double-click returns the same job), all decisions audited in `sales_autofill_decisions` and `sales_audit_events`.
 * Research routes are **not** bundled into the on-device (browser) Sales runtime; the panel calls the API server and says so if it is unreachable.
 
@@ -42,7 +42,7 @@ Job states: queued -> researching -> extracting -> validating -> awaiting_review
 
 ## Setup
 1. Apply nothing manually on the normal server path (tables are created on boot). For Supabase-style setups run `supabase/migrations/20261029120000_sales_research.sql`.
-2. Website-based research works with **no key**. To find a company from its name alone set one of `BRAVE_SEARCH_API_KEY`, `SERPER_API_KEY`, `TAVILY_API_KEY` (see `artifacts/api-server/.env.example`).
+2. Research needs **no key**. Give a website address, or just a company name: the matcher tries likely domains and accepts one only when the page itself names the company, and the result tells you the website was matched so you can confirm it.
 3. The API server must be able to make outbound HTTPS requests. Sales in "local mode" still needs the API server for research only.
 
 ## Requirements matrix (honest status)
@@ -56,7 +56,7 @@ Job states: queued -> researching -> extracting -> validating -> awaiting_review
 | SEO / AEO analysis of a prospect's website | **Done** (observed vs hypothesis); no third-party metrics (rankings/volume/backlinks) |
 | CINTEXA service-fit hypotheses from observed findings | **Done** (SEO, AEO, website development) |
 | Durable jobs, progress, cancel, retry-safe, cache | **Done** (in-process worker over durable rows; no separate queue service) |
-| Pluggable AI provider abstraction for *research* | **Not needed for extraction** (deterministic). Existing OpenRouter layer unchanged |
+| Pluggable AI provider abstraction for *research* | **Not needed** (deterministic extraction; no external AI) |
 | Bulk enrichment of many records | **Done for Leads and Accounts** (Sales -> Bulk Enrichment): up to 25 per run, queued, review per record, apply fills EMPTY fields only (confidence >= 55%, validated, no conflicts, never names), audited, repeat-safe, scope-checked |
 | Scheduled refresh, import-mapping AI, bulk enrichment of contacts/competitors | **Not done** |
 | Admin view of research | **Done (read-only)**: Settings -> AI tab shows providers, limits and every recent job incl. failures. Changing limits/keys is by server environment variables, deliberately, so keys never reach the browser |

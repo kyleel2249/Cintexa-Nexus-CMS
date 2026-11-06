@@ -6,6 +6,7 @@ export interface WiSettings {
   /** When non-empty, audits are restricted to these hosts (empty = any public host). */
   allowedHosts: string[];
   blockedHosts: string[];
+  /** Retained so stored settings still load. Has no effect: explanations are always built in. */
   aiExplanations: boolean;
   /** Start competitor discovery automatically when an audit finishes (only when a search provider is configured). */
   autoDiscoverCompetitors: boolean;

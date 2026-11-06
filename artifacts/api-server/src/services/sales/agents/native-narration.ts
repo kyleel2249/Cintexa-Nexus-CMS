@@ -1,7 +1,7 @@
 /**
  * Native (zero external API) narration for sales agents.
  * Produces deterministic headlines and summaries from structured findings/facts only.
- * Never invents companies, numbers, or research; never calls OpenRouter/OpenAI.
+ * Never invents companies, numbers, or research; never calls any external service.
  */
 export interface NativeFindingLite {
   title?: string;

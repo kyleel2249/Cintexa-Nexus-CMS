@@ -54,7 +54,7 @@ export default function CompetitorsView({ id }: { id: string }) {
         description="Competitors are inferred from what this audit found on your site and searched for with an approved search API. Every candidate keeps its evidence, and nothing you approve or reject is changed by a rerun."
         actions={<Button size="sm" variant="outline" disabled={busy} onClick={() => m.discover.mutate()}>{busy ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1.5 h-3.5 w-3.5" />}{busy ? "Discovering" : "Run discovery"}</Button>}
       >
-        {data.searchProvider?.status !== "available" && (
+        {data.searchProvider && data.searchProvider.status !== "available" && (
           <p role="status" className="mb-3 rounded-md border border-amber-500/40 bg-amber-500/10 p-3 text-sm">
             <span className="font-medium">Search-based discovery is not available. </span>{data.searchProvider?.detail ?? "A search provider is not configured on this host."}
             {data.searchProvider?.envVars.length ? <span className="text-muted-foreground"> Environment variables: {data.searchProvider.envVars.join(", ")}.</span> : null}

@@ -266,7 +266,7 @@ async function main() {
       ),
       textBlock(
         "AI-Powered Content Generation",
-        "CINTEXA's AI Studio connects to OpenRouter to generate blog posts, page copy, SEO titles, and meta descriptions on demand. Choose your tone, length, and content type — the AI handles the rest. Perfect for teams that need to move fast without sacrificing quality.",
+        "CINTEXA's AI Studio drafts blog posts, page copy, SEO titles, and meta descriptions on demand using built-in generators that run inside Nexus. Choose your tone, length, and content type — and review every draft before publishing.",
       ),
       imageBlock(
         "https://images.unsplash.com/photo-1677442136019-21780ecad995?w=1200",
@@ -377,7 +377,7 @@ async function main() {
 
   const post1Content = `Artificial intelligence is transforming the way content teams work. From automated drafting to intelligent SEO suggestions, AI tools are no longer a luxury — they're becoming essential for teams that need to publish at scale.
 
-At CINTEXA, we've integrated OpenRouter's GPT-4o-mini directly into the platform to power three core workflows: **content generation**, **SEO optimisation**, and **title suggestions**.
+At CINTEXA, we've built template-driven generators directly into the platform to power three core workflows: **content generation**, **SEO optimisation**, and **title suggestions**.
 
 ## Content Generation
 
@@ -495,7 +495,7 @@ The headline feature: a fully visual, drag-and-drop page builder with five block
 
 ## AI Studio
 
-Three new AI-powered tools: content generator, SEO optimiser, and title suggester — all powered by OpenRouter's GPT-4o-mini.
+Three new AI-powered tools: content generator, SEO optimiser, and title suggester — all built into Nexus and running without any external service.
 
 ## Media Library Enhancements
 

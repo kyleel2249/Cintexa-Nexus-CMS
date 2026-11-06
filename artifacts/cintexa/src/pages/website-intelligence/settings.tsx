@@ -101,7 +101,7 @@ function AdminPanel() {
           <label className="space-y-1 text-sm">Blocked hosts<textarea className="w-full rounded-md border bg-background p-2 text-sm" rows={3} value={blocked} onChange={(e) => setBlocked(e.target.value)} /></label>
         </div>
         <div className="flex flex-wrap gap-5 text-sm">
-          {([["aiExplanations", "AI-assisted explanations"], ["autoDiscoverCompetitors", "Discover competitors automatically after each audit (needs a search API key)"], ["requireSeparateApprover", "Require a second person to approve recommendations (the requester cannot approve their own request)"], ["allowAuthenticatedScope", "Allow authenticated scope"], ["allowPublicShare", "Allow read-only client links"]] as const).map(([k, t]) => <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={flags[k]} onChange={(e) => setFlags({ ...flags, [k]: e.target.checked })} />{t}</label>)}
+          {([["autoDiscoverCompetitors", "Discover competitors automatically after each audit (from the site's own links)"], ["requireSeparateApprover", "Require a second person to approve recommendations (the requester cannot approve their own request)"], ["allowAuthenticatedScope", "Allow authenticated scope"], ["allowPublicShare", "Allow read-only client links"]] as const).map(([k, t]) => <label key={k} className="flex items-center gap-2"><input type="checkbox" checked={flags[k]} onChange={(e) => setFlags({ ...flags, [k]: e.target.checked })} />{t}</label>)}
         </div>
         {save.error && <ErrorNote error={save.error} />}
         {save.isSuccess && <p className="text-sm text-emerald-400" role="status">Settings saved.</p>}

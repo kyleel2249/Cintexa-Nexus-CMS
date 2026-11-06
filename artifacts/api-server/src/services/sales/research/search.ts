@@ -1,48 +1,67 @@
-/** Search-provider abstraction. Providers are configured only through server environment variables; nothing is simulated when none is set. */
-import { safeFetch } from "@workspace/intelligence/ssrf";
+/**
+ * Internal website discovery for name-only research. No search engine or API key is involved:
+ * likely domains are derived from the company name and a candidate is accepted ONLY when the page it serves
+ * actually names the company. Nothing is guessed silently; the engine tells the user how the website was chosen.
+ */
 
-export interface SearchHit { url: string; title: string; snippet: string }
-export interface SearchProvider { id: string; label: string; search(query: string, limit: number): Promise<SearchHit[]> }
+const STOP = new Set(["ltd", "limited", "inc", "llc", "plc", "co", "company", "corp", "corporation", "group", "holdings", "the", "and", "of", "for", "enterprise", "enterprises"]);
 
-const get = (env: NodeJS.ProcessEnv, k: string) => (env[k] && env[k]!.trim() ? env[k]!.trim() : null);
-async function json(url: string, init: RequestInit, timeoutMs = 10_000): Promise<any> {
-  const ac = new AbortController(); const t = setTimeout(() => ac.abort(), timeoutMs);
-  try { const r = await fetch(url, { ...init, signal: ac.signal }); if (!r.ok) throw new Error(`search provider returned HTTP ${r.status}`); return await r.json(); } finally { clearTimeout(t); }
+const COUNTRY_TLDS: Record<string, string[]> = {
+  ghana: ["com.gh", "gh", "org.gh"],
+  nigeria: ["com.ng", "ng"],
+  kenya: ["co.ke", "ke"],
+  "south africa": ["co.za", "za"],
+  "united kingdom": ["co.uk", "uk"],
+  uk: ["co.uk", "uk"],
+};
+const GENERIC_TLDS = ["com", "co", "io", "org", "net"];
+
+export function companyTokens(name: string): string[] {
+  return name.toLowerCase().normalize("NFKD").replace(/[̀-ͯ]/g, "").split(/[^a-z0-9]+/).filter((t) => t.length > 1 && !STOP.has(t));
 }
 
-export function configuredProviders(env: NodeJS.ProcessEnv = process.env): SearchProvider[] {
-  const out: SearchProvider[] = [];
-  const brave = get(env, "BRAVE_SEARCH_API_KEY");
-  if (brave) out.push({ id: "brave", label: "Brave Search API", async search(q, n) {
-    const j = await json(`https://api.search.brave.com/res/v1/web/search?count=${n}&q=${encodeURIComponent(q)}`, { headers: { accept: "application/json", "x-subscription-token": brave } });
-    return (j.web?.results ?? []).map((r: any) => ({ url: String(r.url), title: String(r.title ?? ""), snippet: String(r.description ?? "") }));
-  } });
-  const serper = get(env, "SERPER_API_KEY");
-  if (serper) out.push({ id: "serper", label: "Serper (Google results)", async search(q, n) {
-    const j = await json("https://google.serper.dev/search", { method: "POST", headers: { "content-type": "application/json", "x-api-key": serper }, body: JSON.stringify({ q, num: n }) });
-    return (j.organic ?? []).map((r: any) => ({ url: String(r.link), title: String(r.title ?? ""), snippet: String(r.snippet ?? "") }));
-  } });
-  const tavily = get(env, "TAVILY_API_KEY");
-  if (tavily) out.push({ id: "tavily", label: "Tavily Search", async search(q, n) {
-    const j = await json("https://api.tavily.com/search", { method: "POST", headers: { "content-type": "application/json", authorization: `Bearer ${tavily}` }, body: JSON.stringify({ query: q, max_results: n }) });
-    return (j.results ?? []).map((r: any) => ({ url: String(r.url), title: String(r.title ?? ""), snippet: String(r.content ?? "").slice(0, 300) }));
-  } });
-  return out;
+/** Ordered, de-duplicated candidate hostnames (at most `max`). */
+export function guessDomains(company: string, country?: string, max = 10): string[] {
+  const tokens = companyTokens(company);
+  if (!tokens.length) return [];
+  const bases = new Set<string>([tokens.join(""), tokens.join("-")]);
+  if (tokens.length > 1 && tokens[0]!.length >= 4) bases.add(tokens[0]!);
+  const local = COUNTRY_TLDS[(country ?? "").trim().toLowerCase()] ?? [];
+  const tlds = [...local, ...GENERIC_TLDS];
+  const out: string[] = [];
+  for (const tld of tlds) for (const b of bases) { const h = `${b}.${tld}`; if (!out.includes(h)) out.push(h); }
+  return out.slice(0, max);
 }
 
-const NOT_OFFICIAL = /(^|\.)(facebook|linkedin|instagram|twitter|x|youtube|tiktok|wikipedia|crunchbase|yelp|glassdoor|indeed|bloomberg|reuters|pinterest|reddit|zoominfo|dnb|bbb|trustpilot|yellowpages|alibaba|amazon|ebay)\.[a-z.]+$/i;
-/** Try each configured provider in order (graceful fallback). Returns the first plausible official-site hit. */
-export async function discoverWebsite(company: string, hint: { country?: string }, providers: SearchProvider[]): Promise<{ hit: SearchHit | null; providerId: string | null; errors: string[]; considered: SearchHit[] }> {
-  const errors: string[] = [];
-  for (const p of providers) {
-    try {
-      const hits = await p.search(`${company} official website${hint.country ? " " + hint.country : ""}`, 8);
-      const usable = hits.filter((h) => { try { return !NOT_OFFICIAL.test(new URL(h.url).hostname); } catch { return false; } });
-      const tokens = company.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length > 2);
-      const scored = usable.map((h) => { const host = new URL(h.url).hostname.toLowerCase(); return { h, s: tokens.filter((t) => host.includes(t)).length * 2 + tokens.filter((t) => h.title.toLowerCase().includes(t)).length }; }).sort((a, b) => b.s - a.s);
-      if (scored[0] && scored[0].s > 0) return { hit: scored[0].h, providerId: p.id, errors, considered: hits };
-    } catch (e) { errors.push(`${p.id}: ${e instanceof Error ? e.message : "failed"}`); }
+/** True when the page clearly belongs to the company: every name token appears, and at least one is in the title or host. */
+export function pageMatchesCompany(page: { title?: string | null; text?: string | null; host: string }, company: string): boolean {
+  const tokens = companyTokens(company);
+  if (!tokens.length) return false;
+  const title = String(page.title ?? "").toLowerCase();
+  const body = `${title} ${String(page.text ?? "").slice(0, 6000).toLowerCase()}`;
+  const host = page.host.toLowerCase();
+  if (/(domain (is )?for sale|buy this domain|this domain (is|may be) (for sale|parked)|parked (free|domain)|domain parking)/.test(body)) return false;
+  return tokens.every((t) => body.includes(t)) && tokens.some((t) => title.includes(t) || host.includes(t));
+}
+
+export interface ProbedPage { title: string | null; text: string; finalUrl: string }
+
+/** Probe candidates in order with the supplied (SSRF-guarded) fetcher; returns the first verified match. */
+export async function discoverWebsite(
+  company: string,
+  hint: { country?: string },
+  probe: (url: string) => Promise<ProbedPage | null>,
+): Promise<{ url: string | null; tried: string[] }> {
+  const tried: string[] = [];
+  for (const host of guessDomains(company, hint.country)) {
+    const url = `https://${host}/`;
+    tried.push(host);
+    let page: ProbedPage | null = null;
+    try { page = await probe(url); } catch { page = null; }
+    if (!page) continue;
+    let finalHost = host;
+    try { finalHost = new URL(page.finalUrl).hostname; } catch { /* keep guessed host */ }
+    if (pageMatchesCompany({ title: page.title, text: page.text, host: finalHost }, company)) return { url: page.finalUrl, tried };
   }
-  return { hit: null, providerId: null, errors, considered: [] };
+  return { url: null, tried };
 }
-void safeFetch;

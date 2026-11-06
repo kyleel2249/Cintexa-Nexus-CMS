@@ -14,8 +14,8 @@ const BUILT_IN_PLUGINS = [
   },
   {
     slug: "image-generator",
-    name: "AI Image Generator",
-    description: "Generates 3 article images plus a thumbnail using DALL-E via OpenRouter every time a post is published.",
+    name: "Cover Art Generator",
+    description: "Generates four original cover images (hero, pattern, abstract, square thumbnail) locally from the post title whenever a post is published. No external service.",
     category: "media",
     enabled: true,
   },
@@ -28,8 +28,8 @@ const BUILT_IN_PLUGINS = [
   },
   {
     slug: "social-broadcast",
-    name: "Social Broadcasting",
-    description: "Automatically posts published articles to Twitter/X, Facebook, and LinkedIn.",
+    name: "Social Share Pack",
+    description: "Prepares ready-to-copy share text for Twitter/X, Facebook and LinkedIn when a post is published. Nothing is sent to outside services.",
     category: "social",
     enabled: false,
   },

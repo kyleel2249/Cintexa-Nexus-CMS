@@ -18,7 +18,6 @@ This project uses **npm workspaces**. Do not use pnpm or yarn.
 Required env:
 
 - `DATABASE_URL` — Postgres connection string
-- `OPENROUTER_API_KEY` — optional; enables live AI features (deterministic fallbacks otherwise)
 
 ## Default Login (after seeding)
 
@@ -31,7 +30,7 @@ Required env:
 - Frontend: React 19 + Vite, Tailwind CSS, shadcn/ui, framer-motion, @dnd-kit
 - API: Express 5
 - DB: PostgreSQL + Drizzle ORM
-- AI: OpenRouter (openai/gpt-4o-mini) with deterministic fallback
+- AI Studio: built-in deterministic generators; no external AI service
 - Validation: Zod, drizzle-zod
 - API codegen: Orval (from OpenAPI spec)
 - Build: esbuild (API), Vite (frontend)
@@ -50,7 +49,7 @@ Required env:
 
 - Contract-first API: OpenAPI drives codegen for React Query hooks and Zod validators
 - Page builder stores blocks as JSON in the `content` column
-- AI routes call OpenRouter with `OPENROUTER_API_KEY`; fall back to deterministic templates if absent
+- AI routes use the built-in deterministic generators (no external service or API key)
 - All routes mounted under `/api/` prefix
 - Dark-first UI with indigo (#6366F1) as the primary accent
 - Motion: dashboard and key surfaces use Framer Motion for entrance, stagger, and hover animations

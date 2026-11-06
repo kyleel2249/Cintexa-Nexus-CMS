@@ -43,6 +43,7 @@ interface Broadcast {
   externalId: string | null;
   error: string | null;
   sentAt: string | null;
+  shareText?: string | null;
 }
 
 function SeoScore({ title, metaTitle, metaDescription, keywords, citations }: {
@@ -224,7 +225,7 @@ export default function PostEditor() {
         toast({ title: err.error ?? "Publish failed", variant: "destructive" });
         return;
       }
-      toast({ title: "Post published! Images and alerts are being processed." });
+      toast({ title: "Post published! Cover images and share pack are being prepared." });
       queryClient.invalidateQueries({ queryKey: [`/api/posts/${id}`] });
       // Refresh images and broadcasts after a short delay
       setTimeout(() => { refetchImages(); refetchBroadcasts(); }, 3000);
@@ -288,9 +289,14 @@ export default function PostEditor() {
   };
 
   const broadcastNow = async () => {
-    await fetch(`/api/posts/${id}/broadcasts`, { method: "POST" });
-    toast({ title: "Broadcasting to social platforms..." });
-    setTimeout(() => refetchBroadcasts(), 5000);
+    const res = await fetch(`/api/posts/${id}/broadcasts`, { method: "POST" });
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      toast({ title: err.error ?? "Could not prepare share pack", variant: "destructive" });
+      return;
+    }
+    toast({ title: "Share pack prepared" });
+    refetchBroadcasts();
   };
 
   if (isLoading && !isNew) {
@@ -596,12 +602,13 @@ export default function PostEditor() {
                 <AccordionTrigger className="text-xs font-semibold uppercase tracking-wide text-muted-foreground px-3 py-3">
                   <span className="flex items-center gap-1.5">
                     <Share2 className="h-3 w-3" />
-                    Social Broadcasts
+                    Social Share Pack
                   </span>
                 </AccordionTrigger>
                 <AccordionContent className="px-3 pb-4 space-y-2">
                   {broadcasts.map((b) => (
-                    <div key={b.id} className="flex items-center justify-between text-xs">
+                    <div key={b.id} className="space-y-1 text-xs">
+                    <div className="flex items-center justify-between">
                       <span className="capitalize text-muted-foreground">{b.platform}</span>
                       <Badge
                         variant="outline"
@@ -614,9 +621,28 @@ export default function PostEditor() {
                         {b.status}
                       </Badge>
                     </div>
+                    {b.shareText && (
+                      <div className="rounded-md border border-border/50 p-2">
+                        <p className="whitespace-pre-wrap break-words text-muted-foreground">{b.shareText}</p>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="mt-1 h-6 px-2 text-[11px]"
+                          onClick={() => {
+                            navigator.clipboard?.writeText(b.shareText ?? "").then(
+                              () => toast({ title: `${b.platform} text copied` }),
+                              () => toast({ title: "Copy failed - select the text manually", variant: "destructive" }),
+                            );
+                          }}
+                        >
+                          Copy text
+                        </Button>
+                      </div>
+                    )}
+                    </div>
                   ))}
                   <Button variant="outline" size="sm" className="w-full mt-2" onClick={broadcastNow}>
-                    <Share2 className="w-3 h-3 mr-1" /> Broadcast Again
+                    <Share2 className="w-3 h-3 mr-1" /> Regenerate share pack
                   </Button>
                 </AccordionContent>
               </AccordionItem>

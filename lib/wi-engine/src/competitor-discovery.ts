@@ -103,8 +103,8 @@ export async function discoverCompetitors(args: { ownerId: string; auditId: stri
       unavailable.push(profile.insufficientReason ?? "Not enough descriptive text to infer the site's niche.");
       alternatives.push("Add competitors manually, or run an audit that reaches more pages with titles and descriptions.");
     } else if (!searchAvailable) {
-      unavailable.push("No search provider is configured (set BRAVE_SEARCH_API_KEY, or GOOGLE_CSE_API_KEY with GOOGLE_CSE_ID). Search-based discovery did not run, and results are never scraped from search pages.");
-      alternatives.push("Configure an approved search API, or add competitors manually.");
+      unavailable.push("Search-engine discovery is not part of this self-contained build, so it did not run. Competitors are identified from the site's own links and from entries you add; search pages are never scraped.");
+      alternatives.push("Add competitors manually, or run an audit that reaches more pages so site links can be used.");
     } else {
       let failedQueries = 0;
       for (const q of queries) {

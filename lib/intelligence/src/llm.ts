@@ -58,19 +58,3 @@ export class ModelRouter {
     return { ok: false, degraded: true, reason: lastReason, usage: total };
   }
 }
-
-/** OpenRouter adapter. NOTE: not exercised against the live API in this build (no network access); verify with a real key. */
-export function openRouterProvider(apiKey: string, fetchFn: typeof fetch = fetch, costPer1kTokensUsd = 0.0006): Provider {
-  return async (req) => {
-    const res = await fetchFn('https://openrouter.ai/api/v1/chat/completions', {
-      method: 'POST', signal: req.signal,
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${apiKey}` },
-      body: JSON.stringify({ model: req.model, max_tokens: req.maxTokens, response_format: { type: 'json_object' },
-        messages: [{ role: 'system', content: req.system }, { role: 'user', content: req.user }] }),
-    });
-    if (!res.ok) throw new Error(`openrouter ${res.status}`);
-    const j = await res.json() as { choices?: { message?: { content?: string } }[]; usage?: { prompt_tokens?: number; completion_tokens?: number } };
-    const p = j.usage?.prompt_tokens ?? 0, c = j.usage?.completion_tokens ?? 0;
-    return { text: j.choices?.[0]?.message?.content ?? '', usage: { promptTokens: p, completionTokens: c, costUsd: ((p + c) / 1000) * costPer1kTokensUsd } };
-  };
-}

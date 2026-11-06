@@ -3,6 +3,7 @@ import test, { before, after } from "node:test";
 import assert from "node:assert/strict";
 import { SALES_SCHEMA_STATEMENTS } from "../../../../../../lib/db/src/sales-schema";
 import { researchCompany, ResearchError, normaliseWebsite, type Hooks } from "../research/engine";
+import { guessDomains, pageMatchesCompany, companyTokens } from "../research/search";
 import { scoreConfidence } from "../research/confidence";
 import { parseRobots } from "../research/fetcher";
 import { analyseSeoAeo } from "../research/seo";
@@ -24,7 +25,7 @@ const fakeFetch = async (url: string) => {
 };
 const resolve = async () => ["93.184.216.34"];
 const hooks = (cancel = false): Hooks & { stages: string[] } => { const stages: string[] = []; return { stages, onStage: (s, p, d) => { stages.push(`${s}:${p}`); void d; }, isCancelled: () => cancel }; };
-const deps = { fetchFn: fakeFetch as any, resolve, providers: [] as any[] };
+const deps = { fetchFn: fakeFetch as any, resolve };
 
 test("extracts evidence-backed fields and never invents missing ones", async () => {
   const h = hooks();
@@ -60,22 +61,32 @@ test("prompt-injection text on a page is flagged and never acted on", async () =
 
 test("SSRF: private, loopback and metadata targets are refused", async () => {
   for (const url of ["http://127.0.0.1/", "http://169.254.169.254/latest/meta-data/", "http://localhost:8080/", "http://10.0.0.5/", "http://[::1]/"]) {
-    await assert.rejects(() => researchCompany({ website: url }, hooks(), { providers: [], fetchFn: (async () => { throw new Error("network must not be reached"); }) as any }), (e: any) => e instanceof ResearchError && /unreachable|invalid_website|blocked/.test(e.message + e.code), url);
+    await assert.rejects(() => researchCompany({ website: url }, hooks(), { fetchFn: (async () => { throw new Error("network must not be reached"); }) as any }), (e: any) => e instanceof ResearchError && /unreachable|invalid_website|blocked/.test(e.message + e.code), url);
   }
   const rebinding = async () => ["10.1.2.3"];
-  await assert.rejects(() => researchCompany({ website: "evil.test" }, hooks(), { providers: [], fetchFn: fakeFetch as any, resolve: rebinding }), (e: any) => e instanceof ResearchError && e.code === "website_unreachable");
+  await assert.rejects(() => researchCompany({ website: "evil.test" }, hooks(), { fetchFn: fakeFetch as any, resolve: rebinding }), (e: any) => e instanceof ResearchError && e.code === "website_unreachable");
 });
 
-test("a company name alone needs a configured search provider and says so", async () => {
-  await assert.rejects(() => researchCompany({ companyName: "Acme" }, hooks(), deps), (e: any) => e.code === "no_search_provider");
+test("a company name that matches no website is reported, not guessed", async () => {
+  await assert.rejects(() => researchCompany({ companyName: "Acme" }, hooks(), deps), (e: any) => e.code === "website_not_found");
   await assert.rejects(() => researchCompany({}, hooks(), deps), (e: any) => e.code === "input_required");
 });
 
-test("a search provider can supply the website and the choice is disclosed", async () => {
-  const provider = { id: "fake", label: "Fake", search: async () => [{ url: "https://www.linkedin.com/company/acme", title: "Acme", snippet: "" }, { url: "https://acme-corp.test/", title: "Acme Corp", snippet: "" }] };
-  const r = await researchCompany({ companyName: "Acme Corp" }, hooks(), { ...deps, providers: [provider] });
-  assert.equal(r.websiteDiscovery?.provider, "fake");
+test("name-only research accepts a candidate only when its page names the company, and discloses the choice", async () => {
+  const aliased = (async (u: string) => fakeFetch(u.replace("https://acme.com", "https://acme-corp.test"))) as any;
+  const r = await researchCompany({ companyName: "Acme Corp" }, hooks(), { fetchFn: aliased, resolve });
+  assert.equal(r.websiteDiscovery?.via, "domain_match");
   assert.ok(r.warnings.some((w) => /confirm it is the right company/.test(w)));
+});
+
+test("domain guessing is deterministic and the page match is strict", () => {
+  assert.deepEqual(companyTokens("Acme Corp Ltd."), ["acme"]);
+  assert.equal(guessDomains("Acme Corp", "Ghana")[0], "acme.com.gh");
+  assert.ok(guessDomains("Acme Widgets").includes("acme-widgets.com"));
+  assert.equal(guessDomains("   ").length, 0);
+  assert.equal(pageMatchesCompany({ title: "Acme Software", text: "We build things", host: "acme.com" }, "Acme Software"), true);
+  assert.equal(pageMatchesCompany({ title: "Totally Other Co", text: "no relation", host: "acme.com" }, "Acme Software"), false);
+  assert.equal(pageMatchesCompany({ title: "Domain for sale", text: "acme software", host: "acme.com" }, "Acme Software"), false);
 });
 
 test("cancellation stops the research", async () => {
@@ -121,8 +132,8 @@ test("job lifecycle: enqueue is idempotent, runs to awaiting_review, evidence pe
   const b = await enqueue(d, { input: { website: "https://www.acme-corp.test" }, memberId: 1, label: "t", now });
   assert.ok(a.created && !b.created && a.id === b.id, "double click returns the same job");
   assert.equal(cacheKeyOf({ website: "acme-corp.test" }), cacheKeyOf({ website: "https://ACME-CORP.test/" }));
-  await runJob(d, a.id, { fetchFn: fakeFetch as any, resolve, providers: [], now: () => now });
-  await runJob(d, a.id, { fetchFn: fakeFetch as any, resolve, providers: [] });
+  await runJob(d, a.id, { fetchFn: fakeFetch as any, resolve, now: () => now });
+  await runJob(d, a.id, { fetchFn: fakeFetch as any, resolve });
   const job = (await d.query<any>("SELECT * FROM sales_research_jobs WHERE id = $1", [a.id])).rows[0];
   assert.equal(job.status, "awaiting_review"); assert.equal(job.progress, 100); assert.ok(job.pages_fetched >= 3);
   const ev = (await d.query<any>("SELECT * FROM sales_research_evidence WHERE job_id = $1", [a.id])).rows;
@@ -143,7 +154,7 @@ test("a failed research is recorded without touching any record", {}, async (t) 
   if (skip) return t.skip(skip);
   const d = db!;
   const j = await enqueue(d, { input: { website: "nowhere.test" }, memberId: 3, label: "t", now: new Date() });
-  await runJob(d, j.id, { fetchFn: (async () => new Response("", { status: 500 })) as any, resolve, providers: [] });
+  await runJob(d, j.id, { fetchFn: (async () => new Response("", { status: 500 })) as any, resolve });
   const r = (await d.query<any>("SELECT status, error_code FROM sales_research_jobs WHERE id = $1", [j.id])).rows[0];
   assert.equal(r.status, "failed"); assert.equal(r.error_code, "website_unreachable");
   assert.equal((await d.query<any>("SELECT count(*)::int n FROM sales_research_evidence WHERE job_id = $1", [j.id])).rows[0].n, 0);
@@ -165,7 +176,7 @@ test("routes: need ai:use, validate input, protect other people's jobs and recor
   await assert.rejects(() => start.handler(ctx(d, actor(11), { body: {} })), /company name or a website/);
   await assert.rejects(() => start.handler(ctx(d, actor(11), { body: { website: "not a url" } })), /valid website/);
   const j = await enqueue(d, { input: { website: "acme-corp.test" }, memberId: 11, label: "U11", now: new Date(), force: true, entityType: "lead", entityId: 5 });
-  await runJob(d, j.id, { fetchFn: fakeFetch as any, resolve, providers: [] });
+  await runJob(d, j.id, { fetchFn: fakeFetch as any, resolve });
   const get = route("GET", "/research/jobs/:id");
   const mine: any = await get.handler(ctx(d, actor(11), { params: { id: String(j.id) } }));
   assert.equal(mine.job.status, "awaiting_review"); assert.ok(mine.evidence.length > 8); assert.ok(mine.result.seoAeo.observed.length >= 1);
@@ -186,16 +197,17 @@ test("routes: need ai:use, validate input, protect other people's jobs and recor
 test("routes: hourly research limit is enforced and status never reveals keys", async (t) => {
   if (skip) return t.skip(skip);
   const d = db!;
-  process.env.SALES_RESEARCH_MAX_PER_HOUR = "2"; process.env.BRAVE_SEARCH_API_KEY = "sk-super-secret";
+  process.env.SALES_RESEARCH_MAX_PER_HOUR = "2";
   try {
     for (let i = 0; i < 2; i++) await d.query("INSERT INTO sales_research_jobs (input, idempotency_key, cache_key, created_by_member, status) VALUES ('{}'::jsonb, $1, $1, 77, 'failed')", [`limit-${i}`]);
     await assert.rejects(() => route("POST", "/research/company").handler(ctx(d, actor(77), { body: { website: "acme-corp.test" } })), (e: any) => e.status === 429);
     const st: any = await route("GET", "/research/status").handler(ctx(d, actor(77)));
-    assert.deepEqual(st.searchProviders.map((p: any) => p.id), ["brave"]);
-    assert.ok(!JSON.stringify(st).includes("sk-super-secret"), "API keys never appear in responses");
+    assert.deepEqual(st.searchProviders.map((p: any) => p.id), ["built-in"]);
+    assert.equal(st.canSearchByName, true);
+    assert.equal(st.setup, null);
     process.env.SALES_RESEARCH_ENABLED = "false";
     await assert.rejects(() => route("POST", "/research/company").handler(ctx(d, actor(78), { body: { website: "acme-corp.test" } })), (e: any) => e.status === 503);
-  } finally { delete process.env.SALES_RESEARCH_MAX_PER_HOUR; delete process.env.BRAVE_SEARCH_API_KEY; delete process.env.SALES_RESEARCH_ENABLED; }
+  } finally { delete process.env.SALES_RESEARCH_MAX_PER_HOUR; delete process.env.SALES_RESEARCH_ENABLED; }
 });
 
 // ───────── bulk enrichment: fill plan, safe apply, scope
@@ -230,7 +242,7 @@ test("bulk apply fills only empty columns, never names, respects scope, audits a
   assert.equal(byId[mine].state, "queued"); assert.equal(byId[theirs].state, "skipped"); assert.match(byId[theirs].reason, /not found or not yours/); assert.equal(byId[9999].state, "skipped");
   // the queued jobs were started in the background with the real network; run them here deterministically instead
   await d.query("UPDATE sales_research_jobs SET status = 'queued', started_at = NULL WHERE id = ANY($1::int[]) AND status IN ('failed','researching')", [[byId[mine].jobId, byId[keep].jobId]]);
-  for (const k of [mine, keep]) await runJob(d, byId[k].jobId, { fetchFn: fakeFetch as any, resolve, providers: [] });
+  for (const k of [mine, keep]) await runJob(d, byId[k].jobId, { fetchFn: fakeFetch as any, resolve });
   const plan: any = await route("GET", "/research/jobs/:id/plan").handler(ctxFor(a21, { params: { id: String(byId[mine].jobId) } }));
   assert.ok(plan.plan.fills.some((f: any) => f.field === "email" && f.value === "info@acme-corp.test"));
   await assert.rejects(() => route("GET", "/research/jobs/:id/plan").handler(ctxFor(actor(22), { params: { id: String(byId[mine].jobId) } })), /not found/i);

@@ -8,7 +8,7 @@ import type { Resolver } from "@workspace/intelligence/ssrf";
 import { parsePage, jsonLdNodes, typeOf, type ParsedPage } from "./html";
 import { scoreConfidence, type SourceType, type Verification } from "./confidence";
 import { analyseSeoAeo, serviceFitHypotheses, type SeoAeoReport } from "./seo";
-import { discoverWebsite, type SearchProvider } from "./search";
+import { discoverWebsite } from "./search";
 
 export interface ResearchInput { companyName?: string; website?: string; domain?: string; country?: string; industry?: string }
 export type FieldKey = "company_name" | "website" | "domain" | "description" | "email" | "phone" | "address" | "city" | "region" | "country" | "postal_code" | "industry" | "tags" | "linkedin" | "facebook" | "twitter" | "instagram" | "youtube" | "founded_year" | "products_services" | "leadership" | "seo_title" | "meta_description" | "slug" | "source_note";
@@ -47,7 +47,7 @@ const PAGE_HINTS = /(about|who-we-are|company|contact|services|solutions|product
 
 interface Raw { field: FieldKey; value: string; url: string; title: string | null; excerpt: string | null; sourceType: SourceType; reliability?: number; contactLink?: boolean; kind?: Proposal["kind"] }
 
-export async function researchCompany(input: ResearchInput, hooks: Hooks, deps: { fetchFn?: FetchFn; resolve?: Resolver; providers: SearchProvider[]; now?: () => Date; maxPages?: number }): Promise<ResearchResult> {
+export async function researchCompany(input: ResearchInput, hooks: Hooks, deps: { fetchFn?: FetchFn; resolve?: Resolver; now?: () => Date; maxPages?: number }): Promise<ResearchResult> {
   const now = deps.now ?? (() => new Date());
   const warnings: string[] = [], skipped: ResearchResult["skipped"] = [], sources: ResearchResult["sources"] = [];
   const check = async () => { if (await hooks.isCancelled()) throw new Cancelled(); };
@@ -56,13 +56,16 @@ export async function researchCompany(input: ResearchInput, hooks: Hooks, deps: 
   let site = normaliseWebsite(input), discovery: ResearchResult["websiteDiscovery"] = null;
   if (!site) {
     if (!input.companyName?.trim()) throw new ResearchError("input_required", "Enter a company name or a website.");
-    if (!deps.providers.length) throw new ResearchError("no_search_provider", "No search provider is configured, so a company cannot be found from its name alone. Enter the website, or ask an administrator to set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY on the server.");
-    await hooks.onStage("researching", 10, "Searching the public web for the official website");
-    const d = await discoverWebsite(input.companyName.trim(), { country: input.country }, deps.providers);
-    warnings.push(...d.errors.map((e) => `Search provider problem - ${e}`));
-    if (!d.hit) throw new ResearchError("website_not_found", "No official website could be identified with confidence. Enter the website to continue.");
-    site = normaliseWebsite({ website: d.hit.url })!; discovery = { via: "search", provider: d.providerId, url: site.toString() };
-    warnings.push(`The website was chosen from a search result (${d.providerId}); confirm it is the right company.`);
+    await hooks.onStage("researching", 10, "Looking for the official website from the company name");
+    const d = await discoverWebsite(input.companyName.trim(), { country: input.country }, async (u) => {
+      const f = await fetchText(u, { fetchFn: deps.fetchFn, resolve: deps.resolve, maxBytes: 400_000, timeoutMs: 5000, allow: /text\// });
+      if (f.status >= 400) return null;
+      const pg = parsePage(f.body, f.finalUrl);
+      return { title: pg.title, text: pg.text, finalUrl: f.finalUrl };
+    });
+    if (!d.url) throw new ResearchError("website_not_found", "No official website could be matched to that name. Enter the website address to continue.");
+    site = normaliseWebsite({ website: d.url })!; discovery = { via: "domain_match", provider: "built-in", url: site.toString() };
+    warnings.push("The website was matched from the company name (the page names the company); confirm it is the right company.");
   }
   await check();
   const host = site.hostname;
@@ -148,7 +151,7 @@ export async function researchCompany(input: ResearchInput, hooks: Hooks, deps: 
   if (seo.suggestions.seoTitle) add({ field: "seo_title", value: seo.suggestions.seoTitle, url: home.url, title: home.title, excerpt: "Suggested shorter title", sourceType: "derived", kind: "hypothesis" });
   if (seo.suggestions.metaDescription) add({ field: "meta_description", value: seo.suggestions.metaDescription, url: home.url, title: home.title, excerpt: "Suggested from the opening page text", sourceType: "derived", kind: "hypothesis" });
   if (seo.suggestions.slug) add({ field: "slug", value: seo.suggestions.slug, url: home.url, title: home.title, excerpt: "Suggested from the main heading", sourceType: "derived", kind: "hypothesis" });
-  if (discovery) add({ field: "source_note", value: `Website found by ${discovery.provider} search on ${now().toISOString().slice(0, 10)}`, url: site.toString(), title: home.title, excerpt: null, sourceType: "search_snippet", kind: "fact" });
+  if (discovery) add({ field: "source_note", value: `Website matched from the company name on ${now().toISOString().slice(0, 10)} (page names the company)`, url: site.toString(), title: home.title, excerpt: null, sourceType: "search_snippet", kind: "fact" });
 
   const byField = new Map<FieldKey, Raw[]>();
   for (const r of raws) byField.set(r.field, [...(byField.get(r.field) ?? []), r]);

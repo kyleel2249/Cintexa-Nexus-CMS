@@ -4,7 +4,6 @@ import { badRequest, forbidden, notFound, tooManyRequests, HttpError } from "../
 import { audit } from "../core/audit";
 import { can } from "../core/rbac";
 import { enqueue, startInBackground, recoverStale, LIMITS } from "./jobs";
-import { configuredProviders } from "./search";
 import { normaliseWebsite } from "./engine";
 import { buildPlan, applyPlan, type EntityKind } from "./apply";
 import { loadLead, rescore } from "../modules/leads";
@@ -17,14 +16,14 @@ const clean = (s?: string) => (s ?? "").replace(/[\u0000-\u001f]/g, " ").trim();
 
 export const researchRoutes: Route[] = [
   {
-    // What is configured? Never reveals keys - only which providers exist and the active limits.
+    // What is configured? Reports the built-in matcher and the active limits.
     method: "GET", path: "/research/status", permission: "ai:use", tx: false,
     async handler() {
-      const L = LIMITS(), p = configuredProviders();
+      const L = LIMITS();
       return {
-        enabled: L.enabled, searchProviders: p.map((x) => ({ id: x.id, label: x.label })), canSearchByName: p.length > 0, canResearchWebsite: L.enabled,
+        enabled: L.enabled, searchProviders: [{ id: "built-in", label: "Built-in website matching" }], canSearchByName: true, canResearchWebsite: L.enabled,
         limits: { perMemberPerHour: L.perMemberPerHour, concurrent: L.concurrent, maxPages: L.maxPages, cacheHours: L.cacheHours },
-        setup: p.length ? null : "Researching from a website address works now. To also find a company from its name alone, set BRAVE_SEARCH_API_KEY, SERPER_API_KEY or TAVILY_API_KEY on the API server.",
+        setup: null,
       };
     },
   },

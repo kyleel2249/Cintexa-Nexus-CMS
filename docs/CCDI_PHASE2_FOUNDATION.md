@@ -49,7 +49,7 @@ Sensitive keys and token patterns are redacted before storage. Rows written befo
 - Rate limiting is per process and keyed on `req.ip`; the app sets `trust proxy: true`, so `X-Forwarded-For` can be spoofed.
 - MFA (TOTP, recovery codes) is verified on the backend but is not part of any login flow while sign-in is disabled. Passkeys/WebAuthn are not implemented.
 - Password reset, account recovery, sessions table and login lockout are not built: they need the sign-in work that was deferred.
-- Integration "Check config" never reports a service as connected. AI provider "Test connection" is a real call for OpenAI, Anthropic, Gemini and OpenRouter only.
+- Integration "Check config" never reports a service as connected. (Historical: AI provider connections were removed on 2026-11-06; see CHANGES-EXTERNAL-API-REMOVAL-2026-11-06.md.)
 - PostgreSQL row-level security is not enabled; tenant isolation is application-level.
 - Existing platform weaknesses found in review and **not changed** (they concern sign-in): public `POST /api/auth/register` accepts `role: "admin"`,
   the JWT secret falls back to a hardcoded value, an empty `ADMIN_EMAILS` makes every signed-in user an admin, `routes/users.ts` has no

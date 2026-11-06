@@ -127,7 +127,7 @@ router.get("/readiness", requireAuth, async (_req: Request, res: Response) => {
       phase: 10,
       readyFor: {
         controlPlane: true,
-        advisoryAi: Boolean(process.env.OPENROUTER_API_KEY),
+        advisoryRules: true,
         liveScanning: false,
         unattendedInternetFacingScanners: false,
       },
@@ -135,7 +135,7 @@ router.get("/readiness", requireAuth, async (_req: Request, res: Response) => {
         databaseReachable: true,
         killSwitchActive: Boolean(kill.rows[0]?.active),
         strictRbacEnv: strictRbac,
-        openRouterConfigured: Boolean(process.env.OPENROUTER_API_KEY),
+        advisoryEngine: "native-rules",
         activeOrganizations: orgs.rows[0]?.n ?? 0,
         jobsTotal: jobs.rows[0]?.n ?? 0,
         findingsTotal: findings.rows[0]?.n ?? 0,
@@ -143,7 +143,6 @@ router.get("/readiness", requireAuth, async (_req: Request, res: Response) => {
       operatorActions: [
         "Set DATABASE_URL and run bootstrap",
         "Configure authentication (session JWT)",
-        "Optionally set OPENROUTER_API_KEY for advisory agents",
         "POST /api/ccdi/rbac/seed and assign roles",
         "Set CCDI_STRICT_RBAC=1 only after roles are assigned",
         "Do not expose worker claim endpoints without network controls",

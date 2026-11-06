@@ -1,7 +1,6 @@
 /** Durable research jobs: queued -> researching -> extracting -> validating -> awaiting_review -> completed (or failed / cancelled). State lives in the database, so a refresh or restart never loses a job. */
 import type { Db, Queryable } from "../core/types";
 import { researchCompany, normaliseWebsite, registrable, Cancelled, ResearchError, type ResearchInput, type ResearchResult } from "./engine";
-import { configuredProviders, type SearchProvider } from "./search";
 import type { FetchFn } from "./fetcher";
 import { createHash } from "node:crypto";
 
@@ -13,7 +12,7 @@ export const LIMITS = () => ({
   cacheHours: Math.max(0, Number(process.env.SALES_RESEARCH_CACHE_HOURS ?? 24)),
   staleMinutes: 5,
 });
-export interface Runtime { providers?: SearchProvider[]; fetchFn?: FetchFn; resolve?: import("@workspace/intelligence/ssrf").Resolver; now?: () => Date }
+export interface Runtime { fetchFn?: FetchFn; resolve?: import("@workspace/intelligence/ssrf").Resolver; now?: () => Date }
 
 export function cacheKeyOf(input: ResearchInput): string {
   const site = normaliseWebsite(input);
@@ -55,7 +54,7 @@ export async function runJob(db: Db, id: number, rt: Runtime = {}): Promise<void
     const result: ResearchResult = await researchCompany(claim.input, {
       onStage: (s, p, d) => stage(s, p, d),
       isCancelled: async () => (await db.query<{ c: boolean }>("SELECT cancel_requested c FROM sales_research_jobs WHERE id = $1", [id])).rows[0]?.c === true,
-    }, { fetchFn: rt.fetchFn, resolve: rt.resolve, providers: rt.providers ?? configuredProviders(), maxPages: L.maxPages, now });
+    }, { fetchFn: rt.fetchFn, resolve: rt.resolve, maxPages: L.maxPages, now });
     await db.tx(async (q) => {
       for (const p of result.proposals) {
         await q.query("INSERT INTO sales_research_evidence (job_id, field, value, kind, source_url, source_title, source_domain, excerpt, retrieved_at, confidence, confidence_basis, verification, conflict) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11::text::jsonb,$12,$13::text::jsonb)", [id, p.field, p.value, p.kind, p.sourceUrl, p.sourceTitle, p.sourceDomain, p.excerpt, p.retrievedAt, p.confidence, JSON.stringify(p.confidenceBasis), p.verification, p.conflict ? JSON.stringify(p.conflict) : null]);

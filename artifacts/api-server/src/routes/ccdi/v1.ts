@@ -54,9 +54,8 @@ import {
 
 const router = Router();
 
-const CREDENTIAL_KINDS = ["ai_provider", "security_tool", "cloud", "siem", "email", "messaging", "payment", "github", "threat_intel", "other"] as const;
-const INTEGRATION_CATEGORIES = ["github", "ai_provider", "email", "whatsapp", "payment", "security_tool", "cloud", "siem", "threat_intel", "other"] as const;
-const AI_PROVIDERS = ["openai", "anthropic", "gemini", "openrouter", "custom"] as const;
+const CREDENTIAL_KINDS = ["security_tool", "cloud", "siem", "email", "messaging", "payment", "github", "threat_intel", "other"] as const;
+const INTEGRATION_CATEGORIES = ["github", "email", "whatsapp", "payment", "security_tool", "cloud", "siem", "threat_intel", "other"] as const;
 const KEY_RE = /^[a-z0-9][a-z0-9_.-]{0,119}$/;
 
 router.use(limitBody(256 * 1024));
@@ -133,8 +132,6 @@ const ROUTE_DOCS: Array<{ method: string; path: string; permission: string; summ
   { method: "DELETE", path: "/organizations/{orgId}/credentials/{id}", permission: "ccdi.credentials.manage", summary: "Soft-delete and wipe ciphertext" },
   { method: "GET|POST|PATCH|DELETE", path: "/organizations/{orgId}/integrations[/{id}]", permission: "ccdi.integrations.manage", summary: "Integration registrations" },
   { method: "POST", path: "/organizations/{orgId}/integrations/{id}/test", permission: "ccdi.integrations.manage", summary: "Configuration check (no outbound call)" },
-  { method: "GET|POST|PATCH|DELETE", path: "/organizations/{orgId}/ai-providers[/{id}]", permission: "ccdi.ai.configure", summary: "AI provider registrations and limits" },
-  { method: "POST", path: "/organizations/{orgId}/ai-providers/{id}/test", permission: "ccdi.ai.configure", summary: "Live connection test for OpenAI, Anthropic, Gemini, OpenRouter" },
   { method: "GET", path: "/mfa/status", permission: "identity", summary: "MFA state for the current user" },
   { method: "POST", path: "/mfa/totp/enroll|confirm|verify|disable", permission: "identity", summary: "TOTP lifecycle (server-verified)" },
   { method: "POST", path: "/mfa/recovery-codes/regenerate", permission: "identity", summary: "Replace recovery codes" },
@@ -789,8 +786,6 @@ router.post("/organizations/:orgId/integrations/:id/test", requirePermission("cc
 }));
 
 // ── AI provider configuration (no agents) ───────────────────────────────
-const AI_COLUMNS = `id, provider, name, base_url, default_model, models, credential_id, is_default, status,
-  monthly_token_limit, monthly_cost_limit_usd, tokens_used_month, cost_used_month_usd, health_checked_at, health_detail, created_at, updated_at`;
 
 function customBaseUrl(v: unknown): string | null {
   const s = str(v, "baseUrl", { optional: true, max: 300 });
@@ -810,165 +805,6 @@ function modelList(v: unknown): string[] {
   }
   return [...new Set(v as string[])];
 }
-
-function limit(v: unknown, label: string): number | null {
-  if (v === undefined || v === null || v === "") return null;
-  const n = Number(v);
-  if (!Number.isFinite(n) || n < 0 || n > 1e12) throw new HttpError(400, `${label} must be a non-negative number`);
-  return n;
-}
-
-router.get("/organizations/:orgId/ai-providers", requirePermission("ccdi.ai.configure", { tenant: true }), handler(async (req, res) => {
-  const { rows } = await pool.query(
-    `SELECT ${AI_COLUMNS} FROM ccdi_ai_providers WHERE organization_id = $1 AND deleted_at IS NULL ORDER BY is_default DESC, name`,
-    [uuidParam(req.params.orgId, "orgId")],
-  );
-  res.json({ providers: rows });
-}));
-
-router.post("/organizations/:orgId/ai-providers", requirePermission("ccdi.ai.configure", { tenant: true }), handler(async (req, res) => {
-  const orgId = uuidParam(req.params.orgId, "orgId");
-  const provider = oneOf(req.body?.provider, "provider", AI_PROVIDERS);
-  const name = reqStr(req.body?.name, "name", { max: 120 });
-  const baseUrl = provider === "custom" ? customBaseUrl(req.body?.baseUrl) : null;
-  if (provider === "custom" && !baseUrl) throw new HttpError(400, "baseUrl is required for custom providers");
-  const models = modelList(req.body?.models);
-  const defaultModel = str(req.body?.defaultModel, "defaultModel", { optional: true, max: 120 }) ?? null;
-  const credentialId = await assertCredentialInOrg(req.body?.credentialId, orgId);
-  const tokenLimit = limit(req.body?.monthlyTokenLimit, "monthlyTokenLimit");
-  const costLimit = limit(req.body?.monthlyCostLimitUsd, "monthlyCostLimitUsd");
-  const makeDefault = Boolean(req.body?.isDefault);
-  const row = await withAudit(
-    (r: { id: string }) => ({ ...auditBase(req, orgId), action: "ai_provider.registered", entityType: "ai_provider", entityId: r.id, meta: { provider, name, isDefault: makeDefault } }),
-    async (client) => {
-      if (makeDefault) await client.query(`UPDATE ccdi_ai_providers SET is_default = false WHERE organization_id = $1 AND is_default`, [orgId]);
-      const { rows } = await client.query(
-        `INSERT INTO ccdi_ai_providers (organization_id, provider, name, base_url, default_model, models, credential_id, is_default, status,
-            monthly_token_limit, monthly_cost_limit_usd, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6::jsonb,$7,$8,$9,$10,$11,$12) RETURNING ${AI_COLUMNS}`,
-        [orgId, provider, name, baseUrl, defaultModel, JSON.stringify(models), credentialId, makeDefault, credentialId ? "configured" : "registered", tokenLimit, costLimit, ctxOf(req).actorRef],
-      );
-      return rows[0];
-    },
-  );
-  res.status(201).json({ provider: row });
-}));
-
-router.patch("/organizations/:orgId/ai-providers/:id", requirePermission("ccdi.ai.configure", { tenant: true }), handler(async (req, res) => {
-  const orgId = uuidParam(req.params.orgId, "orgId");
-  const id = uuidParam(req.params.id);
-  const name = str(req.body?.name, "name", { optional: true, max: 120 });
-  const defaultModel = str(req.body?.defaultModel, "defaultModel", { optional: true, max: 120 });
-  const models = req.body?.models === undefined ? undefined : modelList(req.body.models);
-  const credentialId = req.body?.credentialId === undefined ? undefined : await assertCredentialInOrg(req.body.credentialId, orgId);
-  const tokenLimit = req.body?.monthlyTokenLimit === undefined ? undefined : limit(req.body.monthlyTokenLimit, "monthlyTokenLimit");
-  const costLimit = req.body?.monthlyCostLimitUsd === undefined ? undefined : limit(req.body.monthlyCostLimitUsd, "monthlyCostLimitUsd");
-  const makeDefault = req.body?.isDefault === undefined ? undefined : Boolean(req.body.isDefault);
-  const disabled = req.body?.disabled === undefined ? undefined : Boolean(req.body.disabled);
-  const row = await withAudit(
-    { ...auditBase(req, orgId), action: "ai_provider.updated", entityType: "ai_provider", entityId: id, meta: { name, defaultModel, models, tokenLimit, costLimit, makeDefault, disabled } },
-    async (client) => {
-      if (makeDefault) await client.query(`UPDATE ccdi_ai_providers SET is_default = false WHERE organization_id = $1 AND is_default AND id <> $2`, [orgId, id]);
-      const { rows } = await client.query(
-        `UPDATE ccdi_ai_providers SET
-           name = COALESCE($3, name),
-           default_model = COALESCE($4, default_model),
-           models = COALESCE($5::jsonb, models),
-           credential_id = CASE WHEN $6::boolean THEN $7::uuid ELSE credential_id END,
-           monthly_token_limit = CASE WHEN $8::boolean THEN $9::bigint ELSE monthly_token_limit END,
-           monthly_cost_limit_usd = CASE WHEN $10::boolean THEN $11::numeric ELSE monthly_cost_limit_usd END,
-           is_default = COALESCE($12, is_default),
-           status = CASE WHEN $13::boolean IS TRUE THEN 'disabled'
-                         WHEN $13::boolean IS FALSE AND status = 'disabled' THEN 'registered' ELSE status END,
-           updated_at = now()
-         WHERE id = $1 AND organization_id = $2 AND deleted_at IS NULL RETURNING ${AI_COLUMNS}`,
-        [id, orgId, name ?? null, defaultModel ?? null, models === undefined ? null : JSON.stringify(models),
-         credentialId !== undefined, credentialId ?? null, tokenLimit !== undefined, tokenLimit ?? null,
-         costLimit !== undefined, costLimit ?? null, makeDefault ?? null, disabled ?? null],
-      );
-      if (!rows.length) throw new HttpError(404, "AI provider not found");
-      return rows[0];
-    },
-  );
-  res.json({ provider: row });
-}));
-
-router.delete("/organizations/:orgId/ai-providers/:id", requirePermission("ccdi.ai.configure", { tenant: true }), handler(async (req, res) => {
-  const orgId = uuidParam(req.params.orgId, "orgId");
-  const id = uuidParam(req.params.id);
-  await withAudit(
-    { ...auditBase(req, orgId), action: "ai_provider.deleted", entityType: "ai_provider", entityId: id },
-    async (client) => {
-      const r = await client.query(`UPDATE ccdi_ai_providers SET deleted_at = now(), is_default = false, status = 'disabled' WHERE id=$1 AND organization_id=$2 AND deleted_at IS NULL`, [id, orgId]);
-      if (!r.rowCount) throw new HttpError(404, "AI provider not found");
-    },
-  );
-  res.json({ ok: true });
-}));
-
-const PROVIDER_PROBES: Record<string, (key: string) => { url: string; headers: Record<string, string> }> = {
-  openai: (k) => ({ url: "https://api.openai.com/v1/models", headers: { Authorization: `Bearer ${k}` } }),
-  anthropic: (k) => ({ url: "https://api.anthropic.com/v1/models", headers: { "x-api-key": k, "anthropic-version": "2023-06-01" } }),
-  gemini: (k) => ({ url: "https://generativelanguage.googleapis.com/v1beta/models?pageSize=1", headers: { "x-goog-api-key": k } }),
-  openrouter: (k) => ({ url: "https://openrouter.ai/api/v1/models", headers: { Authorization: `Bearer ${k}` } }),
-};
-
-router.post("/organizations/:orgId/ai-providers/:id/test", rateLimit("ccdi-ai-test", 20), requirePermission("ccdi.ai.configure", { tenant: true }), handler(async (req, res) => {
-  const orgId = uuidParam(req.params.orgId, "orgId");
-  const id = uuidParam(req.params.id);
-  const { rows } = await pool.query(
-    `SELECT p.provider, p.credential_id, c.storage, c.external_ref, c.ciphertext, c.iv, c.auth_tag, c.key_version, c.status AS cred_status
-     FROM ccdi_ai_providers p LEFT JOIN ccdi_credentials c ON c.id = p.credential_id AND c.deleted_at IS NULL
-     WHERE p.id = $1 AND p.organization_id = $2 AND p.deleted_at IS NULL`,
-    [id, orgId],
-  );
-  if (!rows.length) throw new HttpError(404, "AI provider not found");
-  const p = rows[0];
-
-  let status: "verified" | "failing" | "configured" = "failing";
-  let detail: string;
-  let httpStatus: number | null = null;
-
-  const probe = PROVIDER_PROBES[p.provider];
-  if (!probe) {
-    status = "configured";
-    detail = "Connection tests are not available for custom providers in this phase (an outbound-request safety guard is required first).";
-  } else if (!p.credential_id || p.cred_status !== "active") {
-    detail = "No active credential is attached.";
-  } else {
-    let key: string | undefined;
-    try {
-      key = p.storage === "env" ? (isReservedEnvRef(String(p.external_ref)) ? undefined : process.env[p.external_ref as string]) : openSecret({ ciphertext: p.ciphertext, iv: p.iv, tag: p.auth_tag, keyVersion: p.key_version }, p.credential_id);
-    } catch {
-      key = undefined;
-    }
-    if (!key) {
-      detail = "The credential value is not available on the server (missing environment variable or vault key).";
-    } else {
-      try {
-        const target = probe(key);
-        const r = await fetch(target.url, { headers: target.headers, signal: AbortSignal.timeout(8000), redirect: "error" });
-        httpStatus = r.status;
-        if (r.ok) { status = "verified"; detail = "The provider accepted the credential."; }
-        else if (r.status === 401 || r.status === 403) detail = "The provider rejected the credential.";
-        else detail = `The provider responded with HTTP ${r.status}.`;
-      } catch {
-        detail = "Could not reach the provider (network error or timeout).";
-      }
-    }
-  }
-
-  await withAudit(
-    { ...auditBase(req, orgId), action: "ai_provider.tested", entityType: "ai_provider", entityId: id, meta: { provider: p.provider, result: status, httpStatus } },
-    async (client) => {
-      await client.query(
-        `UPDATE ccdi_ai_providers SET status = CASE WHEN status = 'disabled' THEN status ELSE $3 END, health_checked_at = now(), health_detail = $4 WHERE id = $1 AND organization_id = $2`,
-        [id, orgId, status, detail],
-      );
-    },
-  );
-  res.json({ status, verified: status === "verified", detail });
-}));
 
 // ── MFA (server-verified; not wired to sign-in while sign-in is disabled) ──
 const mfaLimiter = rateLimit("ccdi-mfa", 10);

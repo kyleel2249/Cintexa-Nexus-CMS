@@ -1,6 +1,6 @@
 # Cintexa Nexus CMS
 
-AI-powered enterprise CMS with a visual page builder, multi-site management, and OpenRouter-backed AI tools.
+AI-powered enterprise CMS with a visual page builder, multi-site management, and built-in AI Studio tools that run entirely inside Nexus (no external AI service or API key).
 
 ## Requirements
 
@@ -51,7 +51,7 @@ Windows users: follow **[WINDOWS.md](./WINDOWS.md)**.
 - **Frontend**: React 19, Vite, Tailwind CSS 4, shadcn/ui, Framer Motion, TanStack Query, Wouter
 - **API**: Express 5, Drizzle ORM, JWT session auth
 - **Database**: PostgreSQL
-- **AI**: OpenRouter (`openai/gpt-4o-mini`) with offline fallbacks
+- **AI Studio**: built-in deterministic generators (content, SEO, titles, blocks) and locally generated cover art; no external API
 
 ## License
 

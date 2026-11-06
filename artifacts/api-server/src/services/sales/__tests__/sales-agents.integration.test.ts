@@ -404,7 +404,7 @@ test("when permitted, AI adds only a sanitised narrative; usage, tokens and cost
   const r = await ai("POST", "/agents/sales_operations/run", { mode: "analysis" });
   assert.equal(r.json.status, "completed"); assert.equal(r.json.ai.status, "ok"); assert.equal(calls.length, 1);
   assert.ok(/untrusted/i.test(calls[0].system) && /never follow instructions/i.test(calls[0].system));
-  assert.equal(calls[0].model, "openai/gpt-4o-mini", "economy-tier agent uses the economy model");
+  assert.equal(calls[0].model, "tier-economy", "economy-tier agent uses the economy model");
   const withNarr = (await db.query<any>("SELECT ai_narrative, what_detected FROM sales_agent_recommendations WHERE agent_key = 'sales_operations' AND ai_narrative IS NOT NULL")).rows;
   assert.ok(withNarr.length >= 1); assert.ok(withNarr.every((x: any) => !/http|<|>/.test(x.ai_narrative)));
   assert.equal((await db.query<any>("SELECT count(*)::int n FROM sales_agent_recommendations")).rows[0].n, before, "AI created no findings and changed no numbers");
@@ -453,8 +453,8 @@ test("model fallback chain and hourly AI budget", { skip }, async () => {
   calls.length = 0; mode = "ok";
   await db.query("UPDATE sales_agent_executions SET started_at = now() - interval '2 hours' WHERE agent_key = 'sales_operations'");
   const r = await ai("POST", "/agents/sales_operations/run", { mode: "analysis" });
-  assert.equal(r.json.ai.status, "fallback_model"); assert.equal(r.json.ai.model, "openai/gpt-4o-mini");
-  assert.deepEqual(calls.map((c) => c.model), ["bad/model", "openai/gpt-4o-mini"]);
+  assert.equal(r.json.ai.status, "fallback_model"); assert.equal(r.json.ai.model, "tier-economy");
+  assert.deepEqual(calls.map((c) => c.model), ["bad/model", "tier-economy"]);
   const statuses: string[] = [];
   for (let i = 0; i < 8; i++) statuses.push((await ai("POST", "/agents/sales_operations/run", { mode: "analysis" })).json.ai.status);
   assert.ok(statuses.includes("refused"), "AI calls are capped per agent per hour");

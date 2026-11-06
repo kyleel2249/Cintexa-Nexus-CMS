@@ -31,7 +31,7 @@ export interface IntelligenceOptions {
   extraExecutors?: Record<string, ActionExecutor>;
 }
 
-const FALLBACK: RouteConfig = { model: 'openai/gpt-4o-mini', maxTokens: 700, timeoutMs: 20_000, retries: 1, maxCostUsd: 0.05 };
+const FALLBACK: RouteConfig = { model: 'none', maxTokens: 700, timeoutMs: 20_000, retries: 1, maxCostUsd: 0.05 };
 
 export class Intelligence {
   readonly store: SqlStore; readonly tools = new ToolRegistry(); readonly agents: AgentRegistry; readonly orchestrator: Orchestrator;

@@ -96,7 +96,7 @@ describe("competitor discovery", () => {
     const r = await discoverCompetitors({ ownerId: OWNER, auditId: id });
     expect(r.searchAvailable).toBe(false);
     expect(r.candidatesFound).toBe(0);
-    expect(r.unavailable.join(" ")).toMatch(/search provider/i);
+    expect(r.unavailable.join(" ")).toMatch(/self-contained build/i);
     expect(r.alternatives.length).toBeGreaterThan(0);
     expect(queriesSeen.length).toBe(0);
     expect(await repo.listCompetitors(OWNER, SITE)).toEqual([]);

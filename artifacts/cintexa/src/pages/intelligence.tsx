@@ -72,7 +72,7 @@ function Overview({ tick, onRun, running }: { tick: number; onRun: () => void; r
             </CardContent>
           </Card>))}
       </div>
-      {!o.aiConfigured && <p className="text-xs text-muted-foreground">Analysis here is fully deterministic and computed on this device. The optional AI narrative needs an OpenRouter key on the API server.</p>}
+      {!o.aiConfigured && <p className="text-xs text-muted-foreground">Analysis here is fully deterministic and computed on this device. No external AI service is used.</p>}
     </div>
   );
 }
