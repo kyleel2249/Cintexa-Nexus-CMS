@@ -13,7 +13,9 @@
     "dev": "npm run dev --workspace=@workspace/cintexa",
     "dev:api": "npm run dev --workspace=@workspace/api-server",
     "dev:all": "concurrently \"npm run dev --workspace=@workspace/cintexa\" \"npm run dev --workspace=@workspace/api-server\"",
-    "build:app": "npm run build --workspace=@workspace/cintexa",
+    "validate": "node scripts/validate-source.mjs",
+    "test": "npm run test --workspace=@workspace/accounting-core && npm run test --workspace=@workspace/cintexa",
+    "build:app": "npm run validate && npm run build --workspace=@workspace/cintexa",
     "preview": "npm run serve --workspace=@workspace/cintexa",
     "start:api": "npm run start --workspace=@workspace/api-server"
   },

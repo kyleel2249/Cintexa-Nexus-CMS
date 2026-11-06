@@ -4,6 +4,10 @@ import NotFound from "@/pages/not-found";
 
 const Overview = lazy(() => import("./overview"));
 const FinancePage = lazy(() => import("./page"));
+const FxPage = lazy(() => import("./fx"));
+const InventoryPage = lazy(() => import("./inventory"));
+const PayrollPage = lazy(() => import("./payroll"));
+const RestatementsPage = lazy(() => import("./restatements"));
 const spin = <div className="flex min-h-[240px] items-center justify-center text-sm text-muted-foreground">Loading Finance…</div>;
 
 export function FinanceRoutes() {
@@ -28,6 +32,10 @@ export function FinanceRoutes() {
         <Route path="/finance/invoices">{() => <FinancePage mode="invoices" />}</Route>
         <Route path="/finance/payments">{() => <FinancePage mode="payments" />}</Route>
         <Route path="/finance/discounts">{() => <FinancePage mode="discounts" />}</Route>
+        <Route path="/finance/fx" component={FxPage} />
+        <Route path="/finance/inventory" component={InventoryPage} />
+        <Route path="/finance/payroll" component={PayrollPage} />
+        <Route path="/finance/restatements" component={RestatementsPage} />
         <Route path="/finance/audit">{() => <FinancePage mode="audit" />}</Route>
         <Route component={NotFound} />
       </Switch>

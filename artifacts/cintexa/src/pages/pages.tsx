@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { markPagesSessionAvailable } from "@/lib/marketing/cms-cache/sessionMarkers";
 import { useGetPages } from "@workspace/api-client-react";
 import { RecurringScheduleDialog } from "@/components/recurring-schedule-dialog";
 import { Button } from "@/components/ui/button";
@@ -40,6 +41,10 @@ async function reschedulePage(id: number, newDate: Date): Promise<void> {
 
 export default function Pages() {
   const { data: pages, isLoading, refetch } = useGetPages();
+  useEffect(() => {
+    const list = Array.isArray(pages) ? pages : (pages as any)?.items || [];
+    if (Array.isArray(list) && list.length > 0) markPagesSessionAvailable();
+  }, [pages]);
   const { toast } = useToast();
   const [previewOpen, setPreviewOpen] = useState(false);
   const [previewPageId, setPreviewPageId] = useState<number | undefined>(undefined);

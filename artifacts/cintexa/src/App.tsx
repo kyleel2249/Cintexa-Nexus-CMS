@@ -54,6 +54,9 @@ const FinanceRoutes = lazyWithRecovery(() =>
 const CorporateStrategyRoutes = lazyWithRecovery(() =>
   import("@/pages/corporate-strategy/routes").then((m) => ({ default: m.CorporateStrategyRoutes })),
 );
+const MarketingRoutes = lazyWithRecovery(() =>
+  import("@/pages/marketing/routes").then((m) => ({ default: m.MarketingRoutes })),
+);
 const PublicQuotation = lazyWithRecovery(() => import("@/pages/sales/public-quotation"));
 const PublicLeadForm = lazyWithRecovery(() => import("@/pages/sales/public-lead-form"));
 
@@ -122,6 +125,8 @@ function AppRoutes() {
             <Route path="/business-diary/*?" component={BusinessDiaryRoutes} />
             <Route path="/finance/*?" component={FinanceRoutes} />
             <Route path="/corporate-strategy/*?" component={CorporateStrategyRoutes} />
+            <Route path="/marketing" component={MarketingRoutes} />
+            <Route path="/marketing/:rest*" component={MarketingRoutes} />
             <Route component={NotFound} />
           </Switch>
         </Suspense>

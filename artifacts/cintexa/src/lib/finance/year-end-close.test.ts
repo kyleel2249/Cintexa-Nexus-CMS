@@ -85,3 +85,18 @@ test("policy engine: effective-dated, documented, cannot rewrite closed history"
   assert.equal((await call("GET", "policies?asOf=2026-12-31")).body.inForce.inventoryMethod.value, "WEIGHTED_AVERAGE");
   assert.equal((await call("GET", "policies?asOf=2027-02-01")).body.inForce.inventoryMethod.value, "FIFO");
 });
+
+test("depreciation: 25% SL computer posts each month once, never twice, never past cost", async () => {
+  const a = await call("POST", "assets", { name: "Laptop", category: "laptop", costMinor: 800000, residualMinor: 0, acquisitionDate: "2027-01-05" });
+  assert.equal(a.status, 201);
+  assert.equal(a.body.asset.monthlyDepreciationMinor, 16667); // GHC 166.67
+  const m1 = await call("POST", "assets/depreciate", { periodYm: "2027-01" });
+  assert.equal(m1.body.created.length, 1);
+  const m2 = await call("POST", "assets/depreciate", { periodYm: "2027-02" });   // second month must NOT be blocked
+  assert.equal(m2.body.created.length, 1);
+  const again = await call("POST", "assets/depreciate", { periodYm: "2027-01" }); // same month is idempotent
+  assert.equal(again.body.created.length, 0);
+  assert.equal(again.body.skipped[0].reason, "already_posted_period");
+  const list = await call("GET", "assets");
+  assert.equal(list.body.items[0].accumulatedMinor, 33334);
+});

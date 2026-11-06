@@ -1,0 +1,32 @@
+name: CI
+
+# Runs the same steps Cloudflare Pages runs, plus source validation and tests, so a broken lockfile or
+# corrupted source file is caught on the pull request instead of in a failed deployment.
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - name: Clean install (fails if package.json and package-lock.json are out of sync)
+        run: npm ci --progress=false
+      - name: Validate source and lockfile
+        run: npm run validate
+      - name: Typecheck libraries
+        run: npm run typecheck:libs
+      - name: Tests
+        run: npm test
+      - name: Production build
+        run: npm run build:app
+      - name: Verify Cloudflare output
+        run: test -f artifacts/cintexa/dist/public/_redirects && test -d artifacts/cintexa/dist/public/assets
+      - name: Security audit (production dependencies must have no critical findings)
+        run: npm audit --omit=dev --audit-level=critical
