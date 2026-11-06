@@ -80,3 +80,54 @@ test("a part-paid invoice keeps its paid amount and status on the next request (
   assert.equal(paid.status, "paid");
   assert.equal((await t.fin("POST", "payments", { invoiceId: inv.id, amountMinor: 1, paymentDate: "2026-11-03" })).status, 400, "overpayment is refused");
 });
+
+test("deleting a payment restores the invoice balance and removes its journal; deleting an invoice with payments is refused", async () => {
+  const t = boot();
+  const inv = (await t.fin("POST", "invoices", { customerName: "Acme", amountMinor: 100000, issueDate: "2026-11-01" })).json.invoice;
+  const pay = (await t.fin("POST", "payments", { invoiceId: inv.id, amountMinor: 40000, paymentDate: "2026-11-02" })).json.payment;
+  const blocked = await t.fin("DELETE", `invoices/${inv.id}`, { confirm: "DELETE_INVOICE" });
+  assert.equal(blocked.status, 409);
+  assert.equal((await t.fin("DELETE", `payments/${pay.id}`, {})).status, 400, "confirmation word is required");
+  const del = await t.fin("DELETE", `payments/${pay.id}`, { confirm: "DELETE_PAYMENT" });
+  assert.equal(del.status, 200, JSON.stringify(del.json));
+  const after = (await t.fin("GET", "invoices")).json.items.find((i: any) => i.id === inv.id);
+  assert.equal(after.amountPaidMinor, 0);
+  assert.equal(after.status, "open");
+  assert.equal(t.n("SELECT COUNT(*) n FROM fin_payments"), 0);
+  assert.equal((await t.fin("DELETE", `invoices/${inv.id}`, { confirm: "DELETE_INVOICE" })).status, 200);
+  assert.equal(t.n("SELECT COUNT(*) n FROM fin_invoices"), 0);
+  assert.equal(t.n("SELECT COUNT(*) n FROM fin_journals"), 0, "both journals are gone, so no report still counts them");
+  const types = (await t.syn("GET", "events")).json.items.map((e: any) => e.eventType);
+  assert.ok(types.includes("PAYMENT_DELETED") && types.includes("INVOICE_DELETED"));
+});
+
+test("a manual journal syncs to every tool, gets an automatic memo and line notes, and its deletion syncs too", async () => {
+  const t = boot();
+  const accts = (await t.fin("GET", "accounts")).json.items;
+  const cash = accts.find((a: any) => a.code === "1010").code, rev = accts.find((a: any) => a.code === "4010").code;
+  const r = await t.fin("POST", "journals", { entryDate: "2026-11-04", post: true, lines: [{ accountCode: cash, debit: 500000 }, { accountCode: rev, credit: 500000 }] });
+  assert.equal(r.status, 201, JSON.stringify(r.json));
+  const j = r.json.journal;
+  assert.match(j.description, /debit Cash on Hand; credit Website Design Revenue/);
+  assert.ok(j.lines.every((l: any) => l.memo && l.memo.length > 5));
+  const ev = (await t.syn("GET", "events?eventType=JOURNAL_POSTED")).json.items[0];
+  assert.deepEqual(ev.links.map((l: any) => l.targetModule).sort(), ["business-diary", "corporate-strategy", "dashboard", "financial-intelligence", "marketing", "sales"]);
+  const del = await t.fin("DELETE", `journals/${j.id}`, { confirm: "DELETE_JOURNAL" });
+  assert.equal(del.status, 200);
+  assert.equal((await t.syn("GET", "events?eventType=JOURNAL_DELETED")).json.items.length, 1);
+  const series = (await t.fin("GET", "analytics/series")).json;
+  assert.deepEqual(series.items, [], "deleted entries no longer appear in analytics");
+});
+
+test("mobile phones are in the chart of accounts and depreciate at 25% to their own accounts", async () => {
+  const t = boot();
+  const accts = (await t.fin("GET", "accounts")).json.items;
+  for (const code of ["1215", "1283", "6312"]) assert.ok(accts.some((a: any) => a.code === code), `account ${code} exists`);
+  const a = await t.fin("POST", "assets", { name: "iPhone", category: "mobile_phone", costMinor: 480000, residualMinor: 0, depreciationRateBps: 1000 });
+  assert.equal(a.status, 201, JSON.stringify(a.json));
+  assert.equal(a.json.asset.depreciationRateBps, 2500, "policy overrides any other rate");
+  const run = await t.fin("POST", "assets/depreciate", { periodYm: "2026-11" });
+  assert.equal(run.json.created[0].amountMinor, 10000, "480,000 x 25% / 12");
+  const j = (await t.fin("GET", "journals")).json.items.find((x: any) => x.journalType === "depreciation");
+  assert.deepEqual(j.lines.map((l: any) => l.accountCode).sort(), ["1283", "6312"]);
+});

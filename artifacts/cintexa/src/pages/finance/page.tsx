@@ -13,6 +13,8 @@ import {
 
 
 
+import { checkAmount, forecastSeries } from "@/lib/nexus/forecast";
+import { buildEntryGuide, DOUBLE_ENTRY_CHEATSHEET, type GuideAccountType } from "@/lib/finance/double-entry-guide";
 import { AccountSelect, type AccountOption } from "@/components/finance/AccountSelect";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -29,7 +31,15 @@ interface DraftLine {
   credit: string;
 }
 
+/**
+ * Each mode renders a different set of hooks. Keying by mode forces a clean remount when the route changes,
+ * which prevents "rendered more hooks than during the previous render" crashes that took the whole page down.
+ */
 export default function FinancePage({ mode }: { mode: Mode }) {
+  return <FinancePageInner key={mode} mode={mode} />;
+}
+
+function FinancePageInner({ mode }: { mode: Mode }) {
   const qc = useQueryClient();
   const inv = () => qc.invalidateQueries({ queryKey: ["fin"] });
   const cur = "GHS";
@@ -102,11 +112,12 @@ export default function FinancePage({ mode }: { mode: Mode }) {
       onSuccess: inv,
     });
     return (
-      <Shell title="Fixed assets & depreciation" desc="Computers/laptops: mandatory 25% p.a. straight-line accounting depreciation (not Ghana tax capital allowance). Amounts in major units on entry.">
+      <Shell title="Fixed assets & depreciation" desc="Computers, laptops and mobile phones: mandatory 25% p.a. straight-line accounting depreciation (not Ghana tax capital allowance). Amounts in major units on entry.">
         <div className="flex flex-wrap gap-2 mb-4">
           <Input placeholder="Asset name e.g. Dell Laptop" value={name} onChange={(e) => setName(e.target.value)} />
           <select className="h-9 rounded-md border bg-background px-2 text-sm" value={cat} onChange={(e) => setCat(e.target.value)}>
             <option value="laptop">Laptop</option>
+            <option value="mobile_phone">Mobile phone</option>
             <option value="computer">Desktop computer</option>
             <option value="server">Server</option>
             <option value="office_equipment">Office equipment</option>
@@ -490,6 +501,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
             <Card key={i.id}><CardContent className="py-3">
               <p className="font-medium">{i.number} · {i.customerName}</p>
               <p className="text-xs text-muted-foreground">{i.issueDate} · {i.status} · {formatCurrency(i.amountMinor, i.currency)}</p>
+              <DeleteRecordButton label="Delete invoice" confirmWord="DELETE_INVOICE" path={`/invoices/${i.id}`} warn={`Delete ${i.number}? Its journal entry is removed from every report. Delete its payments first if it has any.`} onDone={inv} />
             </CardContent></Card>
           ))}
         </div>
@@ -550,7 +562,10 @@ export default function FinancePage({ mode }: { mode: Mode }) {
         {create.isError && <p className="text-sm text-rose-600 mb-2">Payment rejected.</p>}
         <div className="space-y-2 text-sm">
           {(pays.data?.items || []).map((p) => (
-            <Card key={p.id}><CardContent className="py-3">{p.paymentDate}: {formatCurrency(p.amountMinor, p.currency)} — {p.customerName}</CardContent></Card>
+            <Card key={p.id}><CardContent className="py-3">
+              <p>{p.paymentDate}: {formatCurrency(p.amountMinor, p.currency)} — {p.customerName}</p>
+              <DeleteRecordButton label="Delete payment" confirmWord="DELETE_PAYMENT" path={`/payments/${p.id}`} warn={`Delete this payment of ${formatCurrency(p.amountMinor, p.currency)}? Its journal is removed and the invoice balance is restored.`} onDone={inv} />
+            </CardContent></Card>
           ))}
         </div>
       </Shell>
@@ -677,22 +692,28 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
     }
   }, [docs.journalMemo, descTouched]);
 
-  // Auto-fill empty line memos from engine notes
-  useEffect(() => {
-    setLines((prev) => {
-      let changed = false;
-      const next = prev.map((l) => {
-        if (l.memo.trim()) return l;
-        const note = docs.lineNotes.find((n) => n.key === l.key);
-        if (note?.autoNote) {
-          changed = true;
-          return { ...l, memo: note.autoNote };
-        }
-        return l;
-      });
-      return changed ? next : prev;
-    });
-  }, [docs.lineNotes]);
+  // Line notes are NOT copied into the memo fields: they are shown live as the placeholder and used at post time when the
+  // memo is empty, so they follow every change of account, side or amount. "Apply line notes" copies them on request.
+  const guide = useMemo(
+    () =>
+      buildEntryGuide(
+        lines
+          .filter((l) => l.account && (amountInputToMinor(l.debit) || amountInputToMinor(l.credit)))
+          .map((l) => {
+            const debit = amountInputToMinor(l.debit);
+            return {
+              accountCode: l.account!.code,
+              accountName: l.account!.name,
+              type: l.account!.type as GuideAccountType,
+              subtype: (l.account as any).subtype,
+              side: (debit > 0 ? "debit" : "credit") as "debit" | "credit",
+              amount: debit > 0 ? debit : amountInputToMinor(l.credit),
+            };
+          }),
+        { journalType },
+      ),
+    [lines, journalType],
+  );
 
   const post = useMutation({
     mutationFn: () =>
@@ -806,7 +827,7 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
               <AccountSelect value={l.account} onChange={(a) => updateLine(l.key, { account: a })} />
             </div>
             <div className="sm:col-span-3">
-              <Input placeholder="Line memo" value={l.memo} onChange={(e) => updateLine(l.key, { memo: e.target.value })} />
+              <Input placeholder={docs.lineNotes.find((n) => n.key === l.key)?.autoNote || "Line memo (written automatically)"} value={l.memo} onChange={(e) => updateLine(l.key, { memo: e.target.value })} />
             </div>
             <div className="sm:col-span-1">
               <Input className="text-right" placeholder="0" value={l.debit} onChange={(e) => updateLine(l.key, { debit: e.target.value, credit: e.target.value ? "" : l.credit })} />
@@ -837,6 +858,65 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
         </Button>
       </div>
       {post.isError && <p className="text-sm text-rose-600 mb-4">Post rejected — check balance and accounts.</p>}
+
+      {/* Double-entry guide: what each debit or credit does, with the GAAP concepts behind it */}
+      <Card className="mb-6 border-sky-500/30 bg-sky-500/5">
+        <CardHeader className="py-3">
+          <CardTitle className="text-base">Double-entry guide</CardTitle>
+          <CardDescription>Updates as you change accounts, sides and amounts. Educational explanation, not tax or audit advice.</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3 text-sm">
+          <p className="text-xs font-medium">{guide.headline}</p>
+          <p className="text-xs text-muted-foreground">{guide.equationNote}</p>
+          {guide.effects.length > 0 && (
+            <ul className="space-y-1.5">
+              {guide.effects.map((e, i) => (
+                <li key={`${e.accountCode}-${e.side}-${i}`} className="rounded border px-2 py-1.5 text-xs">
+                  <span className="font-medium">{e.headline}</span>
+                  <p className="text-muted-foreground mt-0.5">{e.explanation} Shown on: {e.statement}.</p>
+                </li>
+              ))}
+            </ul>
+          )}
+          {guide.whatIf.length > 0 && (
+            <div>
+              <p className="text-[11px] uppercase text-muted-foreground mb-1">What if the side were reversed?</p>
+              <ul className="list-disc pl-4 text-xs text-muted-foreground space-y-0.5">{guide.whatIf.map((w) => <li key={w}>{w}</li>)}</ul>
+            </div>
+          )}
+          <div>
+            <p className="text-[11px] uppercase text-muted-foreground mb-1">GAAP concepts behind this entry</p>
+            <ul className="space-y-1">
+              {guide.concepts.map((c) => (
+                <li key={c.id} className="text-xs"><span className="font-medium">{c.name}</span> <span className="text-muted-foreground">({c.reference})</span><br /><span className="text-muted-foreground">{c.explanation}</span></li>
+              ))}
+            </ul>
+          </div>
+          <details className="text-xs">
+            <summary className="cursor-pointer text-primary">Debit and credit cheat sheet</summary>
+            <table className="mt-2 w-full text-left">
+              <thead><tr className="text-muted-foreground"><th className="py-1">Account type</th><th>Normal balance</th><th>Debit</th><th>Credit</th></tr></thead>
+              <tbody>{DOUBLE_ENTRY_CHEATSHEET.map((r) => (<tr key={r.type} className="border-t"><td className="py-1 capitalize">{r.type}</td><td className="capitalize">{r.normal}</td><td>{r.debit}</td><td>{r.credit}</td></tr>))}</tbody>
+            </table>
+          </details>
+        </CardContent>
+      </Card>
+
+      {guide.effects.length > 0 && (
+        <Card className="mb-6 border-violet-500/30 bg-violet-500/5">
+          <CardHeader className="py-3">
+            <CardTitle className="text-base">Predictive check</CardTitle>
+            <CardDescription>Compares this entry with your earlier entries and projects each account. Forecasts extrapolate history only.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <ul className="space-y-1.5">
+              {guide.effects.slice(0, 6).map((e, i) => (
+                <LinePrediction key={`${e.accountCode}-${i}`} code={e.accountCode} name={e.accountName} side={e.side} amount={e.amount} />
+              ))}
+            </ul>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Automatic accounting documentation panel */}
       <Card className="mb-6 border-primary/20 bg-gradient-to-br from-primary/5 via-card to-card">
@@ -1076,6 +1156,54 @@ function DiscountsWorkspace({ onDone }: { onDone: () => void }) {
         Accounts 432x, 516x, 423x, 641x are in the central Chart of Accounts and appear in every journal AccountSelect search.
       </p>
     </Shell>
+  );
+}
+
+/** Predictive check for one journal line: compares the amount with earlier entries on that account and projects its activity. */
+function LinePrediction({ code, name, side, amount }: { code: string; name: string; side: "debit" | "credit"; amount: number }) {
+  const q = useQuery({ queryKey: ["fin", "ledger-hist", code], queryFn: () => finGet<{ lines: any[] }>("/ledger", { account: code }), staleTime: 60_000, retry: false });
+  const result = useMemo(() => {
+    const lines = q.data?.lines ?? [];
+    const sameSide = lines.map((l) => Number(side === "debit" ? l.debit : l.credit)).filter((x) => x > 0);
+    const byMonth = new Map<string, number>();
+    for (const l of lines) {
+      const ym = String(l.date).slice(0, 7);
+      byMonth.set(ym, (byMonth.get(ym) || 0) + (Number(l.debit) || 0) - (Number(l.credit) || 0));
+    }
+    const monthly = [...byMonth.entries()].sort((a, b) => a[0].localeCompare(b[0])).map((e) => e[1]);
+    return { check: checkAmount(amount, sameSide), forecast: forecastSeries(monthly, 3) };
+  }, [q.data, amount, side]);
+  if (q.isLoading) return <p className="text-xs text-muted-foreground">Checking history for {name}…</p>;
+  return (
+    <li className="rounded border px-2 py-1.5 text-xs">
+      <span className="font-medium">{code} {name}</span>
+      <p className={result.check.verdict.includes("larger") ? "text-amber-600" : "text-muted-foreground"}>{result.check.message}{result.check.n >= 3 && ` Typical entry: ${formatCurrency(result.check.typical)}.`}</p>
+      <p className="text-muted-foreground">
+        {result.forecast.method === "holt-linear"
+          ? `Projected net movement on this account, next 3 months: ${result.forecast.points.map((p) => formatCurrency(p)).join(" → ")} (confidence ${result.forecast.confidence}).`
+          : result.forecast.note}
+      </p>
+    </li>
+  );
+}
+
+function DeleteRecordButton({ label, confirmWord, path, warn, onDone }: { label: string; confirmWord: string; path: string; warn: string; onDone: () => void }) {
+  const [err, setErr] = useState("");
+  return (
+    <div className="mt-2">
+      <Button
+        size="sm"
+        variant="destructive"
+        onClick={() => {
+          if (!window.confirm(warn)) return;
+          setErr("");
+          finDelete(path, { confirm: confirmWord }).then(() => onDone()).catch((e: any) => setErr(String(e?.message || "Could not delete")));
+        }}
+      >
+        {label}
+      </Button>
+      {err && <p className="mt-1 text-xs text-rose-600">{err}</p>}
+    </div>
   );
 }
 

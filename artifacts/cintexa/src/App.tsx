@@ -48,6 +48,7 @@ const FinancialIntelligenceRoutes = lazyWithRecovery(() =>
 const BusinessDiaryRoutes = lazyWithRecovery(() =>
   import("@/pages/business-diary/routes").then((m) => ({ default: m.BusinessDiaryRoutes })),
 );
+const NexusSynchrony = lazyWithRecovery(() => import("@/pages/nexus-synchrony"));
 const FinanceRoutes = lazyWithRecovery(() =>
   import("@/pages/finance/routes").then((m) => ({ default: m.FinanceRoutes })),
 );
@@ -123,6 +124,7 @@ function AppRoutes() {
             <Route path="/sales/*?" component={SalesRoutes} />
             <Route path="/financial-intelligence/*?" component={FinancialIntelligenceRoutes} />
             <Route path="/business-diary/*?" component={BusinessDiaryRoutes} />
+            <Route path="/nexus-synchrony" component={NexusSynchrony} />
             <Route path="/finance/*?" component={FinanceRoutes} />
             <Route path="/corporate-strategy/*?" component={CorporateStrategyRoutes} />
             <Route path="/marketing" component={MarketingRoutes} />

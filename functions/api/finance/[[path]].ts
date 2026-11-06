@@ -89,7 +89,7 @@ interface FixedAsset {
   id: string;
   assetNumber: string;
   name: string;
-  category: "computer" | "laptop" | "server" | "office_equipment" | "furniture" | "other";
+  category: "computer" | "laptop" | "mobile_phone" | "server" | "office_equipment" | "furniture" | "other";
   acquisitionDate: string;
   inServiceDate: string;
   costMinor: number;
@@ -233,6 +233,7 @@ function ensureCoa() {
     ["1140", "Recoverable Input Tax", "asset", "tax"],
     ["1150", "Withholding Tax Receivable", "asset", "tax"],
     ["1210", "Computers and Laptops", "asset", "fixed"],
+    ["1215", "Mobile Phones", "asset", "fixed"],
     ["1220", "Servers and Networking Equipment", "asset", "fixed"],
     ["1230", "Office Equipment", "asset", "fixed"],
     ["1240", "Furniture and Fixtures", "asset", "fixed"],
@@ -240,6 +241,7 @@ function ensureCoa() {
     ["1280", "Accumulated Depreciation", "asset", "contra"],
     ["1281", "Accumulated Depreciation — Computers and Laptops", "asset", "contra"],
     ["1282", "Accumulated Depreciation — Office Equipment", "asset", "contra"],
+    ["1283", "Accumulated Depreciation — Mobile Phones", "asset", "contra"],
     ["1310", "Acquired Software", "asset", "intangible"],
     ["2010", "Accounts Payable", "liability", "ap"],
     ["2030", "Accrued Expenses", "liability"],
@@ -294,6 +296,7 @@ function ensureCoa() {
     ["6300", "Payment Processing Fees", "expense"],
     ["6310", "Depreciation Expense", "expense"],
     ["6311", "Depreciation Expense — Computer Equipment", "expense"],
+    ["6312", "Depreciation Expense — Mobile Phones", "expense"],
     ["6380", "Bad Debt Expense", "expense"],
     ["6390", "Foreign Exchange Loss", "expense"],
     ["6400", "Miscellaneous Operating Expenses", "expense"],
@@ -691,7 +694,7 @@ function equityStatement(from?: string, to?: string) {
 }
 
 function isComputerCategory(cat: string) {
-  return cat === "computer" || cat === "laptop";
+  return cat === "computer" || cat === "laptop" || cat === "mobile_phone";
 }
 
 /** Accounting policy: computers & laptops default 25% SL. Other categories use configured rate. */
@@ -1748,6 +1751,37 @@ function paymentReceivedEvent(pay: Payment, inv?: Invoice, discountMinor = 0): R
  * Publishes a business event to the Nexus sync outbox in the same D1 database. The event row is written directly (no network
  * hop that can be dropped), then processed. A failure is logged and never fails the finance transaction that already committed.
  */
+/** Server-side fallback so no transaction is ever stored without a memo and line notes (the form writes richer ones). */
+function autoLineMemo(accountName: string, type: string, side: "debit" | "credit"): string {
+  const up = { asset: "debit", expense: "debit", liability: "credit", equity: "credit", revenue: "credit" }[type] === side;
+  return `${side === "debit" ? "Debit" : "Credit"} ${accountName}: ${type} ${up ? "increases" : "decreases"}.`;
+}
+function autoJournalMemo(lines: JournalLine[], date: string): string {
+  const dr = lines.filter((l) => l.debit > 0).map((l) => byCode(l.accountCode)?.name || l.accountCode);
+  const cr = lines.filter((l) => l.credit > 0).map((l) => byCode(l.accountCode)?.name || l.accountCode);
+  return `Journal ${date}: debit ${dr.join(", ") || "n/a"}; credit ${cr.join(", ") || "n/a"}.`.slice(0, 500);
+}
+
+function ledgerEvent(kind: "JOURNAL_POSTED" | "JOURNAL_DELETED" | "INVOICE_DELETED" | "PAYMENT_DELETED" | "ASSET_DEPRECIATED", entity: { type: string; id: string; number?: string; date?: string; description?: string; debit?: number; credit?: number; accounts?: string[] }): Record<string, unknown> {
+  const verb = { JOURNAL_POSTED: "posted", JOURNAL_DELETED: "deleted", INVOICE_DELETED: "deleted", PAYMENT_DELETED: "deleted", ASSET_DEPRECIATED: "depreciated" }[kind];
+  return {
+    eventType: kind,
+    sourceModule: "finance",
+    entityType: entity.type,
+    entityId: entity.id,
+    idempotencyKey: `${kind}:${entity.id}`,
+    effectiveDate: entity.date && /^\d{4}-\d{2}-\d{2}$/.test(entity.date) ? entity.date : undefined,
+    payload: {
+      title: `Finance: ${entity.type} ${entity.number || entity.id} ${verb}`,
+      category: "Finance",
+      activityDate: entity.date,
+      description: `${entity.description || ""} (accounts: ${(entity.accounts || []).join(", ") || "n/a"}; amount in minor units ${entity.debit ?? 0}). Every module reads the same ledger, so figures refresh everywhere.`.slice(0, 1000),
+      amountMinor: entity.debit ?? 0,
+      accounts: entity.accounts || [],
+    },
+  };
+}
+
 async function publishSync(env: Env, event: Record<string, unknown>): Promise<void> {
   try {
     const db = resolveDb(env as unknown as { NEXUS_DB?: D1Like; FIN_DB?: D1Like });
@@ -1918,7 +1952,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         id: crypto.randomUUID(),
         accountId: acc.id,
         accountCode: acc.code,
-        memo: l.memo ? String(l.memo).slice(0, 300) : undefined,
+        memo: l.memo ? String(l.memo).slice(0, 300) : autoLineMemo(acc.name, acc.type, debit > 0 ? "debit" : "credit"),
         debit,
         credit,
         fcCurrency, fcAmount, rateMicro,
@@ -1933,7 +1967,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
       journalType: String(body.journalType || "general"),
       entryDate: String(body.entryDate || new Date().toISOString().slice(0, 10)).slice(0, 10),
-      description: String(body.description || "").slice(0, 500),
+      description: String(body.description || "").trim().slice(0, 500) || autoJournalMemo(lines, String(body.entryDate || new Date().toISOString().slice(0, 10)).slice(0, 10)),
       sourceModule: body.sourceModule ? String(body.sourceModule) : undefined,
       sourceId: body.sourceId ? String(body.sourceId) : undefined,
       currency: String(body.currency || "GHS"),
@@ -1951,6 +1985,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     store.journals.push(j);
     audit("journal", j.id, j.status === "posted" ? "created_posted" : "created_draft", j.number);
     await persistJournal(j);
+    await publishSync(env, ledgerEvent("JOURNAL_POSTED", { type: "journal", id: j.id, number: j.number, date: j.entryDate, description: j.description, debit: t.debit, credit: t.credit, accounts: j.lines.map((l) => l.accountCode) }));
     return json({ journal: { ...j, totals: t }, storage: storageMode }, 201);
   }
 
@@ -2325,6 +2360,28 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   if (path === "audit" && request.method === "GET") {
     return json({ items: store.audit.slice().reverse().slice(0, 100) });
+  }
+
+  // Monthly series from posted journals (real ledger data) for forecasting and the Nexus Synchrony view.
+  if (path === "analytics/series" && request.method === "GET") {
+    ensureCoa();
+    const typeOf = new Map(store.accounts.map((x) => [x.code, x.type]));
+    const months = new Map<string, { revenue: number; expense: number; cash: number; entries: number }>();
+    for (const j of store.journals) {
+      if (j.status !== "posted" || isClosingJournal(j)) continue;
+      const ym = periodYmFromDate(j.entryDate);
+      const m = months.get(ym) || { revenue: 0, expense: 0, cash: 0, entries: 0 };
+      m.entries += 1;
+      for (const l of j.lines) {
+        const t = typeOf.get(l.accountCode);
+        if (t === "revenue") m.revenue += l.credit - l.debit;
+        else if (t === "expense") m.expense += l.debit - l.credit;
+        if (/^10[1-4]\d$/.test(l.accountCode)) m.cash += l.debit - l.credit;
+      }
+      months.set(ym, m);
+    }
+    const items = [...months.entries()].sort((x, y) => x[0].localeCompare(y[0])).map(([periodYm, m]) => ({ periodYm, ...m, net: m.revenue - m.expense }));
+    return json({ currency: "GHS", unit: "minor", items });
   }
 
   if (path === "ledger" && request.method === "GET") {
@@ -2795,6 +2852,9 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         skipped.push({ assetNumber: a.assetNumber, reason: "zero_charge" });
         continue;
       }
+      const phone = a.category === "mobile_phone";
+      const dExp = (phone && byCode("6312")) || expAcc;
+      const dAcc = (phone && byCode("1283")) || accumAcc;
       const j: Journal = {
         id: crypto.randomUUID(),
         number: `JE-${String(store.journalSeq++).padStart(5, "0")}`,
@@ -2806,8 +2866,8 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         currency: a.currency,
         status: "draft",
         lines: [
-          { id: crypto.randomUUID(), accountId: expAcc.id, accountCode: expAcc.code, memo: a.assetNumber, debit: charge, credit: 0 },
-          { id: crypto.randomUUID(), accountId: accumAcc.id, accountCode: accumAcc.code, memo: a.assetNumber, debit: 0, credit: charge },
+          { id: crypto.randomUUID(), accountId: dExp.id, accountCode: dExp.code, memo: a.assetNumber, debit: charge, credit: 0 },
+          { id: crypto.randomUUID(), accountId: dAcc.id, accountCode: dAcc.code, memo: a.assetNumber, debit: 0, credit: charge },
         ],
         createdAt: new Date().toISOString(),
       };
@@ -2828,6 +2888,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       await persistJournal(j);
       if (access.db) { await d1UpsertAsset(access.db, a); await d1UpsertDepRun(access.db, run); }
       created.push({ assetNumber: a.assetNumber, amountMinor: charge, journalNumber: j.number, periodYm: ym });
+      await publishSync(env, ledgerEvent("ASSET_DEPRECIATED", { type: "asset", id: `${a.id}:${ym}`, number: a.assetNumber, date: j.entryDate, description: `${a.name} depreciated ${(a.depreciationRateBps / 100).toFixed(0)}% straight-line`, debit: charge, accounts: [dExp.code, dAcc.code] }));
       audit("asset", a.id, "depreciated", `${ym}:${charge}`);
     }
     return json({
@@ -2844,6 +2905,62 @@ export const onRequest: PagesFunction<Env> = async (context) => {
    * Unlinks invoices/payments that pointed at this journal (does not delete invoices automatically).
    * Audit row retained for evidence.
    */
+  /** Remove the journal behind a source record (invoice/payment) and undo its effects. Returns false when none is linked. */
+  async function removeJournalOf(journalId: string | undefined): Promise<boolean> {
+    if (!journalId) return false;
+    const idx = store.journals.findIndex((x) => x.id === journalId);
+    if (idx < 0) return false;
+    const jj = store.journals[idx]!;
+    if (isClosingJournal(jj) || isPeriodClosed(jj.entryDate)) throw new Error(`Period ${periodYmFromDate(jj.entryDate)} is closed. Reopen it before deleting this transaction.`);
+    store.journals.splice(idx, 1);
+    if (access.db) {
+      await access.db.prepare("DELETE FROM fin_journal_lines WHERE journal_id = ?").bind(jj.id).run();
+      await access.db.prepare("DELETE FROM fin_journals WHERE id = ?").bind(jj.id).run();
+      await d1Audit(access.db, "journal", jj.id, "deleted", jj.number);
+    }
+    audit("journal", jj.id, "deleted", `${jj.number}:with source record`);
+    return true;
+  }
+
+  // DELETE a payment: removes its journal, restores the invoice balance. Body: { confirm: "DELETE_PAYMENT" }
+  if (path.startsWith("payments/") && path.split("/").length === 2 && request.method === "DELETE") {
+    const id = path.split("/")[1];
+    const body = await readJson(request);
+    if (String(body.confirm || "") !== "DELETE_PAYMENT") return json({ error: "Confirmation required", hint: '{ "confirm": "DELETE_PAYMENT" }' }, 400);
+    const idx = store.payments.findIndex((p) => p.id === id);
+    if (idx < 0) return json({ error: "Not found" }, 404);
+    const pay = store.payments[idx]!;
+    try { await removeJournalOf(pay.journalId); } catch (e: any) { return json({ error: e.message }, 403); }
+    const inv = pay.invoiceId ? store.invoices.find((i) => i.id === pay.invoiceId) : undefined;
+    if (inv) {
+      inv.amountPaidMinor = Math.max(0, inv.amountPaidMinor - pay.amountMinor);
+      inv.status = inv.amountPaidMinor <= 0 ? "open" : inv.amountPaidMinor >= inv.amountMinor ? "paid" : "partial";
+      if (access.db) await d1ApplyInvoicePaid(access.db, inv);
+    }
+    store.payments.splice(idx, 1);
+    if (access.db) { await access.db.prepare("DELETE FROM fin_payments WHERE id = ?").bind(pay.id).run(); await d1Audit(access.db, "payment", pay.id, "deleted", String(pay.amountMinor)); }
+    audit("payment", pay.id, "deleted", String(pay.amountMinor));
+    await publishSync(env, ledgerEvent("PAYMENT_DELETED", { type: "payment", id: pay.id, date: pay.paymentDate, description: `Payment from ${pay.customerName} removed`, debit: pay.amountMinor, accounts: ["1010", "1050"] }));
+    return json({ deleted: true, invoice: inv ?? null, integrity: integrityReport() });
+  }
+
+  // DELETE an invoice: only when it has no payments (delete those first). Removes its journal. Body: { confirm: "DELETE_INVOICE" }
+  if (path.startsWith("invoices/") && path.split("/").length === 2 && request.method === "DELETE") {
+    const id = path.split("/")[1];
+    const body = await readJson(request);
+    if (String(body.confirm || "") !== "DELETE_INVOICE") return json({ error: "Confirmation required", hint: '{ "confirm": "DELETE_INVOICE" }' }, 400);
+    const idx = store.invoices.findIndex((i) => i.id === id);
+    if (idx < 0) return json({ error: "Not found" }, 404);
+    const inv = store.invoices[idx]!;
+    if (store.payments.some((p) => p.invoiceId === inv.id)) return json({ error: "This invoice has payments. Delete the payments first.", code: "HAS_PAYMENTS" }, 409);
+    try { await removeJournalOf(inv.journalId); } catch (e: any) { return json({ error: e.message }, 403); }
+    store.invoices.splice(idx, 1);
+    if (access.db) { await access.db.prepare("DELETE FROM fin_invoices WHERE id = ?").bind(inv.id).run(); await d1Audit(access.db, "invoice", inv.id, "deleted", inv.number); }
+    audit("invoice", inv.id, "deleted", inv.number);
+    await publishSync(env, ledgerEvent("INVOICE_DELETED", { type: "invoice", id: inv.id, number: inv.number, date: inv.issueDate, description: `Invoice to ${inv.customerName} removed`, debit: inv.amountMinor, accounts: ["1050"] }));
+    return json({ deleted: true, integrity: integrityReport() });
+  }
+
   if (path.startsWith("journals/") && path.split("/").length === 2 && request.method === "DELETE") {
     const id = path.split("/")[1];
     const body = await readJson(request);
@@ -2906,6 +3023,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
         console.error("journal delete d1", e?.message);
       }
     }
+    await publishSync(env, ledgerEvent("JOURNAL_DELETED", { type: "journal", id: j.id, number: j.number, date: j.entryDate, description: j.description, debit: impact.totals.debit, credit: impact.totals.credit, accounts: j.lines.map((l) => l.accountCode) }));
     return json({
       deleted: true,
       impact,

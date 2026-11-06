@@ -82,6 +82,23 @@ export const onRequest: PagesFunction<NexusEnv> = async (context) => {
       return json({ ...c, total, oldestUnprocessedAt: oldest?.t ?? null, healthy: c.failed + c.dead === 0, persistent: true });
     }
 
+    // Activity per module per day (last 60 days) and link counts, for the Nexus Synchrony view.
+    if (path === "activity" && request.method === "GET") {
+      const since = new Date(Date.now() - 60 * 86_400_000).toISOString();
+      const { results: pub } = await db
+        .prepare("SELECT source_module AS module, substr(created_at,1,10) AS day, COUNT(*) AS n FROM nx_sync_events WHERE created_at >= ? GROUP BY source_module, substr(created_at,1,10)")
+        .bind(since)
+        .all<{ module: string; day: string; n: number }>();
+      const { results: rec } = await db
+        .prepare("SELECT l.target_module AS module, substr(l.created_at,1,10) AS day, COUNT(*) AS n FROM nx_sync_links l WHERE l.created_at >= ? GROUP BY l.target_module, substr(l.created_at,1,10)")
+        .bind(since)
+        .all<{ module: string; day: string; n: number }>();
+      const { results: flows } = await db
+        .prepare("SELECT e.source_module AS source, l.target_module AS target, COUNT(*) AS n FROM nx_sync_links l JOIN nx_sync_events e ON e.id = l.event_id GROUP BY e.source_module, l.target_module")
+        .all<{ source: string; target: string; n: number }>();
+      return json({ since, published: pub, received: rec, flows });
+    }
+
     if (path === "events" && request.method === "GET") {
       const limit = Math.min(100, Math.max(1, Number(url.searchParams.get("limit") || 50)));
       const where: string[] = [];

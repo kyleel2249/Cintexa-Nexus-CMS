@@ -8,6 +8,7 @@ import { Link } from "wouter";
 import { FiDashboardWidget } from "@/components/financial-intelligence/FiDashboardWidget";
 import { BdDashboardWidget } from "@/components/business-diary/BdDashboardWidget";
 import { SyncStatusWidget } from "@/components/nexus-sync/SyncStatusWidget";
+import { NexusSynchronyWidget } from "@/components/nexus/NexusSynchronyWidget";
 import { FinanceDashboardWidget } from "@/components/finance/FinanceDashboardWidget";
 import { CsiDashboardWidget } from "@/components/csi/CsiDashboardWidget";
 import { useEffect, useState } from "react";
@@ -310,6 +311,14 @@ export default function Dashboard() {
 
       <motion.div variants={fadeUp}>
         <CsiDashboardWidget />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <NexusSynchronyWidget />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
+        <SyncStatusWidget />
       </motion.div>
 
       <motion.div variants={fadeUp}>

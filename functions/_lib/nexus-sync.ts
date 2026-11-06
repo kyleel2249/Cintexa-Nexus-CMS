@@ -46,13 +46,23 @@ export const ROUTING: Record<string, string[]> = {
   DIARY_ENTRY_CREATED: ["dashboard"],
   FI_ENTRY_POSTED: ["dashboard"],
   REVENUE_RECORDED: ["financial-intelligence", "dashboard"],
+  // Every ledger movement (posted, corrected, deleted) reaches every consumer so decisions use the same figures.
+  JOURNAL_POSTED: ["business-diary", "financial-intelligence", "sales", "marketing", "corporate-strategy", "dashboard"],
+  JOURNAL_DELETED: ["business-diary", "financial-intelligence", "sales", "marketing", "corporate-strategy", "dashboard"],
+  INVOICE_DELETED: ["business-diary", "financial-intelligence", "sales", "marketing", "corporate-strategy", "dashboard"],
+  PAYMENT_DELETED: ["business-diary", "financial-intelligence", "sales", "marketing", "corporate-strategy", "dashboard"],
+  ASSET_DEPRECIATED: ["business-diary", "financial-intelligence", "corporate-strategy", "dashboard"],
 };
+/** Modules that receive a data-refresh link (the UI reads live data; the link records that the change was delivered). */
+const REFRESH_TARGETS = new Set(["sales", "marketing", "corporate-strategy"]);
 
 export const MODULES = [
-  { id: "sales", name: "Sales Management", publishes: ["LEAD_CREATED", "SALES_ORDER_CREATED", "SALES_ORDER_CONFIRMED", "PAYMENT_RECEIVED"], consumes: [] },
   { id: "finance", name: "CINTEXA Finance", publishes: ["INVOICE_CREATED", "PAYMENT_RECEIVED", "EXPENSE_RECORDED"], consumes: [] },
   { id: "financial-intelligence", name: "Financial Intelligence", publishes: ["FI_ENTRY_POSTED"], consumes: ["SALES_ORDER_CONFIRMED", "PAYMENT_RECEIVED", "EXPENSE_RECORDED", "INVOICE_CREATED"] },
   { id: "business-diary", name: "Business Diary", publishes: ["DIARY_ENTRY_CREATED"], consumes: ["CUSTOMER_CREATED", "LEAD_CREATED", "SALES_ORDER_CREATED", "PAYMENT_RECEIVED", "EXPENSE_RECORDED", "INVOICE_CREATED"] },
+  { id: "sales", name: "Sales Management", publishes: ["LEAD_CREATED", "SALES_ORDER_CREATED", "SALES_ORDER_CONFIRMED", "PAYMENT_RECEIVED"], consumes: ["JOURNAL_POSTED", "JOURNAL_DELETED", "INVOICE_DELETED", "PAYMENT_DELETED"] },
+  { id: "marketing", name: "Marketing Management", publishes: [], consumes: ["JOURNAL_POSTED", "JOURNAL_DELETED", "INVOICE_DELETED", "PAYMENT_DELETED"] },
+  { id: "corporate-strategy", name: "Corporate Strategy", publishes: [], consumes: ["JOURNAL_POSTED", "JOURNAL_DELETED", "INVOICE_DELETED", "PAYMENT_DELETED", "ASSET_DEPRECIATED"] },
   { id: "dashboard", name: "Main Dashboard", publishes: [], consumes: ["*"] },
   { id: "cms", name: "Content / Sites", publishes: [], consumes: [] },
 ];
@@ -154,6 +164,8 @@ async function buildEffects(db: D1Like, ev: EventRow, at: string): Promise<D1Stm
       stmts.push(await linkStmt(db, ev, "business-diary", "diary_entry", diaryId, at));
     } else if (target === "financial-intelligence") {
       stmts.push(await linkStmt(db, ev, "financial-intelligence", "recalculate", `${ev.entity_type}:${ev.entity_id}`, at));
+    } else if (REFRESH_TARGETS.has(target)) {
+      stmts.push(await linkStmt(db, ev, target, "refresh", `${ev.entity_type}:${ev.entity_id}`, at));
     } else if (target === "dashboard") {
       stmts.push(await linkStmt(db, ev, "dashboard", "invalidate", "*", at));
     }

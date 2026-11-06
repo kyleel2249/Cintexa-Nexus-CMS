@@ -357,7 +357,7 @@ function buildAlerts(ctx: JournalContext, classification: string): AccountingAle
     const name = l.account.name.toLowerCase();
     const isExpense = l.account.type === "expense";
     const looksLikeAsset =
-      /laptop|computer|server|equipment|furniture|vehicle|software licence|capital/i.test(name) ||
+      /laptop|computer|mobile phone|smartphone|server|equipment|furniture|vehicle|software licence|capital/i.test(name) ||
       (l.account.subtype || "").toLowerCase() === "fixed";
     if (isExpense && l.debit >= 500000) {
       // GHS 5,000+ minor

@@ -3,7 +3,7 @@ import { Link, useLocation } from "wouter";
 import {
   Activity, LayoutDashboard, Globe, FileText, PenTool, Image as ImageIcon, Users, Tags,
   MenuSquare, FormInput, Search, Wand2, Settings, MonitorPlay, CalendarDays, Kanban,
-  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, LineChart, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Landmark, Sparkles, Shield, Send,
+  Puzzle, Mail, Target, History, Radar, Briefcase, ChevronDown, LineChart, Network, X, BrainCircuit, Bot, ShieldCheck, LockKeyhole, ScrollText, Tag, BookOpen, Landmark, Sparkles, Shield, Send,
 } from "lucide-react";
 import { BD_NAV, activeBdKey } from "@/lib/business-diary/nav";
 import { FINANCE_NAV, activeFinanceKey } from "@/lib/finance/nav";
@@ -246,6 +246,7 @@ function SidebarBody({ onNavigate }: { onNavigate?: () => void }) {
         {navGroups.slice(0, 1).map((group) => <Group key={group.title} group={group} location={location} onNavigate={onNavigate} />)}
         <MarketingGroup location={location} onNavigate={onNavigate} />
           <SalesGroup location={location} onNavigate={onNavigate} />
+        <NavLink href="/nexus-synchrony" label="Nexus Synchrony" Icon={Network} active={location === "/nexus-synchrony"} onNavigate={onNavigate} />
         <CintexaFinanceGroup location={location} onNavigate={onNavigate} />
         <FinancialIntelligenceGroup location={location} onNavigate={onNavigate} />
         <CorporateStrategyGroup location={location} onNavigate={onNavigate} />

@@ -13,7 +13,15 @@ type Mode =
   | "health" | "pnl" | "balance-sheet" | "ratios" | "forecast"
   | "scenarios" | "entries" | "fx" | "settings";
 
+/**
+ * Each mode renders a different set of hooks. Keying by mode forces a clean remount when the route changes,
+ * which prevents "rendered more hooks than during the previous render" crashes that took the whole page down.
+ */
 export default function FiPage({ mode }: { mode: Mode }) {
+  return <FiPageInner key={mode} mode={mode} />;
+}
+
+function FiPageInner({ mode }: { mode: Mode }) {
   const qc = useQueryClient();
   const currency = "GHS";
 
