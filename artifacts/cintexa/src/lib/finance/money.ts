@@ -12,8 +12,9 @@
  *   Never store major units in debit/credit/amountMinor fields.
  *
  * DISPLAY CONTRACT:
- *   formatMinor / formatCurrency always interpret the number as MINOR units
- *   and show two decimal places + grouping: 500000 → "5,000.00" / "GH₵ 5,000.00".
+ *   formatMinor / formatCurrency always interpret the number as MINOR units and group thousands.
+ *   Decimals appear only when the amount has them: 500000 → "5,000" / "GH₵ 5,000"; 123450 → "1,234.50".
+ *   What the user typed is what they see back: entering "5,000" shows "5,000".
  *
  * 100× understatement root cause (fixed at form boundary):
  *   Journal/invoice forms previously posted major units without ×100, so
@@ -63,7 +64,7 @@ export function parseToMinor(
 export type FormatMoneyOpts = {
   /** Prefer original user-entered string when it matches the numeric value. */
   displayHint?: string | null;
-  /** Always show the currency's decimal places (default true for financial UI). */
+  /** Always show the currency's decimal places. Default: only when the amount has a fractional part, so 5,000 shows as "5,000" and 1,234.5 as "1,234.50". */
   forceDecimals?: boolean;
   /** Insert thousands separators (default true). */
   useGrouping?: boolean;
@@ -88,7 +89,7 @@ export function formatMoney(
   opts?: FormatMoneyOpts,
 ): string {
   const meta = currencyMeta(currency);
-  const forceDecimals = opts?.forceDecimals !== false; // default TRUE
+  const forceDecimals = opts?.forceDecimals === true; // default: show decimals only when the amount has them
   const useGrouping = opts?.useGrouping !== false; // default TRUE
   const neg = minor < 0;
   const abs = Math.abs(Math.round(Number(minor) || 0));
@@ -131,14 +132,14 @@ export function formatMoney(
 
 /**
  * Primary helper used across Finance UI and reports.
- * Always forces two decimal places + grouping for ordinary currencies.
+ * Grouping always; decimals only when present (see DISPLAY CONTRACT).
  */
 export function formatMinor(
   minor: number,
   currency = "GHS",
   _digits = 2, // retained for call-site compatibility; ignored
 ): string {
-  return formatMoney(minor, currency, { useGrouping: true, forceDecimals: true });
+  return formatMoney(minor, currency, { useGrouping: true });
 }
 
 /**
@@ -150,14 +151,14 @@ export function formatCurrency(
   currency = "GHS",
   opts?: Omit<FormatMoneyOpts, "withSymbol">,
 ): string {
-  return formatMoney(minor, currency, { ...opts, withSymbol: true, forceDecimals: true, useGrouping: true });
+  return formatMoney(minor, currency, { ...opts, withSymbol: true, useGrouping: true });
 }
 
 /**
  * Compact numeric only (still two decimals) for dense tables / charts tooltips.
  */
 export function formatMinorPlain(minor: number, currency = "GHS"): string {
-  return formatMoney(minor, currency, { useGrouping: false, forceDecimals: true });
+  return formatMoney(minor, currency, { useGrouping: false });
 }
 
 /** Convert major units (e.g. 50.00) to minor units safely. */
@@ -170,4 +171,21 @@ export function majorToMinor(major: number, currency = "GHS"): number {
 export function minorToMajor(minor: number, currency = "GHS"): number {
   const meta = currencyMeta(currency);
   return (Number(minor) || 0) / 10 ** meta.decimals;
+}
+
+/**
+ * Convert a form field (MAJOR units, may contain thousands separators or spaces, e.g. "5,000" or "5 000.50")
+ * to integer minor units. Returns 0 for empty or invalid input; use parseToMinor when you need the error.
+ * Never use Number("5,000") for amounts: it is NaN.
+ */
+export function amountInputToMinor(input: string | number | null | undefined, currency = "GHS"): number {
+  if (typeof input === "number") return Number.isFinite(input) ? majorToMinor(input, currency) : 0;
+  const cleaned = String(input ?? "").replace(/\s/g, "");
+  const r = parseToMinor(cleaned, currency);
+  return r.ok ? r.minor : 0;
+}
+
+/** Numeric value (major units) of a form field that may contain separators; 0 when invalid. */
+export function amountInputToMajor(input: string | number | null | undefined, currency = "GHS"): number {
+  return minorToMajor(amountInputToMinor(input, currency), currency);
 }

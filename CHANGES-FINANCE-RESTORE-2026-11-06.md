@@ -21,3 +21,9 @@ Type-check, tests, production build, e2e, deployment (package downloads are bloc
 
 ## Heads-up
 PR #16 (external-API removal) edits some of the same files (CSI, sync registry, Sales). Merge order may need a small conflict fix. Remove the `kpi-card`/`format/currency` helpers from PR #16 only if Finance code now makes them redundant.
+
+## Amount entry and display fix (2026-11-06, later)
+- Cause of "5,000 shows as 50": the discount invoice/purchase forms sent typed values straight in as minor units (x100 too small); other amount fields used `Number("5,000")`, which is NaN, so a comma lost the amount.
+- Fix: new `amountInputToMinor` / `amountInputToMajor` (comma and space safe) used by all Finance amount fields; discount forms now take normal amounts.
+- Display: whole amounts show as typed ("5,000"); decimals appear only when present ("1,234.50"). Trial balance, ledger and journal lists now format their raw minor figures too.
+- Tests: `lib/finance/money.test.ts` updated and extended (35 Finance unit tests pass). Not run: type-check, build, browser check.

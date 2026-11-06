@@ -1,6 +1,6 @@
 import { useMemo, useState, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { finGet, finPost, finDelete, formatMinor, formatCurrency, majorToMinor, minorToMajor } from "@/lib/finance/api";
+import { finGet, finPost, finDelete, formatMinor, formatCurrency, majorToMinor, minorToMajor, amountInputToMinor, amountInputToMajor } from "@/lib/finance/api";
 import {
   generateDocumentation,
   explainAccount,
@@ -92,7 +92,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
         finPost("/assets", {
           name,
           category: cat,
-          costMinor: majorToMinor(Number(cost) || 0),
+          costMinor: amountInputToMinor(cost),
           residualMinor: 0,
         }),
       onSuccess: inv,
@@ -246,15 +246,15 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     const [amount, setAmount] = useState("");
     const [desc, setDesc] = useState("");
     const prepaid = useMutation({
-      mutationFn: () => finPost("/adjustments/prepaid", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      mutationFn: () => finPost("/adjustments/prepaid", { amountMinor: amountInputToMinor(amount), description: desc }),
       onSuccess: inv,
     });
     const deferred = useMutation({
-      mutationFn: () => finPost("/adjustments/deferred-revenue", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      mutationFn: () => finPost("/adjustments/deferred-revenue", { amountMinor: amountInputToMinor(amount), description: desc }),
       onSuccess: inv,
     });
     const accrue = useMutation({
-      mutationFn: () => finPost("/adjustments/accrue-expense", { amountMinor: majorToMinor(Number(amount) || 0), description: desc }),
+      mutationFn: () => finPost("/adjustments/accrue-expense", { amountMinor: amountInputToMinor(amount), description: desc }),
       onSuccess: inv,
     });
     return (
@@ -382,14 +382,14 @@ export default function FinancePage({ mode }: { mode: Mode }) {
         {q.data && (
           <>
             <p className={`text-sm mb-2 ${q.data.balanced ? "text-emerald-600" : "text-rose-600"}`}>
-              {q.data.balanced ? "Balanced" : "Out of balance"} — Dr {q.data.totalDebit} Cr {q.data.totalCredit}
+              {q.data.balanced ? "Balanced" : "Out of balance"} — Dr {formatMinor(Number(q.data.totalDebit) || 0)} Cr {formatMinor(Number(q.data.totalCredit) || 0)}
             </p>
             <div className="space-y-1 text-sm">
               {(q.data.rows || []).map((r: any) => (
                 <div key={r.code} className="grid grid-cols-4 gap-2 border-b py-1">
                   <span>{r.code}</span><span>{r.name}</span>
-                  <span className="tabular-nums text-right">{r.debit || ""}</span>
-                  <span className="tabular-nums text-right">{r.credit || ""}</span>
+                  <span className="tabular-nums text-right">{r.debit ? formatMinor(Number(r.debit)) : ""}</span>
+                  <span className="tabular-nums text-right">{r.credit ? formatMinor(Number(r.credit)) : ""}</span>
                 </div>
               ))}
               {!(q.data.rows || []).length && <p className="text-muted-foreground">No posted activity yet.</p>}
@@ -444,7 +444,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     // Major units in the form (15000 = GH₵ 15,000.00); converted to minor on post
     const [amount, setAmount] = useState("15000");
     const [rev, setRev] = useState<AccountOption | null>(null);
-    const amountMinor = majorToMinor(Number(amount) || 0);
+    const amountMinor = amountInputToMinor(amount);
     const invNarrative = useMemo(
       () =>
         narrativeForFinanceInvoice({
@@ -504,7 +504,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
     const [invoiceId, setInvoiceId] = useState("");
     const [amount, setAmount] = useState("");
     const selectedInv = (invs.data?.items || []).find((i) => i.id === invoiceId);
-    const payMinor = majorToMinor(Number(amount) || 0);
+    const payMinor = amountInputToMinor(amount);
     const payNarrative = useMemo(
       () =>
         narrativeForFinancePayment({
@@ -576,7 +576,7 @@ export default function FinancePage({ mode }: { mode: Mode }) {
               {(q.data.lines || []).map((l: any, i: number) => (
                 <div key={i} className="grid grid-cols-5 gap-2 border-b py-1 text-xs">
                   <span>{l.date}</span><span>{l.journalNumber}</span><span className="truncate">{l.description}</span>
-                  <span className="text-right">{l.debit || ""}</span><span className="text-right">{l.credit || ""}</span>
+                  <span className="text-right">{l.debit ? formatMinor(Number(l.debit)) : ""}</span><span className="text-right">{l.credit ? formatMinor(Number(l.credit)) : ""}</span>
                 </div>
               ))}
             </div>
@@ -626,8 +626,8 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
   const totals = useMemo(() => {
     let d = 0, c = 0;
     for (const l of lines) {
-      d += Number(l.debit) || 0;
-      c += Number(l.credit) || 0;
+      d += amountInputToMajor(l.debit);
+      c += amountInputToMajor(l.credit);
     }
     // Compare in minor space for exact balance (avoids float noise)
     const dMin = majorToMinor(d);
@@ -662,8 +662,8 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
             : null,
           memo: l.memo,
           // Engine expects minor units for formatCurrency
-          debit: majorToMinor(Number(l.debit) || 0),
-          credit: majorToMinor(Number(l.credit) || 0),
+          debit: amountInputToMinor(l.debit),
+          credit: amountInputToMinor(l.credit),
         })),
       }),
     [lines, journalType, entryDate, desc, descTouched],
@@ -704,15 +704,15 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
         // Explicit contract: debit/credit are integer MINOR units
         amountUnit: "minor",
         lines: lines
-          .filter((l) => l.account && (Number(l.debit) || Number(l.credit)))
+          .filter((l) => l.account && (amountInputToMinor(l.debit) || amountInputToMinor(l.credit)))
           .map((l) => {
             const auto = docs.lineNotes.find((n) => n.key === l.key);
             return {
               accountCode: l.account!.code,
               memo: l.memo || auto?.autoNote || "",
               // Convert major form values → minor for storage (5000 GHS → 500000)
-              debit: majorToMinor(Number(l.debit) || 0),
-              credit: majorToMinor(Number(l.credit) || 0),
+              debit: amountInputToMinor(l.debit),
+              credit: amountInputToMinor(l.credit),
             };
           }),
       }),
@@ -975,10 +975,10 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
               <span className="text-xs text-muted-foreground">{j.entryDate}</span>
             </div>
             <p className="text-muted-foreground">{j.description}</p>
-            <p className="text-xs">Dr {j.totals?.debit} / Cr {j.totals?.credit}</p>
+            <p className="text-xs">Dr {formatMinor(Number(j.totals?.debit) || 0)} / Cr {formatMinor(Number(j.totals?.credit) || 0)}</p>
             <ul className="mt-1 text-xs text-muted-foreground">
               {(j.lines || []).map((ln: any) => (
-                <li key={ln.id}>{ln.accountCode} Dr {ln.debit} Cr {ln.credit}</li>
+                <li key={ln.id}>{ln.accountCode} Dr {formatMinor(Number(ln.debit) || 0)} Cr {formatMinor(Number(ln.credit) || 0)}</li>
               ))}
             </ul>
             <div className="mt-2 flex flex-wrap gap-2">
@@ -1011,8 +1011,8 @@ function JournalWorkspace({ onPosted }: { onPosted: () => void }) {
 
 function DiscountsWorkspace({ onDone }: { onDone: () => void }) {
   const [customer, setCustomer] = useState("");
-  const [gross, setGross] = useState("1000000");
-  const [disc, setDisc] = useState("50000");
+  const [gross, setGross] = useState("10,000");
+  const [disc, setDisc] = useState("500");
   const [revAcc, setRevAcc] = useState<AccountOption | null>(null);
   const [discAcc, setDiscAcc] = useState<AccountOption | null>(null);
   const [msg, setMsg] = useState("");
@@ -1020,30 +1020,30 @@ function DiscountsWorkspace({ onDone }: { onDone: () => void }) {
     mutationFn: () =>
       finPost<any>("/invoices/with-discount", {
         customerName: customer,
-        grossMinor: Number(gross),
-        discountMinor: Number(disc),
+        grossMinor: amountInputToMinor(gross),
+        discountMinor: amountInputToMinor(disc),
         revenueAccountCode: revAcc?.code || "4230",
         discountAccountCode: discAcc?.code || "4320",
       }),
     onSuccess: (r) => {
-      setMsg(`Invoice ${r.invoice?.number}: gross ${r.gross} disc ${r.discount} net ${r.net}`);
+      setMsg(`Invoice ${r.invoice?.number}: gross ${formatMinor(Number(r.gross) || 0)} disc ${formatMinor(Number(r.discount) || 0)} net ${formatMinor(Number(r.net) || 0)}`);
       onDone();
     },
     onError: () => setMsg("Invoice with discount failed"),
   });
-  const [expGross, setExpGross] = useState("500000");
-  const [expDisc, setExpDisc] = useState("25000");
+  const [expGross, setExpGross] = useState("5,000");
+  const [expDisc, setExpDisc] = useState("250");
   const [expAcc, setExpAcc] = useState<AccountOption | null>(null);
   const expMut = useMutation({
     mutationFn: () =>
       finPost<any>("/expenses/with-discount", {
-        grossMinor: Number(expGross),
-        discountMinor: Number(expDisc),
+        grossMinor: amountInputToMinor(expGross),
+        discountMinor: amountInputToMinor(expDisc),
         expenseAccountCode: expAcc?.code || "6410",
         description: "Professional services purchase net of discount received",
       }),
     onSuccess: (r) => {
-      setMsg(`Purchase JE ${r.journal?.number}: gross ${r.gross} disc received ${r.discount} net ${r.net}`);
+      setMsg(`Purchase JE ${r.journal?.number}: gross ${formatMinor(Number(r.gross) || 0)} disc received ${formatMinor(Number(r.discount) || 0)} net ${formatMinor(Number(r.net) || 0)}`);
       onDone();
     },
   });
@@ -1054,8 +1054,8 @@ function DiscountsWorkspace({ onDone }: { onDone: () => void }) {
         <p className="text-xs text-muted-foreground">Dr AR (net) + Dr 4320 Discount Allowed / Cr Revenue (gross)</p>
         <div className="grid gap-2 sm:grid-cols-2">
           <Input placeholder="Customer" value={customer} onChange={(e) => setCustomer(e.target.value)} />
-          <Input placeholder="Gross (minor)" value={gross} onChange={(e) => setGross(e.target.value)} />
-          <Input placeholder="Discount Allowed (minor)" value={disc} onChange={(e) => setDisc(e.target.value)} />
+          <Input placeholder="Gross amount (e.g. 10,000)" value={gross} onChange={(e) => setGross(e.target.value)} />
+          <Input placeholder="Discount Allowed (e.g. 500)" value={disc} onChange={(e) => setDisc(e.target.value)} />
           <AccountSelect value={revAcc} onChange={setRevAcc} placeholder="Revenue account (e.g. 4230)…" />
           <AccountSelect value={discAcc} onChange={setDiscAcc} placeholder="Discount Allowed account (4320)…" />
           <Button disabled={!customer || invDisc.isPending} onClick={() => invDisc.mutate()}>Post discounted invoice</Button>
@@ -1065,8 +1065,8 @@ function DiscountsWorkspace({ onDone }: { onDone: () => void }) {
         <p className="text-sm font-medium">Supplier bill with Discount Received (net method)</p>
         <p className="text-xs text-muted-foreground">Dr expense (net) / Cr AP (net) — discount reduces cost, not revenue</p>
         <div className="grid gap-2 sm:grid-cols-2">
-          <Input placeholder="Gross (minor)" value={expGross} onChange={(e) => setExpGross(e.target.value)} />
-          <Input placeholder="Discount Received (minor)" value={expDisc} onChange={(e) => setExpDisc(e.target.value)} />
+          <Input placeholder="Gross amount (e.g. 10,000)" value={expGross} onChange={(e) => setExpGross(e.target.value)} />
+          <Input placeholder="Discount Received (e.g. 250)" value={expDisc} onChange={(e) => setExpDisc(e.target.value)} />
           <AccountSelect value={expAcc} onChange={setExpAcc} placeholder="Expense account (e.g. 6410)…" />
           <Button disabled={expMut.isPending} onClick={() => expMut.mutate()}>Post purchase with discount</Button>
         </div>
