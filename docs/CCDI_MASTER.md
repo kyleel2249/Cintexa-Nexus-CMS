@@ -41,7 +41,7 @@ It provides:
         |
         +-- orchestration (scopes, jobs, approvals)
         +-- engines / adapters (passive)
-        +-- intelligence (OpenRouter advisory)
+        +-- intelligence (built-in rule-based advisory)
         +-- reporting / PDF
         +-- workers protocol (claim/heartbeat/complete)
         +-- webhooks + outbox
@@ -115,7 +115,6 @@ UI: `/ccdi` Command Centre (sidebar + dashboard card).
 |----------|--------|
 | `DATABASE_URL` / `POSTGRES_URL` | PostgreSQL |
 | `CCDI_RBAC_STRICT` | `true` to enforce RBAC strictly in production |
-| `OPENROUTER_API_KEY` | Optional advisory intelligence |
 | Existing Nexus auth (session JWT) | Shared authentication |
 
 No CCDI feature requires embedding raw third-party scanner credentials in the DB — use `ccdi_secret_refs`.

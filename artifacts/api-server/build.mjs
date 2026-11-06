@@ -65,7 +65,6 @@ async function buildAll() {
       "@opentelemetry/*",
       "@google-cloud/*",
       "@google/*",
-      "googleapis",
       "@parcel/watcher",
       "@sentry/profiling-node",
       "@tree-sitter/*",

@@ -15,7 +15,6 @@ export type WiMode = "detecting" | "server" | "local";
 
 const BASE = "/v1/website-audits";
 const RELAY = "/api/wi-relay";
-const PSI_KEY = "wi.pagespeedKey";
 const SETTINGS_KEY = "wi.localSettings";
 
 let mode: WiMode = "detecting";
@@ -100,7 +99,6 @@ async function createLocal(uid: string, email: string | null): Promise<LocalStat
     net: { relayUrl: RELAY },
     repo,
     settingsStore: store(SETTINGS_KEY),
-    pageSpeedKey: getPageSpeedKey,
     runtimeVersion: `browser (${navigator.userAgent.match(/(Firefox|Edg|Chrome|Safari)\/[\d.]+/)?.[0] ?? "unknown"})`,
   });
   await runtime.recoverInterrupted();
@@ -114,8 +112,6 @@ export async function getLocal(): Promise<LocalState> {
   return local.promise;
 }
 
-export function getPageSpeedKey(): string | null { try { return localStorage.getItem(PSI_KEY) || null; } catch { return null; } }
-export function setPageSpeedKey(key: string): void { try { key.trim() ? localStorage.setItem(PSI_KEY, key.trim()) : localStorage.removeItem(PSI_KEY); } catch { /* storage unavailable */ } }
 
 // ---------------------------------------------------------------------------
 // Unified request helpers

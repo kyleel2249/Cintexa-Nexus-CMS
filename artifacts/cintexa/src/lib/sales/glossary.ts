@@ -177,7 +177,7 @@ export const GLOSSARY: GlossaryEntry[] = [
   E("Research & evidence", "New", "A suggestion for a field that is currently empty."), E("Research & evidence", "Update", "A suggestion that differs from what is already in the field."), E("Research & evidence", "Same", "The suggestion matches what you already have."),
   E("Research & evidence", "robots.txt", "A public file where a website tells automated tools which pages not to read. Research obeys it.", undefined, ["robots"]),
   E("Research & evidence", "Public pages only", "Research never logs in, bypasses paywalls or CAPTCHAs, or reads private pages."),
-  E("Research & evidence", "Search provider", "A paid or free web-search service (Brave, Serper or Tavily) the server uses to find a company's website from its name."),
+  E("Research & evidence", "Search provider", "Not used. Company websites are found by an internal domain guess that is verified by reading the page itself."),
   E("Research & evidence", "Awaiting review", "Research is finished and waiting for you to decide what to use."),
   E("Research & evidence", "Researching", "The system is reading the website now."), E("Research & evidence", "Extracting", "Pulling facts out of the pages that were read."), E("Research & evidence", "Validating", "Checking and scoring what was found."),
   // ───────── SEO & AEO

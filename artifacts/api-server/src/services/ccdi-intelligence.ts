@@ -13,7 +13,7 @@
  */
 import { pool } from "@workspace/db";
 import { logger } from "../lib/logger";
-import { getOpenRouterClient, getOpenRouterModel } from "../lib/openrouter";
+import { buildAdvisoryAnswer, findingGuidance } from "./ccdi-advisory";
 import * as orch from "./ccdi-orchestration";
 
 // ── Schema statements (appended at runtime via bootstrap if needed) ────────
@@ -212,32 +212,7 @@ export async function triageFinding(findingId: string, organizationId: string, a
     suggestions.push("Confirm exploitability in authorised scope before prioritising for fix.");
   }
 
-  // Optional AI enrichment (advisory only)
-  let aiAdvice: string | null = null;
-  try {
-    const client = await getOpenRouterClient();
-    if (client) {
-      const model = await getOpenRouterModel();
-      const completion = await client.chat.completions.create({
-        model,
-        messages: [
-          {
-            role: "system",
-            content:
-              "You are a senior cybersecurity analyst for CINTEXA CCDI. Provide concise, actionable triage advice only. Never suggest unauthorised scanning or exploitation. Output plain text.",
-          },
-          {
-            role: "user",
-            content: `Triage this finding:\nTitle: ${f.title}\nSeverity: ${f.severity}\nCVE: ${f.cve_id ?? "n/a"}\nDescription: ${(f.description || "").slice(0, 800)}`,
-          },
-        ],
-        max_tokens: 400,
-      });
-      aiAdvice = completion.choices[0]?.message?.content?.trim() ?? null;
-    }
-  } catch (err) {
-    logger.warn({ err }, "ccdi.triage AI enrichment failed (non-fatal)");
-  }
+  const guidance = findingGuidance(f);
 
   await pool.query(
     `INSERT INTO ccdi_agent_runs (organization_id, agent_type, input_summary, output_summary, status, created_by, meta)
@@ -245,16 +220,16 @@ export async function triageFinding(findingId: string, organizationId: string, a
     [
       organizationId,
       f.title,
-      aiAdvice ?? suggestions.join(" "),
+      suggestions.join(" "),
       actor,
-      JSON.stringify({ findingId, ruleSuggestions: suggestions, aiUsed: Boolean(aiAdvice) }),
+      JSON.stringify({ findingId, ruleSuggestions: suggestions, engine: "rules" }),
     ],
   );
 
   return {
     findingId,
     ruleSuggestions: suggestions,
-    aiAdvice,
+    guidance,
     priorityScore: computePriorityScore(f),
     note: "Triage is advisory only. No automatic status change or exploitation is performed.",
   };
@@ -272,46 +247,22 @@ export async function runAdvisoryAgent(opts: {
     return { error: "Global emergency stop is active", status: 503 as const };
   }
 
-  const client = await getOpenRouterClient();
-  if (!client) {
-    return {
-      error: "OpenRouter is not configured. Set OPENROUTER_API_KEY or platform settings.",
-      status: 503 as const,
-    };
-  }
-
-  let contextBlock = "";
+  let rows: Array<Record<string, any>> = [];
   if (opts.contextFindingIds?.length) {
-    const { rows } = await pool.query(
-      `SELECT title, severity, cve_id, status, remediation FROM ccdi_findings
+    ({ rows } = await pool.query(
+      `SELECT title, severity, cve_id, status, remediation, description, cvss_score FROM ccdi_findings
        WHERE organization_id = $1 AND id = ANY($2::uuid[]) LIMIT 20`,
       [opts.organizationId, opts.contextFindingIds],
-    );
-    contextBlock = rows
-      .map((r) => `- [${r.severity}] ${r.title} (CVE: ${r.cve_id ?? "n/a"}, status: ${r.status})`)
-      .join("\n");
+    ));
+  } else {
+    ({ rows } = await pool.query(
+      `SELECT title, severity, cve_id, status, remediation, description, cvss_score FROM ccdi_findings
+       WHERE organization_id = $1 AND status NOT IN ('resolved','false_positive') LIMIT 50`,
+      [opts.organizationId],
+    ));
   }
-
-  const model = await getOpenRouterModel();
-  const completion = await client.chat.completions.create({
-    model,
-    messages: [
-      {
-        role: "system",
-        content:
-          "You are the CINTEXA CCDI Security Advisory Agent. Provide accurate, evidence-based cybersecurity recommendations. Never recommend unauthorised scanning, exploitation, or actions outside approved scope. Be concise and practical.",
-      },
-      {
-        role: "user",
-        content: contextBlock
-          ? `Context findings:\n${contextBlock}\n\nQuestion: ${opts.question}`
-          : opts.question,
-      },
-    ],
-    max_tokens: 800,
-  });
-
-  const answer = completion.choices[0]?.message?.content?.trim() ?? "No response generated.";
+  const answer = buildAdvisoryAnswer(opts.question, rows as any);
+  const model = "native-rules";
 
   await pool.query(
     `INSERT INTO ccdi_agent_runs (organization_id, agent_type, input_summary, output_summary, model, status, created_by)
@@ -322,7 +273,7 @@ export async function runAdvisoryAgent(opts: {
   return {
     answer,
     model,
-    note: "Advisory only. Human review required before any operational action.",
+    note: "Rule-based advisory from your recorded findings. Human review required before any operational action.",
   };
 }
 

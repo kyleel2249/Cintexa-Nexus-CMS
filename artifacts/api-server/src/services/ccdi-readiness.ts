@@ -113,15 +113,12 @@ export async function assessProductionReadiness() {
     detail: dbUrl ? "DATABASE_URL or POSTGRES_URL set" : "missing database connection env",
   });
 
-  const hasOpenRouter = Boolean(process.env.OPENROUTER_API_KEY);
   add({
-    id: "config.openrouter",
+    id: "config.advisory_engine",
     category: "config",
-    title: "OpenRouter API key",
-    status: hasOpenRouter ? "pass" : "info",
-    detail: hasOpenRouter
-      ? "present (intelligence features may call external models)"
-      : "not set — advisory AI features degrade gracefully",
+    title: "Advisory engine",
+    status: "pass",
+    detail: "Built-in rule-based advisory (no external model or API key required)",
   });
 
   // ── Operational signals ──────────────────────────────────────────────────

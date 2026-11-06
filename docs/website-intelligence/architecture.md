@@ -12,8 +12,8 @@ API host (Express 5, always-on)  /api/v1/website-audits ─┤
                 │        │             └─ robots.txt, sitemap, page-data, html
                 │        ├─ analyze-seo / analyze-quality (per page)
                 │        ├─ site-infra / site-seo / site-security / site-misc (site-wide)
-                │        ├─ integrations (PageSpeed/CrUX), browser-client ──► wi-browser-worker (Playwright, isolated)
-                │        └─ explain (OpenRouter, labelled AI), notify (webhooks, SMTP)
+                │        ├─ integrations (status), browser-client ──► wi-browser-worker (Playwright, isolated)
+                │        └─ explain (built-in, evidence-based), notify (webhooks, SMTP)
                 ▼
           store.ts ─► Postgres (wi_* tables, created by ensureSchema)
 lib/wi-core (shared, isomorphic): catalogue (197 tests), scoring, findings, workflow, compare, URL/IP classification
@@ -28,4 +28,4 @@ Frontend lib: report-pdf.ts + pdf-kit.ts (jsPDF, vector charts, TOC, validation)
 - **Workflow.** Findings move open → triaged → planned → in_progress → fixed → retest_required → verified / accepted_risk / dismissed. "Verified" requires a passing retest or documented manual verification. Retests carry workflow state forward by fingerprint.
 
 ## Portable engine and ports
-`lib/wi-engine` holds the crawler, tests, scoring and the shared HTTP routes. It reaches the outside world only through ports (`configureEngine`): network, repository, settings, browser worker, PageSpeed, notifier, runtime info. The API server wires Node implementations (Postgres, pinned sockets, TLS probe). Local mode wires browser implementations (`MemoryRepo` + IndexedDB, relay fetch, DNS-over-HTTPS). The same route handlers are mounted on Express and on an in-browser router. See [local-mode.md](local-mode.md).
+`lib/wi-engine` holds the crawler, tests, scoring and the shared HTTP routes. It reaches the outside world only through ports (`configureEngine`): network, repository, settings, browser worker, notifier, runtime info. The API server wires Node implementations (Postgres, pinned sockets, TLS probe). Local mode wires browser implementations (`MemoryRepo` + IndexedDB, relay fetch, DNS-over-HTTPS). The same route handlers are mounted on Express and on an in-browser router. See [local-mode.md](local-mode.md).

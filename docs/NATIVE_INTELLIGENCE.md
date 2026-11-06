@@ -46,6 +46,6 @@ If Level 3 is absent, Levels 1–2 continue without interruption and without war
 
 ## Settings
 
-Platform Settings may still store an OpenRouter key for **optional** CMS features (AI Studio, comment assist, etc.). That key is **not** a prerequisite for Sales, Finance, or FI.
+Nexus contains no external AI integration at all: AI Studio, advisory, explanations and agent narration all run on built-in engines.
 
 Sales Settings → Integrations → AI controls optional narration only; default operation is native.

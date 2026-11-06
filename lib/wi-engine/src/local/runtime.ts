@@ -6,7 +6,7 @@ import { configureEngine } from "../ports";
 import { deterministicExplanation } from "../explain";
 import { abortAudit, holdCredential, isRunning, runAudit } from "../engine";
 import { MemoryRepo } from "../memory-repo";
-import { parsePsi, psiRequestUrl, unavailablePsi } from "../psi";
+import { unavailablePsi } from "../psi";
 import { registerWiRoutes, type ApiDeps, type IntegrationStatus } from "../routes";
 import { DEFAULT_WI_SETTINGS, mergeSettings, normalizeStoredSettings, type WiSettings } from "../settings";
 import { createRelayNet, type RelayNetOptions } from "./net";
@@ -18,8 +18,6 @@ export interface LocalRuntimeOptions {
   repo: MemoryRepo;
   /** Persists the settings JSON (localStorage in the browser). */
   settingsStore: { read(): string | null; write(value: string): void };
-  /** The visitor's own PageSpeed Insights key, if they provided one. */
-  pageSpeedKey(): string | null;
   runtimeVersion: string;
   fetchImpl?: typeof fetch;
   maxConcurrent?: number;
@@ -59,7 +57,6 @@ export function createLocalRuntime(o: LocalRuntimeOptions): LocalRuntime {
     },
   };
 
-  const doFetch: typeof fetch = (...a) => (o.fetchImpl ?? fetch)(...a);
   configureEngine({
     net: createRelayNet(o.net),
     repo,
@@ -69,15 +66,8 @@ export function createLocalRuntime(o: LocalRuntimeOptions): LocalRuntime {
       inspect: async () => ({ available: false, reason: "The headless-browser worker is not available in local mode.", findings: [] }),
     },
     pagespeed: {
-      get configured() { return Boolean(o.pageSpeedKey()); },
-      async run(url, device, signal) {
-        const key = o.pageSpeedKey();
-        if (!key) return unavailablePsi(url, device, "No PageSpeed Insights API key is set in this browser.");
-        try {
-          const res = await doFetch(psiRequestUrl(url, device, key), { signal, headers: { accept: "application/json" } });
-          return parsePsi(url, device, { status: res.status, text: await res.text() });
-        } catch (e) { return parsePsi(url, device, { status: null, text: "", error: (e as Error).message }); }
-      },
+      configured: false,
+      async run(url, device) { return unavailablePsi(url, device, "External performance testing is not part of this self-contained build."); },
     },
     notifier: { finished: async () => undefined },
     runtime: { version: o.runtimeVersion, location: "your browser, fetching through the Cloudflare relay", browserWorkerConfigured: false },
@@ -107,9 +97,8 @@ export function createLocalRuntime(o: LocalRuntimeOptions): LocalRuntime {
 
   const integrations = async (): Promise<IntegrationStatus[]> => [
     { id: "relay", label: "Fetch relay (Cloudflare Pages Function)", status: "available", detail: "Pages are fetched through /api/wi-relay (same-origin only).", envVars: [] },
-    { id: "pagespeed", label: "PageSpeed Insights", status: o.pageSpeedKey() ? "available" : "not_configured", detail: o.pageSpeedKey() ? "Using the key saved in this browser." : "Add your own PageSpeed Insights API key in this browser to enable lab Core Web Vitals.", envVars: [] },
     { id: "browser", label: "Headless browser worker", status: "not_configured", detail: "Not available in local mode. Rendering-dependent tests are reported as not tested.", envVars: [] },
-    { id: "ai", label: "Explanations", status: "available", detail: "Deterministic explanations built from the recorded evidence.", envVars: [] },
+    { id: "explanations", label: "Explanations", status: "available", detail: "Deterministic explanations built from the recorded evidence.", envVars: [] },
   ];
 
   const router = new LocalRouter();

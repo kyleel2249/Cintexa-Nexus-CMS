@@ -1,25 +1,13 @@
 /**
  * Cloudflare Pages Function for /api/*
  * - Proxies to API_ORIGIN when set
- * - Otherwise provides working stubs for sites + OpenRouter settings
+ * - Otherwise provides working stubs for sites and general settings
  *   so the SPA does not get empty/405 responses on POST/PUT
  */
 
 type Env = { API_ORIGIN?: string };
 
 const memorySites: any[] = [];
-let openRouterStore: {
-  apiKey: string;
-  model: string;
-  siteUrl: string;
-  appName: string;
-} = {
-  apiKey: "",
-  model: "openai/gpt-4o-mini",
-  siteUrl: "https://cintexa.com",
-  appName: "CINTEXA Nexus CMS",
-};
-
 function json(data: unknown, status = 200) {
   return new Response(JSON.stringify(data ?? {}), {
     status,
@@ -30,25 +18,6 @@ function json(data: unknown, status = 200) {
       "access-control-allow-headers": "content-type,authorization",
     },
   });
-}
-
-function maskKey(key: string) {
-  if (!key) return { configured: false, prefix: null as string | null, length: 0 };
-  return {
-    configured: true,
-    prefix: key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : "••••",
-    length: key.length,
-  };
-}
-
-function openRouterPublic() {
-  return {
-    ...maskKey(openRouterStore.apiKey),
-    model: openRouterStore.model,
-    siteUrl: openRouterStore.siteUrl,
-    appName: openRouterStore.appName,
-    source: openRouterStore.apiKey ? "settings" : "none",
-  };
 }
 
 async function readJson(request: Request): Promise<any> {
@@ -148,52 +117,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const idx = memorySites.findIndex((s) => s.id === id);
     if (idx >= 0) memorySites.splice(idx, 1);
     return json({ ok: true }, 200);
-  }
-
-  // --- OpenRouter settings (secret stored in function memory for this isolate) ---
-  if (subpath === "settings/openrouter" || subpath === "settings/openrouter/") {
-    if (method === "GET") {
-      return json(openRouterPublic());
-    }
-    if (method === "PUT" || method === "POST") {
-      const body = await readJson(request);
-      if (typeof body.apiKey === "string" && body.apiKey.trim()) {
-        openRouterStore.apiKey = body.apiKey.trim();
-      }
-      if (body.clearKey === true) {
-        openRouterStore.apiKey = "";
-      }
-      if (typeof body.model === "string" && body.model.trim()) {
-        openRouterStore.model = body.model.trim();
-      }
-      if (typeof body.siteUrl === "string") openRouterStore.siteUrl = body.siteUrl;
-      if (typeof body.appName === "string") openRouterStore.appName = body.appName;
-      return json({
-        ...openRouterPublic(),
-        message: body.clearKey ? "OpenRouter key cleared" : "OpenRouter settings saved",
-      });
-    }
-  }
-
-  if (subpath === "settings/openrouter/test" && method === "POST") {
-    if (!openRouterStore.apiKey) {
-      return json({ ok: false, error: "No OpenRouter API key configured" }, 400);
-    }
-    try {
-      const r = await fetch("https://openrouter.ai/api/v1/models", {
-        headers: { Authorization: `Bearer ${openRouterStore.apiKey}` },
-      });
-      if (!r.ok) {
-        const text = await r.text().catch(() => "");
-        return json(
-          { ok: false, error: `OpenRouter rejected the key (${r.status})`, detail: text.slice(0, 200) },
-          400,
-        );
-      }
-      return json({ ok: true, message: "OpenRouter API key is valid" });
-    } catch (e: any) {
-      return json({ ok: false, error: e?.message || "Test failed" }, 500);
-    }
   }
 
   // Other settings GETs — empty safe defaults so UI does not crash

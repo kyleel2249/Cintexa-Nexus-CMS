@@ -1,7 +1,7 @@
 /**
  * Cloudflare Pages Function for /api/*
  * - Proxies to API_ORIGIN when set to a valid http(s) URL (the Express API; Nexus has no sign-in)
- * - Otherwise (unset OR not a valid URL) provides working stubs for sites, OpenRouter settings and API keys
+ * - Otherwise (unset OR not a valid URL) provides working stubs for sites and general settings
  *   so the SPA does not get empty/405/503 responses on POST/PUT in Settings.
  *   Stub data lives in the function isolate's memory only and is lost on redeploy/restart.
  */
@@ -9,18 +9,6 @@
 type Env = { API_ORIGIN?: string };
 
 const memorySites: any[] = [];
-let openRouterStore: {
-  apiKey: string;
-  model: string;
-  siteUrl: string;
-  appName: string;
-} = {
-  apiKey: "",
-  model: "openai/gpt-4o-mini",
-  siteUrl: "https://cintexa.com",
-  appName: "CINTEXA Nexus CMS",
-};
-
 const CORS = {
   "access-control-allow-origin": "*",
   "access-control-allow-methods": "GET,POST,PUT,PATCH,DELETE,OPTIONS",
@@ -32,25 +20,6 @@ function json(data: unknown, status = 200) {
     status,
     headers: { "content-type": "application/json; charset=utf-8", ...CORS },
   });
-}
-
-function maskKey(key: string) {
-  if (!key) return { configured: false, prefix: null as string | null, length: 0 };
-  return {
-    configured: true,
-    prefix: key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : "••••",
-    length: key.length,
-  };
-}
-
-function openRouterPublic() {
-  return {
-    ...maskKey(openRouterStore.apiKey),
-    model: openRouterStore.model,
-    siteUrl: openRouterStore.siteUrl,
-    appName: openRouterStore.appName,
-    source: openRouterStore.apiKey ? "settings" : "none",
-  };
 }
 
 async function readJson(request: Request): Promise<any> {
@@ -65,7 +34,7 @@ async function readJson(request: Request): Promise<any> {
 
 /**
  * API_ORIGIN must be the base URL of the Express API, e.g. https://api.example.com (no /api suffix).
- * A common mistake is pasting a secret (such as an OpenRouter key) into this variable. Anything that is not a valid
+ * A common mistake is pasting a secret (such as an API key) into this variable. Anything that is not a valid
  * http(s) URL is ignored here and is never echoed back to the browser.
  */
 function validOrigin(raw: string | undefined): string {
@@ -170,84 +139,6 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const idx = memorySites.findIndex((s) => s.id === id);
     if (idx >= 0) memorySites.splice(idx, 1);
     return json({ ok: true }, 200);
-  }
-
-  // --- OpenRouter settings (secret stored in function memory for this isolate) ---
-  if (subpath === "settings/openrouter" || subpath === "settings/openrouter/") {
-    if (method === "GET") {
-      return json(openRouterPublic());
-    }
-    if (method === "PUT" || method === "POST") {
-      const body = await readJson(request);
-      if (typeof body.apiKey === "string" && body.apiKey.trim()) {
-        let k = body.apiKey.trim();
-        if ((k.startsWith('"') && k.endsWith('"')) || (k.startsWith("'") && k.endsWith("'"))) k = k.slice(1, -1).trim();
-        if (k.toLowerCase().startsWith("bearer ")) k = k.slice(7).trim();
-        openRouterStore.apiKey = k;
-      }
-      if (body.clearKey === true) {
-        openRouterStore.apiKey = "";
-      }
-      if (typeof body.model === "string" && body.model.trim()) {
-        openRouterStore.model = body.model.trim();
-      }
-      if (typeof body.siteUrl === "string") openRouterStore.siteUrl = body.siteUrl;
-      if (typeof body.appName === "string") openRouterStore.appName = body.appName;
-      return json({
-        ...openRouterPublic(),
-        message: body.clearKey ? "OpenRouter key cleared" : "OpenRouter settings saved",
-      });
-    }
-  }
-
-  if (subpath === "settings/openrouter/test" && method === "POST") {
-    const body = await readJson(request);
-    let key = "";
-    if (typeof body?.apiKey === "string" && body.apiKey.trim()) {
-      key = body.apiKey.trim();
-    } else {
-      key = openRouterStore.apiKey || "";
-    }
-    if ((key.startsWith('"') && key.endsWith('"')) || (key.startsWith("'") && key.endsWith("'"))) key = key.slice(1, -1).trim();
-    if (key.toLowerCase().startsWith("bearer ")) key = key.slice(7).trim();
-    if (!key) {
-      return json({ ok: false, status: "not_configured", error: "No OpenRouter API key configured. Paste a key and click Test, or Save first." }, 400);
-    }
-    try {
-      const r = await fetch("https://openrouter.ai/api/v1/auth/key", {
-        headers: { Authorization: `Bearer ${key}` },
-      });
-      if (r.status === 401 || r.status === 403) {
-        return json({
-          ok: false,
-          status: "authentication_failed",
-          error: `OpenRouter rejected the key (HTTP ${r.status}). Check that it was copied in full and has not been revoked.`,
-          hint: "Create a new key at https://openrouter.ai/keys and paste it without a Bearer prefix.",
-        }, 400);
-      }
-      if (r.status === 402) {
-        return json({ ok: false, status: "insufficient_credits", error: "OpenRouter account has insufficient credits.", hint: "Add credits at https://openrouter.ai/settings/credits" }, 400);
-      }
-      if (r.status === 429) {
-        return json({ ok: false, status: "rate_limited", error: "OpenRouter rate-limited the validation request. Try again shortly." }, 400);
-      }
-      if (!r.ok) {
-        const text = await r.text().catch(() => "");
-        return json({ ok: false, status: "provider_unavailable", error: `OpenRouter could not verify the key (HTTP ${r.status})`, detail: text.slice(0, 200) }, 502);
-      }
-      const info: any = await r.json().catch(() => null);
-      const label = typeof info?.data?.label === "string" ? info.data.label : "";
-      // Keep successful key in this isolate so subsequent AI calls work without another Save
-      openRouterStore.apiKey = key;
-      return json({
-        ok: true,
-        status: "validated",
-        message: label ? `OpenRouter API key is valid (${label})` : "OpenRouter API key is valid",
-        ...maskKey(key),
-      });
-    } catch (e: any) {
-      return json({ ok: false, status: "network_error", error: e?.message || "Test failed" }, 500);
-    }
   }
 
   // Other settings GETs — empty safe defaults so UI does not crash

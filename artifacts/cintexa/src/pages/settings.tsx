@@ -13,7 +13,6 @@ import { apiJson } from "@/lib/api";
 import {
   Settings as SettingsIcon,
   Palette,
-  Key,
   Webhook,
   Shield,
   Loader2,
@@ -30,7 +29,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-type Tab = "general" | "appearance" | "ai" | "webhooks" | "security";
+type Tab = "general" | "appearance" | "webhooks" | "security";
 
 const ACCENTS: { value: Exclude<Accent, "custom">; label: string; color: string }[] = [
   { value: "gold", label: "Gold (Cintexa)", color: "hsl(46 89% 55%)" },
@@ -158,9 +157,6 @@ export default function SettingsPage() {
   const [deliveriesFor, setDeliveriesFor] = useState<HookRow | null>(null);
   const [myIp, setMyIp] = useState<string>("");
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [openRouter, setOpenRouter] = useState({ configured: false, prefix: null as string | null, model: "openai/gpt-4o-mini", siteUrl: "https://cintexa.com", appName: "CINTEXA Nexus CMS", source: "none" });
-  const [orKeyInput, setOrKeyInput] = useState("");
-  const [orBusy, setOrBusy] = useState(false);
 
   const [busy, setBusy] = useState(false);
   const [hookUrl, setHookUrl] = useState("");
@@ -178,19 +174,17 @@ export default function SettingsPage() {
         return null;
       }
     };
-    const [g, s, w, ev, or, who] = await Promise.all([
+    const [g, s, w, ev, who] = await Promise.all([
       attempt<any>("/settings/general"),
       attempt<any>("/settings/security"),
       attempt<HookRow[]>("/settings/webhooks"),
       attempt<string[]>("/settings/webhooks/events"),
-      attempt<any>("/settings/openrouter"),
       attempt<{ ip: string }>("/settings/whoami"),
     ]);
     if (g && !g.error) setGeneral((p) => ({ ...p, ...g }));
     if (s && !s.error) setSecurity((p) => ({ ...p, ...s }));
     if (Array.isArray(w)) setWebhooks(w);
     if (Array.isArray(ev) && ev.length) setEvents(ev.filter((e) => e !== "webhook.test"));
-    if (or && !or.error) setOpenRouter((p) => ({ ...p, ...or }));
     if (who?.ip) setMyIp(who.ip);
   }, []);
 
@@ -283,79 +277,9 @@ export default function SettingsPage() {
     }
   }
 
-  async function saveOpenRouter() {
-    setOrBusy(true);
-    try {
-      const body: Record<string, unknown> = { model: openRouter.model, siteUrl: openRouter.siteUrl, appName: openRouter.appName };
-      if (orKeyInput.trim()) body.apiKey = orKeyInput.trim();
-      const data = await apiJson<any>("/settings/openrouter", { method: "POST", body: JSON.stringify(body) });
-      setOpenRouter((prev) => ({ ...prev, configured: Boolean(data.configured), prefix: data.prefix ?? prev.prefix, model: data.model ?? prev.model, siteUrl: data.siteUrl ?? prev.siteUrl, appName: data.appName ?? prev.appName, source: data.source ?? prev.source }));
-      setOrKeyInput("");
-      toast({ title: "OpenRouter settings saved", description: data.configured ? `Key ${data.prefix}` : data.message || "Saved" });
-    } catch (e: any) {
-      if ((e?.status === 405 || e?.status === 503 || e?.status === 404) && orKeyInput.trim()) {
-        const key = orKeyInput.trim();
-        try {
-          sessionStorage.setItem("cintexa-openrouter-key", key);
-          sessionStorage.setItem("cintexa-openrouter-meta", JSON.stringify({ model: openRouter.model, siteUrl: openRouter.siteUrl, appName: openRouter.appName }));
-        } catch { /* ignore */ }
-        setOpenRouter((prev) => ({ ...prev, configured: true, prefix: key.length > 8 ? `${key.slice(0, 4)}…${key.slice(-4)}` : "••••", source: "session" }));
-        setOrKeyInput("");
-        toast({ title: "Key kept for this browser session only", description: "The API backend is not reachable. Set API_ORIGIN (Cloudflare) or start the API server for permanent storage." });
-      } else {
-        toast({ title: e?.message || "Failed to save OpenRouter key", variant: "destructive" });
-      }
-    } finally {
-      setOrBusy(false);
-    }
-  }
-
-  async function clearOpenRouterKey() {
-    setOrBusy(true);
-    try {
-      const data = await apiJson<any>("/settings/openrouter", { method: "POST", body: JSON.stringify({ clearKey: true }) });
-      setOpenRouter((prev) => ({ ...prev, configured: Boolean(data.configured), prefix: data.prefix ?? null, source: data.source ?? "none" }));
-      try { sessionStorage.removeItem("cintexa-openrouter-key"); } catch { /* ignore */ }
-      setOrKeyInput("");
-      toast({ title: "OpenRouter key removed" });
-    } catch (e: any) {
-      toast({ title: e?.message || "Failed", variant: "destructive" });
-    } finally {
-      setOrBusy(false);
-    }
-  }
-
-  async function testOpenRouter() {
-    setOrBusy(true);
-    try {
-      const body: Record<string, unknown> = {};
-      if (orKeyInput.trim()) body.apiKey = orKeyInput.trim();
-      const data = await apiJson<any>("/settings/openrouter/test", {
-        method: "POST",
-        body: JSON.stringify(body),
-      });
-      if (data?.ok || data?.configured || data?.status === "validated") {
-        setOpenRouter((prev) => ({
-          ...prev,
-          configured: true,
-          prefix: data.prefix ?? prev.prefix,
-          source: prev.source === "none" ? "settings" : prev.source,
-        }));
-      }
-      toast({ title: "OpenRouter key is valid", description: data?.message });
-    } catch (e: any) {
-      const detail = typeof e?.detail === "object" ? (e.detail as any) : null;
-      const desc = [detail?.detail, detail?.hint, detail?.status].filter(Boolean).join(" — ");
-      toast({ title: e?.message || "OpenRouter test failed", description: desc || undefined, variant: "destructive" });
-    } finally {
-      setOrBusy(false);
-    }
-  }
-
   const nav: { id: Tab; label: string; icon: typeof SettingsIcon }[] = [
     { id: "general", label: "General", icon: SettingsIcon },
     { id: "appearance", label: "Appearance", icon: Palette },
-    { id: "ai", label: "AI Provider", icon: Key },
     { id: "webhooks", label: "Webhooks", icon: Webhook },
     { id: "security", label: "Security", icon: Shield },
   ];
@@ -414,7 +338,7 @@ export function verify(rawBody, headers, secret) {
                     <h4 className="text-sm font-semibold">Features</h4>
                     {([
                       ["maintenanceMode", "Maintenance mode", "Shows a maintenance flag to connected sites via /api/settings/public."],
-                      ["aiFeatures", "AI features", "Enable AI Studio and generation tools."],
+                      ["aiFeatures", "AI Studio", "Enable the built-in AI Studio content tools. They run inside Nexus and use no external service."],
                     ] as const).map(([key, label, help]) => (
                       <div key={key} className="flex items-center justify-between">
                         <div className="space-y-0.5">
@@ -434,47 +358,6 @@ export function verify(rawBody, headers, secret) {
           )}
 
           {tab === "appearance" && <AppearanceCard />}
-
-          {tab === "ai" && (
-            <>
-              <Card className="bg-card border-border/50 border-primary/20">
-                <CardHeader>
-                  <CardTitle>OpenRouter (AI)</CardTitle>
-                  <CardDescription>Secret key used by AI Studio, SEO generation, post images and comments. Stored server-side only — the full key is never shown again after save.</CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div className="flex flex-wrap items-center gap-2 text-sm">
-                    <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${openRouter.configured ? "bg-emerald-500/15 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground"}`}>
-                      {openRouter.configured ? `Configured (${openRouter.prefix})` : "Not configured"}
-                    </span>
-                    <span className="text-xs text-muted-foreground">Source: {openRouter.source}</span>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="or-key">OpenRouter API key</Label>
-                    <Input id="or-key" type="password" autoComplete="off" placeholder={openRouter.configured ? "••••••••  (leave blank to keep current)" : "sk-or-v1-…"} value={orKeyInput} onChange={(e) => setOrKeyInput(e.target.value)} />
-                    <p className="text-xs text-muted-foreground">
-                      Get a key at <a href="https://openrouter.ai/keys" target="_blank" rel="noreferrer" className="underline text-primary">openrouter.ai/keys</a>. Prefer keys with spend limits.
-                    </p>
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="or-model">Default model</Label>
-                    <Input id="or-model" value={openRouter.model} onChange={(e) => setOpenRouter({ ...openRouter, model: e.target.value })} placeholder="openai/gpt-4o-mini" />
-                  </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    <div className="space-y-2"><Label>HTTP-Referer (site URL)</Label><Input value={openRouter.siteUrl} onChange={(e) => setOpenRouter({ ...openRouter, siteUrl: e.target.value })} /></div>
-                    <div className="space-y-2"><Label>App name (X-Title)</Label><Input value={openRouter.appName} onChange={(e) => setOpenRouter({ ...openRouter, appName: e.target.value })} /></div>
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    <Button onClick={() => void saveOpenRouter()} disabled={orBusy}>{orBusy ? "Saving…" : "Save OpenRouter settings"}</Button>
-                    <Button type="button" variant="outline" onClick={() => void testOpenRouter()} disabled={orBusy || (!openRouter.configured && !orKeyInput.trim())}>Test key</Button>
-                    {openRouter.configured && openRouter.source !== "environment" && (
-                      <Button type="button" variant="ghost" className="text-destructive" onClick={() => void clearOpenRouterKey()} disabled={orBusy}>Remove key</Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            </>
-          )}
 
           {tab === "webhooks" && (
             <Card className="bg-card border-border/50">

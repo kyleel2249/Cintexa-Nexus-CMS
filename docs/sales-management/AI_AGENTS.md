@@ -58,7 +58,7 @@ Agents start **paused** (secure default). Tools and data access are fixed in cod
 Committed domain events are stored in `sales_events`, processed by the scheduler (or "Process pending now"), consumed idempotently (event id + agent), retried with back-off up to 5 times, then dead-lettered. Agent-caused events are never dispatched to agents (no recursion).
 
 ## AI configuration
-Off by default and inert until **all** of: Sales Settings → Integrations → AI enabled, "allow external provider" on, and a key is available to the server (platform OpenRouter settings or `OPENROUTER_API_KEY`). Models: tier defaults `openai/gpt-4o-mini` (economy), `anthropic/claude-3.5-haiku` (standard), `anthropic/claude-3.7-sonnet` (reasoning), overridable per tier with `SALES_AI_MODEL_ECONOMY|STANDARD|REASONING` and per agent in the Command Centre. Chain: agent model → tier model → fallback model → platform default. 6 AI calls/agent/hour cap. Usage is logged in `sales_ai_usage`; tokens and provider-reported cost appear per execution. **Model ids change over time – confirm the defaults exist on your OpenRouter account.**
+Narration is produced by the built-in deterministic engine (`agents/native-narration.ts`). No model provider ships with Nexus, so no record data ever leaves the system. The agent-layer helpers (`agents/llm.ts`) only validate and sanitise text and are provider-agnostic.
 Never commit a key; if a key was ever pasted into a chat or ticket, rotate it.
 
 ## API (all under `/api/sales`)
@@ -74,7 +74,7 @@ Permissions: `agents:read` (own findings), `agents:run` (network view), `agents:
 * Frontend: `tsc` clean; production `vite build` succeeds; the real sidebar, Overview banner and Command Centre were rendered in jsdom on top of the on-device engine (24 agent cards, activate all, run network, all tabs) without errors.
 
 ## Not verified / limitations (honest)
-* **No live call to OpenRouter was made** (the build sandbox has no route to it). The adapter is unit-tested against a stubbed `fetch` (auth header, usage/cost parsing, retries, timeouts, no key leakage). Do one real call in staging.
+* No external AI call exists anywhere in the agent layer; there is nothing to stage-test against a live service.
 * The Command Centre UI was rendered in jsdom (real React + the on-device engine) but **not opened in a real browser with real styling/layout**; check the visual layout on desktop and phone.
 * No data-enrichment, public-web research, call-recording or document-text extraction provider exists, so those capabilities are reported as unavailable instead of simulated.
 * Single-tenant deployment: isolation is role- and ownership-based (as in the existing module), not multi-organisation.

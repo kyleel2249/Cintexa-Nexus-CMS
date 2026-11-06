@@ -6,29 +6,20 @@ import { dispatch, type Deps } from "./core/router";
 import { handleEvents } from "./modules/automation";
 import { runSalesJobs } from "./jobs";
 import { recordEvents } from "./agents/events";
-import { createOpenRouterProvider } from "./agents/llm";
-import { resolveOpenRouterApiKey, getOpenRouterSettings } from "../../lib/openrouter";
 import type { Integrations } from "./integrations/providers";
 import type { SalesRequest, SalesResponse } from "./core/types";
 import { logger } from "../../lib/logger";
 import { nullFinanceProvider } from "./integrations/providers";
 
 /**
- * Provider registry. Sales reports inventory, invoicing, e-mail, WhatsApp and AI as "not connected" until an adapter
- * is registered here AND switched on in Sales Settings -> Integrations.
+ * Provider registry. Sales reports inventory, invoicing, e-mail and WhatsApp as "not connected" until an adapter
+ * is registered here AND switched on in Sales Settings -> Integrations. Agent narration is built in (native, deterministic) and needs no provider.
  * Finance: no Finance module is installed, so invoicing reports "not connected" and never claims success.
  */
 const salesDb = createSalesDb(pool);
 
 export const integrations: Integrations = {
   finance: nullFinanceProvider,
-  // OpenRouter adapter for agent narration and the contextual assistant. It is inert until an administrator turns on
-  // Sales Settings -> Integrations -> AI AND allows an external provider; the API key is read from the platform OpenRouter
-  // settings or OPENROUTER_API_KEY at call time and is never stored in code. If it is missing, agents stay deterministic.
-  ai: createOpenRouterProvider({
-    resolveKey: () => resolveOpenRouterApiKey(),
-    defaultModel: async () => { try { return (await getOpenRouterSettings()).model; } catch { return "openai/gpt-4o-mini"; } },
-  }),
 };
 
 const router = buildRouter();
