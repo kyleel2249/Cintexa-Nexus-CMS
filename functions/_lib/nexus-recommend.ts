@@ -152,9 +152,9 @@ const GENERIC: Record<ModuleId, string> = {
   dashboard: "Dashboard cards refresh from this change.",
 };
 
-/** Every module except the source receives every event (links are reciprocal). */
-export function targetsFor(ev: RecEvent): ModuleId[] {
-  return ALL_MODULES.filter((m) => m !== (ev.source_module as ModuleId));
+/** Every module receives every event, including the one it came from, so links run both ways between all tools. */
+export function targetsFor(_ev: RecEvent): ModuleId[] {
+  return [...ALL_MODULES];
 }
 
 export function recommend(ev: RecEvent, payload: Record<string, any> = {}, target: ModuleId): string[] {

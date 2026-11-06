@@ -49,3 +49,6 @@ PR #16 (external-API removal) edits some of the same files (CSI, sync registry, 
 - Recommendations (`functions/_lib/nexus-recommend.ts`): rules per record kind and receiving tool; added to the Diary entry text, returned when an event is published, shown in a toast and a dashboard card, and served by `GET /api/sync/recommendations`.
 - Tests run: tests/ 68 pass (finance-ratios 6, finance-sync 8, nexus-sync updated link counts); frontend announce 2 pass; double-entry and forecast tests still pass. Not run: type-check, build, browser check. One suite needs pglite (not installable here).
 - Limits: recommendations are rules, not analysis of your market; ratio guides are rules of thumb. Local-mode Sales and browser-stored Marketing data announce from the browser, so they sync only while the app is open and online. Marketing "spent/budget" amounts are announced as major units x100.
+
+### Update: delivery also returns to the source
+Every event now reaches all seven tools (Sales, Marketing, Corporate Strategy, Business Diary, Financial Intelligence, Finance, Dashboard) including the tool it came from, and the dashboard can be a source. A diary-originated record is acknowledged back to the diary (`source_ack` link) without writing a duplicate entry. Tests: tests/ 68 pass (reciprocal test now covers all seven sources).

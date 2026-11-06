@@ -111,7 +111,7 @@ test("a manual journal syncs to every tool, gets an automatic memo and line note
   assert.match(j.description, /debit Cash on Hand; credit Website Design Revenue/);
   assert.ok(j.lines.every((l: any) => l.memo && l.memo.length > 5));
   const ev = (await t.syn("GET", "events?eventType=JOURNAL_POSTED")).json.items[0];
-  assert.deepEqual(ev.links.map((l: any) => l.targetModule).sort(), ["business-diary", "corporate-strategy", "dashboard", "financial-intelligence", "marketing", "sales"]);
+  assert.deepEqual(ev.links.map((l: any) => l.targetModule).sort(), ["business-diary", "corporate-strategy", "dashboard", "finance", "financial-intelligence", "marketing", "sales"]);
   const del = await t.fin("DELETE", `journals/${j.id}`, { confirm: "DELETE_JOURNAL" });
   assert.equal(del.status, 200);
   assert.equal((await t.syn("GET", "events?eventType=JOURNAL_DELETED")).json.items.length, 1);
@@ -132,20 +132,21 @@ test("mobile phones are in the chart of accounts and depreciate at 25% to their 
   assert.deepEqual(j.lines.map((l: any) => l.accountCode).sort(), ["1283", "6312"]);
 });
 
-test("links are reciprocal: a record from any tool reaches every other tool with its own suggestion, never back to itself", async () => {
+test("links are reciprocal: a record from any tool, including the dashboard, reaches all seven tools including the one it came from", async () => {
   const t = boot();
-  for (const source of ["sales", "marketing", "corporate-strategy", "business-diary", "financial-intelligence"]) {
+  for (const source of ["sales", "marketing", "corporate-strategy", "business-diary", "financial-intelligence", "finance", "dashboard"]) {
     const r = await t.syn("POST", "events", { eventType: "RECORD_CREATED", sourceModule: source, entityType: "lead", entityId: `x-${source}`, payload: { title: `From ${source}`, amountMinor: 250000 } });
     assert.equal(r.status, 201, JSON.stringify(r.json));
     const targets = r.json.event.links.map((l: any) => l.targetModule).sort();
-    const expected = ["business-diary", "corporate-strategy", "dashboard", "finance", "financial-intelligence", "marketing", "sales"].filter((m) => m !== source).sort();
+    const expected = ["business-diary", "corporate-strategy", "dashboard", "finance", "financial-intelligence", "marketing", "sales"];
     assert.deepEqual(targets, expected, source);
-    assert.ok(!targets.includes(source));
-    assert.ok(r.json.recommendations.length >= expected.length, "every receiving tool gets at least one suggestion");
-    assert.ok(r.json.recommendations.some((x: any) => x.target === "marketing" || source === "marketing"));
+    assert.ok(targets.includes(source), "delivered back to the tool it came from");
+    assert.ok(r.json.recommendations.length >= expected.length, "every tool gets at least one suggestion");
   }
   const recs = (await t.syn("GET", "recommendations?limit=5")).json.items;
   assert.ok(recs.length === 5 && recs[0].recommendations.length > 0);
   const diary = t.sqlite.prepare("SELECT description FROM bd_entries WHERE title LIKE 'From sales%'").get() as any;
   assert.match(diary.description, /Suggestion:/);
+  assert.equal((t.sqlite.prepare("SELECT COUNT(*) n FROM bd_entries WHERE title = 'From business-diary'").get() as any).n, 0, "a diary-originated record is not duplicated as a second diary entry");
+  assert.equal((t.sqlite.prepare("SELECT COUNT(*) n FROM nx_sync_links WHERE target_module='business-diary' AND target_entity_type='source_ack'").get() as any).n, 1);
 });

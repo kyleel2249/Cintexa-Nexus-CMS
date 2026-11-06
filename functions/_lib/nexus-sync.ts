@@ -133,7 +133,10 @@ async function buildEffects(db: D1Like, ev: EventRow, at: string): Promise<D1Stm
   const payload = parseJson<Record<string, any>>(ev.payload, {});
   const stmts: D1Stmt[] = [];
   for (const target of targetsFor(ev)) {
-    if (target === "business-diary") {
+    if (target === "business-diary" && ev.source_module === "business-diary") {
+      // The diary originated this record: acknowledge delivery back to it without writing a duplicate entry.
+      stmts.push(await linkStmt(db, ev, "business-diary", "source_ack", `${ev.entity_type}:${ev.entity_id}`, at));
+    } else if (target === "business-diary") {
       const diaryId = await stableId("sync", ev.org_id, ev.entity_type, ev.entity_id, ev.event_type);
       const title = str(payload.title || `${ev.event_type} - ${ev.entity_type} ${ev.entity_id}`, 300);
       const recs = recommend(ev, payload, "business-diary");
