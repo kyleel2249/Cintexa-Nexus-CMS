@@ -305,6 +305,10 @@ export default function Dashboard() {
       </motion.div>
 
       <motion.div variants={fadeUp}>
+        <FiDashboardWidget />
+      </motion.div>
+
+      <motion.div variants={fadeUp}>
         <CsiDashboardWidget />
       </motion.div>
 
